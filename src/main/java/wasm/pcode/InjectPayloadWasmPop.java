@@ -41,7 +41,11 @@ public class InjectPayloadWasmPop extends InjectPayloadCallother {
 	@Override
 	public PcodeOp[] getPcode(Program program, InjectContext con) {
 		PcodeOpEmitter ops = new PcodeOpEmitter(program.getLanguage(), con.baseAddr);
+		emitPops(program, con, ops);
+		return ops.getPcodeOps();
+	}
 
+	protected void emitPops(Program program, InjectContext con, PcodeOpEmitter ops) {
 		long regoffset = con.inputlist.get(0).getOffset();
 		Address baseAddress = program.getAddressFactory().getAddressSpace("register").getAddress(regoffset);
 
@@ -51,15 +55,15 @@ public class InjectPayloadWasmPop extends InjectPayloadCallother {
 			funcAnalysis = state.getFunctionAnalysis(
 					program.getFunctionManager().getFunctionContaining(con.baseAddr).getEntryPoint());
 		} catch (Exception e) {
-			return ops.getPcodeOps();
+			return;
 		}
 		if (funcAnalysis == null) {
-			return ops.getPcodeOps();
+			return;
 		}
 
 		StackEffect stackEffect = funcAnalysis.getStackEffect(con.baseAddr);
 		if (stackEffect == null) {
-			return ops.getPcodeOps();
+			return;
 		}
 
 		long stackHeight = stackEffect.getPopHeight();
@@ -68,7 +72,5 @@ public class InjectPayloadWasmPop extends InjectPayloadCallother {
 		for (int i = 0; i < todo.length; i++) {
 			ops.emitCopy(stackAddress.add(i * WasmLoader.REG_SIZE), baseAddress.add(i * WasmLoader.REG_SIZE), todo[i].getSize());
 		}
-
-		return ops.getPcodeOps();
 	}
 }

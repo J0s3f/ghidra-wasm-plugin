@@ -20,6 +20,8 @@ import java.util.HashMap;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DoubleDataType;
 import ghidra.program.model.data.FloatDataType;
+import ghidra.program.model.data.IntegerDataType;
+import ghidra.program.model.data.LongLongDataType;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.Undefined;
 import ghidra.program.model.data.Undefined4DataType;
@@ -75,6 +77,25 @@ public class WasmEnums {
 				return Undefined4DataType.dataType;
 			}
 			return null;
+		}
+
+		/**
+		 * Data type to use for a *function signature* slot (parameter or return
+		 * value). Unlike {@link #asDataType}, integer types resolve to concrete
+		 * signed C integers rather than Undefined, so signatures read as
+		 * "int foo(int)" instead of "undefined4 foo(undefined4)". The
+		 * decompiler still refines signedness/pointerness from use. Width is
+		 * identical to asDataType, so stack layout is unaffected.
+		 */
+		public DataType asSignatureDataType() {
+			switch (this) {
+			case i32:
+				return IntegerDataType.dataType;
+			case i64:
+				return LongLongDataType.dataType;
+			default:
+				return asDataType();
+			}
 		}
 
 		public int getSize() {

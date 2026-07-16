@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.lang.Language;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.pcode.PcodeOp;
@@ -66,5 +67,21 @@ public class PcodeOpEmitter {
 		PcodeOp op = newOp(PcodeOp.COPY);
 		op.setInput(new Varnode(fromAddr, size), 0);
 		op.setOutput(new Varnode(toAddr, size));
+	}
+
+	public void emitAddConst(Address fromAddr, long constant, Address toAddr, int size) {
+		/* toAddr = fromAddr + constant */
+		PcodeOp op = newOp(PcodeOp.INT_ADD);
+		op.setInput(new Varnode(fromAddr, size), 0);
+		op.setInput(new Varnode(language.getAddressFactory().getConstantSpace().getAddress(constant), size), 1);
+		op.setOutput(new Varnode(toAddr, size));
+	}
+
+	public void emitLoad(AddressSpace space, Address ptrAddr, int ptrSize, Address destAddr, int destSize) {
+		/* destAddr = *[space]ptrAddr */
+		PcodeOp op = newOp(PcodeOp.LOAD);
+		op.setInput(new Varnode(language.getAddressFactory().getConstantSpace().getAddress(space.getSpaceID()), 4), 0);
+		op.setInput(new Varnode(ptrAddr, ptrSize), 1);
+		op.setOutput(new Varnode(destAddr, destSize));
 	}
 }

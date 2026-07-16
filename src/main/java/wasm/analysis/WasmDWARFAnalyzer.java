@@ -15,9 +15,16 @@
  */
 package wasm.analysis;
 
+import java.lang.reflect.Field;
+
 import ghidra.app.plugin.core.analysis.DWARFAnalyzer;
+import ghidra.app.util.bin.format.dwarf.DWARFImportOptions;
 import ghidra.app.util.bin.format.dwarf.sectionprovider.DWARFSectionProviderFactory;
+import ghidra.app.util.importer.MessageLog;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Program;
+import ghidra.util.Msg;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import wasm.WasmLoader;
 
@@ -32,5 +39,31 @@ public class WasmDWARFAnalyzer extends DWARFAnalyzer {
 			return true;
 		}
 		return false;
+	}
+
+	@Override
+	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
+			throws CancelledException {
+		/*
+		 * Import DWARF data types (structs, typedefs, enums) but not functions.
+		 * The DWARF function importer resolves variable/parameter locations via
+		 * DWARF location expressions that reference wasm-native locals and frame
+		 * bases; these do not translate to this plugin's ram/register layout, so
+		 * it places variables at invalid addresses (ram:ffffffff) and corrupts
+		 * decompiled bodies. Types alone are location-independent and safe, and
+		 * give us the original struct layouts for the decompiler.
+		 */
+		try {
+			Field f = DWARFAnalyzer.class.getDeclaredField("importOptions");
+			f.setAccessible(true);
+			DWARFImportOptions opts = (DWARFImportOptions) f.get(this);
+			if (opts != null) {
+				opts.setImportDataTypes(true);
+				opts.setImportFuncs(false);
+			}
+		} catch (Exception e) {
+			Msg.warn(this, "Could not constrain DWARF import options: " + e);
+		}
+		return super.added(program, set, monitor, log);
 	}
 }
