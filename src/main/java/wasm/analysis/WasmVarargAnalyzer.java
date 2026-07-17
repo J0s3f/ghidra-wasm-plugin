@@ -56,6 +56,7 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.program.util.ContextEvaluatorAdapter;
 import ghidra.program.util.SymbolicPropogator;
 import ghidra.util.Msg;
@@ -308,6 +309,26 @@ public class WasmVarargAnalyzer extends AbstractAnalyzer {
 		if (varargTypes.size() > 0) {
 			WasmVarargInfo.put(program, callAddr,
 				new WasmVarargInfo(bufIdx, offsets, sizes));
+		}
+
+		/*
+		 * On a stripped binary the callee is an anonymous unnamed_function_N; we
+		 * have just proved (constant format string + vararg-buffer ABI) that it
+		 * is a printf/scanf-family function, so give it the standard libc name.
+		 * Recompiled/decompiled output then links against real libc instead of
+		 * leaving an unresolved symbol. Only rename anonymous callees, and only
+		 * if the target name is still free (avoids duplicate-symbol clashes when
+		 * several distinct format functions exist).
+		 */
+		if (site.callee.getName().startsWith("unnamed_function")) {
+			String libcName = site.isScanf ? "scanf" : "printf";
+			if (program.getSymbolTable().getGlobalSymbols(libcName).isEmpty()) {
+				try {
+					site.callee.setName(libcName, SourceType.ANALYSIS);
+				} catch (Exception e) {
+					/* non-fatal */
+				}
+			}
 		}
 
 		/* Make the format string render as a string literal. This address is
