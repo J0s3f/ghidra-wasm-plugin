@@ -327,7 +327,20 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		try {
 			MemoryBlock block = program.getMemory().createInitializedBlock(".memory" + memidx, dataStart, length, (byte) 0x00, monitor, false);
 			block.setRead(true);
-			block.setWrite(true);
+			/*
+			 * Mark linear memory read-only so the decompiler (which respects
+			 * read-only flags by default) constant-folds reads of compile-time
+			 * constant addresses: string/array/const-data references then render
+			 * as inline literals (printf("Hello") instead of
+			 * printf(s_Hello_ram_...)) and array initializers are recovered.
+			 * This is safe for genuinely mutable globals: the decompiler only
+			 * folds addresses that have NO store references, so a global written
+			 * anywhere Ghidra can see stays a memory read. Stack/heap accesses go
+			 * through registers/runtime pointers (not constant addresses) and are
+			 * never folded. Data segments are written into this block during
+			 * loading via the low-level Memory API, which bypasses this flag.
+			 */
+			block.setWrite(false);
 			block.setExecute(false);
 			block.setSourceName("Wasm Memory");
 		} catch (Exception e) {
