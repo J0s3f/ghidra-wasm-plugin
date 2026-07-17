@@ -60,6 +60,14 @@ public class WasmDWARFAnalyzer extends DWARFAnalyzer {
 			if (opts != null) {
 				opts.setImportDataTypes(true);
 				opts.setImportFuncs(false);
+				/*
+				 * Disable source line-info import: it maps DWARF code offsets
+				 * onto instruction addresses, but wasm code lives at synthesized
+				 * 33-bit addresses (0x1_0000_0002...) that overflow the 32-bit
+				 * ram space, throwing AddressOutOfBoundsException (a modal error
+				 * dialog in the GUI). We only want the type catalog anyway.
+				 */
+				opts.setOutputSourceLineInfo(false);
 			}
 		} catch (Exception e) {
 			Msg.warn(this, "Could not constrain DWARF import options: " + e);
