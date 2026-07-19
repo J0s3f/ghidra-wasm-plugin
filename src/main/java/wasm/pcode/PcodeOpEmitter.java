@@ -84,4 +84,66 @@ public class PcodeOpEmitter {
 		op.setInput(new Varnode(ptrAddr, ptrSize), 1);
 		op.setOutput(new Varnode(destAddr, destSize));
 	}
+
+	private long uniqueOffset = 0x100000;
+
+	private Varnode newUnique(int size) {
+		Varnode v = new Varnode(language.getAddressFactory().getUniqueSpace().getAddress(uniqueOffset), size);
+		uniqueOffset += 0x20;
+		return v;
+	}
+
+	private Varnode constVn(long value, int size) {
+		return new Varnode(language.getAddressFactory().getConstantSpace().getAddress(value), size);
+	}
+
+	/**
+	 * Emit an unrolled, granularity-sized copy of {@code count} elements from
+	 * {@code src} to {@code dst} (both pointer varnodes into linear memory), i.e.
+	 * <pre>for i in 0..count: *(dst + i*gran) = *(src + i*gran)</pre>
+	 * When src points into read-only memory the decompiler folds each load to a
+	 * constant, turning a bulk memory.copy of a .rodata initializer into plain
+	 * <code>dst[i] = &lt;const&gt;</code> stores (recompilable), instead of an
+	 * opaque memory_copy() call.
+	 */
+	public void emitUnrolledCopy(Varnode src, Varnode dst, int count, int gran) {
+		AddressSpace ram = language.getAddressFactory().getDefaultAddressSpace();
+		Varnode ramId = constVn(ram.getSpaceID(), 4);
+		int ptrSize = src.getSize();
+		for (int i = 0; i < count; i++) {
+			long off = (long) i * gran;
+			/* sp = src + off */
+			Varnode sp = newUnique(ptrSize);
+			PcodeOp add1 = newOp(PcodeOp.INT_ADD);
+			add1.setInput(src, 0);
+			add1.setInput(constVn(off, ptrSize), 1);
+			add1.setOutput(sp);
+			/* val = *[ram] sp */
+			Varnode val = newUnique(gran);
+			PcodeOp load = newOp(PcodeOp.LOAD);
+			load.setInput(ramId, 0);
+			load.setInput(sp, 1);
+			load.setOutput(val);
+			/* dp = dst + off */
+			Varnode dp = newUnique(ptrSize);
+			PcodeOp add2 = newOp(PcodeOp.INT_ADD);
+			add2.setInput(dst, 0);
+			add2.setInput(constVn(off, ptrSize), 1);
+			add2.setOutput(dp);
+			/* *[ram] dp = val */
+			PcodeOp store = newOp(PcodeOp.STORE);
+			store.setInput(ramId, 0);
+			store.setInput(dp, 1);
+			store.setInput(val, 2);
+		}
+	}
+
+	/** Emit a CALLOTHER to the named pcodeop with the given inputs (no output). */
+	public void emitCallOther(int pcodeopIndex, Varnode... inputs) {
+		PcodeOp op = newOp(PcodeOp.CALLOTHER);
+		op.setInput(constVn(pcodeopIndex, 4), 0);
+		for (int i = 0; i < inputs.length; i++) {
+			op.setInput(inputs[i], i + 1);
+		}
+	}
 }

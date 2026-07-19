@@ -54,6 +54,15 @@
       <input name="regoffset" />
     </pcode>
   </callotherfixup>
+  <callotherfixup targetop="memory_copy">
+    <pcode dynamic="true">
+      <input name="memidx" />
+      <input name="memidx2" />
+      <input name="len" />
+      <input name="src" />
+      <input name="dst" />
+    </pcode>
+  </callotherfixup>
   <callotherfixup targetop="callPrologueCallOther">
     <pcode dynamic="true">
       <input name="regoffset" />

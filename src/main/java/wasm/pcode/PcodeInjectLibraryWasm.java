@@ -47,6 +47,8 @@ public class PcodeInjectLibraryWasm extends PcodeInjectLibrary {
 				return new InjectPayloadWasmCallPrologue(sourceName);
 			case "pushCallOther":
 				return new InjectPayloadWasmPush(sourceName);
+			case "memory_copy":
+				return new InjectPayloadWasmMemoryCopy(sourceName);
 			}
 		}
 		return super.allocateInject(sourceName, name, tp);

@@ -69,6 +69,7 @@ define pcodeop memory_init;
 define pcodeop data_drop;
 define pcodeop memory_copy;
 define pcodeop memory_fill;
+define pcodeop memcpy;
 
 @include "Leb128.sinc"
 
