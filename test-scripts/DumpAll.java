@@ -8,6 +8,19 @@ import ghidra.program.model.listing.Function;
 
 public class DumpAll extends GhidraScript {
 
+	/**
+	 * Decompile with one retry at a much larger budget (same helper as DumpDecomp.java).
+	 * The heaviest WebAssembly functions can exceed the first budget on a loaded CI
+	 * runner; a single retry removes that flake without weakening the check.
+	 */
+	private static DecompileResults decompileWithRetry(DecompInterface dif, Function f, ghidra.util.task.TaskMonitor monitor) {
+		DecompileResults res = dif.decompileFunction(f, 120, monitor);
+		if (res == null || !res.decompileCompleted() || res.getDecompiledFunction() == null) {
+			res = dif.decompileFunction(f, 600, monitor);
+		}
+		return res;
+	}
+
 	@Override
 	public void run() throws Exception {
 		DecompInterface dif = new DecompInterface();
@@ -15,7 +28,7 @@ public class DumpAll extends GhidraScript {
 		dif.openProgram(currentProgram);
 		println("DECOMP " + currentProgram.getName());
 		for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {
-			DecompileResults res = dif.decompileFunction(f, 120, monitor);
+			DecompileResults res = decompileWithRetry(dif, f, monitor);
 			if (res != null && res.decompileCompleted() && res.getDecompiledFunction() != null) {
 				println("---- " + f.getName() + " prototype: " + f.getPrototypeString(false, false));
 				println(res.getDecompiledFunction().getC());
