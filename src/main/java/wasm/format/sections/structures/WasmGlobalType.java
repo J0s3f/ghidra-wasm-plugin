@@ -30,7 +30,7 @@ public class WasmGlobalType implements StructConverter {
 	private int mutability;
 
 	public WasmGlobalType(BinaryReader reader) throws IOException {
-		type = ValType.fromByte(reader.readNextUnsignedByte());
+		type = ValType.readFromReader(reader);
 		mutability = reader.readNextUnsignedByte();
 	}
 

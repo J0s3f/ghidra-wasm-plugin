@@ -730,7 +730,7 @@ public class WasmFunctionAnalysis {
 			if (count != 1) {
 				throw new ValidationException(instAddress, "only select t is supported");
 			}
-			ValType t = ValType.fromByte(reader.readNextUnsignedByte());
+			ValType t = ValType.readFromReader(reader);
 			popValue(instAddress, ValType.i32);
 			popValue(instAddress, t);
 			popValue(instAddress, t);
@@ -1060,7 +1060,7 @@ public class WasmFunctionAnalysis {
 			break;
 
 		case 0xD0: /* ref.null t */ {
-			ValType reftype = ValType.fromByte(reader.readNextUnsignedByte());
+			ValType reftype = ValType.readFromReader(reader);
 			pushValue(instAddress, reftype);
 			break;
 		}

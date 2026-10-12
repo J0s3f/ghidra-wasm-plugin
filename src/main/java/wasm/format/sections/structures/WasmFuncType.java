@@ -28,7 +28,7 @@ import wasm.format.WasmEnums.ValType;
 public class WasmFuncType implements StructConverter {
 
 	@SuppressWarnings("unused")
-	private int form; /* always 0 in this version */
+	private int form; /* always 0x60 in this version */
 	private LEB128Info paramCount;
 	private ValType[] paramTypes;
 	private LEB128Info returnCount;
@@ -37,9 +37,17 @@ public class WasmFuncType implements StructConverter {
 	public WasmFuncType(BinaryReader reader) throws IOException {
 		form = reader.readNextUnsignedByte();
 		paramCount = reader.readNext(LEB128Info::unsigned);
-		paramTypes = ValType.fromBytes(reader.readNextByteArray((int) paramCount.asLong()));
+		long pcount = paramCount.asLong();
+		paramTypes = new ValType[(int) pcount];
+		for (int i = 0; i < pcount; i++) {
+			paramTypes[i] = ValType.readFromReader(reader);
+		}
 		returnCount = reader.readNext(LEB128Info::unsigned);
-		returnTypes = ValType.fromBytes(reader.readNextByteArray((int) returnCount.asLong()));
+		long rcount = returnCount.asLong();
+		returnTypes = new ValType[(int) rcount];
+		for (int i = 0; i < rcount; i++) {
+			returnTypes[i] = ValType.readFromReader(reader);
+		}
 	}
 
 	public ValType[] getParamTypes() {

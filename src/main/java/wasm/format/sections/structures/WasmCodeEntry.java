@@ -71,7 +71,7 @@ public class WasmCodeEntry implements StructConverter {
 		ValType[] result = new ValType[localCount];
 		int pos = 0;
 		for (WasmLocalEntry local : locals) {
-			Arrays.fill(result, pos, pos + local.getCount(), ValType.fromByte(local.getType()));
+			Arrays.fill(result, pos, pos + local.getCount(), local.getType());
 			pos += local.getCount();
 		}
 		return result;

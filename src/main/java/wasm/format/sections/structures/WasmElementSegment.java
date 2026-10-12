@@ -86,7 +86,13 @@ public class WasmElementSegment implements StructConverter {
 				elemkind = typeCode;
 			} else {
 				/* reftype */
+				// Need to re-read from the stream - reader already consumed the first byte
+				// For now, use fromByte; ideally we'd use a pushback reader
 				elemtype = ValType.fromByte(typeCode);
+				if (ValType.isMultiBytePrefix(typeCode)) {
+					// Consume the heaptype operand
+					reader.readNext(LEB128Info::signed);
+				}
 			}
 		}
 

@@ -23,28 +23,29 @@ import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
+import wasm.format.WasmEnums.ValType;
 
 public class WasmLocalEntry implements StructConverter {
 
 	private LEB128Info count;
-	private int type;
+	private ValType type;
 
 	public WasmLocalEntry(BinaryReader reader) throws IOException {
 		count = reader.readNext(LEB128Info::unsigned);
-		type = reader.readNextUnsignedByte();
+		type = ValType.readFromReader(reader);
 	}
 
 	public int getCount() {
 		return (int) count.asLong();
 	}
 
-	public int getType() {
+	public ValType getType() {
 		return type;
 	}
 
 	@Override
 	public DataType toDataType() throws DuplicateNameException, IOException {
-		StructureBuilder builder = new StructureBuilder("locals_" + count.asLong() + "_" + type);
+		StructureBuilder builder = new StructureBuilder("locals_" + count.asLong() + "_" + type.typeByte);
 		builder.addUnsignedLeb128(count, "count");
 		builder.add(BYTE, "type");
 		return builder.toStructure();
