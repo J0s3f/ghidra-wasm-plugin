@@ -138,8 +138,15 @@ def main(argv):
     if len(argv) < 2:
         print(USAGE)
         return 2
-    outdir = argv[1]
-    emit = "--emit" in argv
+    # Flags may appear in any position; the output directory must not look like a flag. (An earlier
+    # caller passed `--emit <dir>` and the script happily created a directory literally named
+    # "--emit" at the repository root - keep that from being possible.)
+    rest = [a for a in argv[1:] if a != "--emit"]
+    emit = "--emit" in argv[1:]
+    if len(rest) != 1 or rest[0].startswith("-"):
+        print(USAGE)
+        return 2
+    outdir = rest[0]
     if not emit:
         print("probes_negative.py: %d negative probes are defined but NOT written "
               "(pass --emit to write them into %s)." % (len(PROBES), outdir))
