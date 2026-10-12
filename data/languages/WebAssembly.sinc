@@ -294,6 +294,25 @@ macro doBranch(br_target) {
 	if(sp1_32 != 0) goto inst_next;
 	doBranch(br_target);
 }
+
+# @@FR/@@GC: a block type may also be a multi-byte (ref null ht) / (ref ht) value type
+# (0x63/0x64 followed by the s33 heaptype). The plain ULeb128 forms above consume only the
+# first byte, which desynchronises the rest of the body, so add the explicit multi-byte forms.
+multi_blocktype: SLeb128 is bytev=0x63; SLeb128 {
+	export SLeb128;
+}
+multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
+	export SLeb128;
+}
+
+:block "blocktype="^multi_blocktype is opc=0x02; multi_blocktype; ctx_is_directive=0 {
+}
+:loop "blocktype="^multi_blocktype is opc=0x03; multi_blocktype; ctx_is_directive=0 {
+}
+:if "blocktype="^multi_blocktype is opc=0x04; multi_blocktype; br_target; sp1_32; ctx_is_directive=0 {
+	if(sp1_32 != 0) goto inst_next;
+	doBranch(br_target);
+}
 :else is opc=0x05; br_target; ctx_is_directive=0 {
 	doBranch(br_target);
 }
@@ -450,7 +469,16 @@ macro doBranch(br_target) {
 }
 
 ## Reference Instructions
-:ref.null valtype is opc=0xd0; valtype; sp0_32; ctx_is_directive=0 {
+# @@FR: ref.null's immediate is an s33 heap type (abstract types are the negative values
+# -0x10..-0x0c, concrete type indices are >= 0). The previous `valtype` operand is restricted
+# to the *named* abstract heap types (0x69..0x74) by its names table, so a concrete type index
+# (e.g. `ref.null 0`) had no matching name and its bytes were left undefined. This operand
+# accepts any s33. (The abstract types therefore print as their numeric heap-type value.)
+ref_null_ht: SLeb128 is SLeb128 {
+	export SLeb128;
+}
+
+:ref.null "heaptype="^ref_null_ht is opc=0xd0; ref_null_ht; sp0_32; ctx_is_directive=0 {
 	sp0_32 = 0;
 }
 :ref.is_null is opc=0xd1; sp1_32; ctx_is_directive=0 {

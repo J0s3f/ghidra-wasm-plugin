@@ -302,6 +302,21 @@ public class WasmFunctionAnalysis {
 			returns = func.getReturns();
 		}
 
+		public BlockType(ValType[] params, ValType[] returns) {
+			this.params = params;
+			this.returns = returns;
+		}
+
+		/**
+		 * A block type given as a single value type (the single-byte and multi-byte valtype
+		 * forms of a block type immediate). Such a block type has no params; a null result
+		 * is the empty type (0x40).
+		 */
+		public BlockType(ValType result) {
+			params = new ValType[0];
+			returns = (result == null) ? new ValType[0] : new ValType[] { result };
+		}
+
 		public BlockType(WasmAnalysis analysis, long blocktype) {
 			if (blocktype == -0x40) {
 				params = new ValType[0];
@@ -468,6 +483,21 @@ public class WasmFunctionAnalysis {
 	private static long readSignedLeb128(BinaryReader reader) throws IOException {
 		return reader.readNext(LEB128::signed);
 	}
+
+	/**
+	 * Read a block type immediate: the empty type 0x40, a single- or multi-byte value type, or a
+	 * non-negative s33 type index. The multi-byte {@code (ref null ht)} / {@code (ref ht)} value
+	 * types (0x63/0x64) are consumed in full; previously only their first byte was read, which
+	 * desynchronised the whole body.
+	 */
+	private static BlockType readBlockType(WasmAnalysis analysis, BinaryReader reader) throws IOException {
+		ValType.BlockTypeInfo info = ValType.readBlockType(reader);
+		if (info.typeIndex >= 0) {
+			WasmFuncType type = analysis.getType((int) info.typeIndex);
+			return new BlockType(type.getParamTypes(), type.getReturnTypes());
+		}
+		return new BlockType(info.type);
+	}
 	// #endregion
 
 	// #region Value stack manipulation
@@ -494,7 +524,10 @@ public class WasmFunctionAnalysis {
 		ValType actual = popValue(instAddress);
 		// @@UNIMP: after an unmodelled instruction the types on the stack are a guess,
 		// so a mismatch is tolerated instead of blanking the function.
-		if (actual != expected && actual != null && expected != null && !hasUnimplementedOps && !usesProposalOps) {
+		// A value whose type is a *subtype* of the expected type is accepted (e.g. a structref
+		// where anyref is expected); numeric types only match themselves (see isSubtypeOf).
+		if (actual != null && expected != null && !actual.isSubtypeOf(expected)
+				&& !hasUnimplementedOps && !usesProposalOps) {
 			throw new ValidationException(instAddress, "pop type mismatch: got " + actual + ", expected " + expected);
 		}
 		return actual;
@@ -1219,19 +1252,19 @@ public class WasmFunctionAnalysis {
 			break;
 
 		case 0x02: /* block bt */ {
-			BlockType blocktype = new BlockType(analysis, readSignedLeb128(reader));
+			BlockType blocktype = readBlockType(analysis, reader);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.BLOCK, blocktype, valueStack));
 			break;
 		}
 		case 0x03: /* loop bt */ {
-			BlockType blocktype = new BlockType(analysis, readSignedLeb128(reader));
+			BlockType blocktype = readBlockType(analysis, reader);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.LOOP, blocktype, valueStack));
 			break;
 		}
 		case 0x04: /* if bt */ {
-			BlockType blocktype = new BlockType(analysis, readSignedLeb128(reader));
+			BlockType blocktype = readBlockType(analysis, reader);
 			popValue(instAddress, ValType.i32);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.IF, blocktype, valueStack));
@@ -1255,6 +1288,8 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 		case 0x06: /* try bt (legacy exception handling) */ {
+			/* Multi-byte block signatures are not decoded here: the SLEIGH :try constructors still
+			   read a single ULeb128, so both sides must stay on the single-s33 form. */
 			BlockType blocktype = new BlockType(analysis, readSignedLeb128(reader));
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.TRY, blocktype, valueStack));
@@ -1823,8 +1858,11 @@ public class WasmFunctionAnalysis {
 			unaryOp(instAddress, ValType.i64, ValType.i64);
 			break;
 
-		case 0xD0: /* ref.null t */ {
-			ValType reftype = ValType.readFromReader(reader);
+		case 0xD0: /* ref.null ht */ {
+			/* The immediate is a bare s33 heap type (not a valtype): abstract heap types
+			   map to their ValType (ref.null struct -> structref), a concrete type index to
+			   the generic reference placeholder. */
+			ValType reftype = ValType.readHeapType(reader);
 			pushValue(instAddress, reftype);
 			break;
 		}
