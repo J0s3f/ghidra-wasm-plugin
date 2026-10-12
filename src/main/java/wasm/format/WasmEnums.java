@@ -44,7 +44,10 @@ public class WasmEnums {
 		v128(0x7b),
 
 		funcref(0x70),
-		externref(0x6f);
+		externref(0x6f),
+		// @@EH begin: new exception handling value type (single contiguous block, see EH2Ops.java)
+		exnref(0x69);
+		// @@EH end
 
 		private static final HashMap<Integer, ValType> BY_BYTE = new HashMap<>();
 		public static final DataType Undefined16 = Undefined.getUndefinedDataType(16);
@@ -76,6 +79,11 @@ public class WasmEnums {
 				return PointerDataType.dataType;
 			case externref:
 				return Undefined4DataType.dataType;
+			// @@EH begin: exnref is a 4-byte opaque value (an exception reference); width-correct
+			// placeholder so modules using the new EH still decompile. See WasmEnums.ValType.exnref.
+			case exnref:
+				return Undefined4DataType.dataType;
+			// @@EH end
 			}
 			return null;
 		}
