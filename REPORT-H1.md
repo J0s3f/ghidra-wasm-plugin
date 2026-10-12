@@ -106,6 +106,14 @@ Import failed for file: .../H1_04_duplicate_code_section.wasm
   IOException: Duplicate section SEC_CODE (id 10) at file offset 0x1b: a non-custom section may appear at most once
 ```
 
+Id 12 (`SEC_DATACOUNT`) has no section class, so the duplicate check keys on the raw id; the
+spec-testsuite module `binary.116.malformed.wasm` (two data-count sections) now rejects too:
+
+```
+Import failed for file: .../binary.116.malformed.wasm
+  IOException: Duplicate section SEC_DATACOUNT (id 12) at file offset 0xb: a non-custom section may appear at most once
+```
+
 Out-of-order (tolerated, warning only) — `H1_05` still imports, and the log carries:
 
 ```
@@ -186,7 +194,7 @@ is byte-for-byte unchanged.
 
 ---
 
-## 3. Probes (`test-scripts/probes_sections_i64.py`) — 12 new probes
+## 3. Probes (`test-scripts/probes_sections_i64.py`) — 13 new probes
 
 | probe | shape | result |
 | --- | --- | --- |
@@ -194,6 +202,7 @@ is byte-for-byte unchanged.
 | `H1_02_unknown_section_id.wasm` | section id 0x2a | **import_failed** `Unsupported section id 0x2a at file offset 0x8` |
 | `H1_03_duplicate_type_section.wasm` | two type sections | **import_failed** `Duplicate section SEC_TYPE (id 1) ...` |
 | `H1_04_duplicate_code_section.wasm` | two code sections | **import_failed** `Duplicate section SEC_CODE (id 10) ...` |
+| `H1_13_duplicate_datacount.wasm` | two data-count sections (id 12) | **import_failed** `Duplicate section SEC_DATACOUNT (id 12) ...` |
 | `H1_05_out_of_order_sections.wasm` | memory before type | import_ok + ordering warning |
 | `H1_06_i64_const_offset.wasm` | memory64, `i64.const 0x10` | import_ok, bytes at `ram:0x10` |
 | `H1_07_i64_const_offset_4k.wasm` | memory64, `i64.const 0x1000` | import_ok, bytes at `ram:0x1000` |
@@ -205,6 +214,10 @@ is byte-for-byte unchanged.
 
 All 9 valid probes: `undefined_bytes=0`, `decompiled=1`, `decompile_failed=0`.
 `test-scripts/DumpMemory.java` is the small dump script used to verify the placements.
+
+> `H1_05` is assembled by concatenating the raw section bytes rather than through
+> `wasm_probe_lib.module()`, so its deliberate misordering cannot be normalised away by any future
+> canonical-ordering logic in that shared helper (see the note in §5).
 
 ---
 
@@ -229,19 +242,19 @@ be set to the pinned folder. Both runs rebuilt and installed immediately before 
 `-Update`:
 
 ```
-== running 148 probe(s) ==
+== running 149 probe(s) ==
 SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0
 SUMMARY functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156
-updated D:\code\ghidra-wt-h1\test-scripts\expected-results.json: 140 probe(s) with metrics, 8 expected import failure(s)
+updated D:\code\ghidra-wt-h1\test-scripts\expected-results.json: 140 probe(s) with metrics, 9 expected import failure(s)
 ```
 
 Plain (verify):
 
 ```
-== running 148 probe(s) ==
+== running 149 probe(s) ==
 SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0
 SUMMARY functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156
-probes: 140 imported, 8 import failure(s); baseline has 148
+probes: 140 imported, 9 import failure(s); baseline has 149
 OK: every probe matches the recorded baseline.
 EXIT=0
 ```
@@ -251,22 +264,23 @@ EXIT=0
 
 ### 4.3 Every changed baseline entry
 
-`probe_count` changed `136 -> 148`; the only other changes are the **12 new `H1_*` entries** (9
-`import_ok:true` with their metrics, 3 `import_ok:false`). **No pre-existing probe's metrics changed.**
-The three new expected-import-failure entries:
+`probe_count` changed `136 -> 149`; the only other changes are the **13 new `H1_*` entries** (9
+`import_ok:true` with their metrics, 4 `import_ok:false`). **No pre-existing probe's metrics changed.**
+The four new expected-import-failure entries:
 
 | probe | recorded |
 | --- | --- |
 | `H1_02_unknown_section_id.wasm` | `import_ok=false` |
 | `H1_03_duplicate_type_section.wasm` | `import_ok=false` |
 | `H1_04_duplicate_code_section.wasm` | `import_ok=false` |
+| `H1_13_duplicate_datacount.wasm` | `import_ok=false` |
 
 New passing entries: `H1_01` (1/3/0/1/0), `H1_05` (1/3/0/1/0), `H1_06` (1/4/0/1/0), `H1_07`
 (1/4/0/1/0), `H1_08` (1/4/0/1/0), `H1_09` (1/4/0/1/0), `H1_10` (1/4/0/1/0), `H1_11` (1/4/0/1/0),
 `H1_12` (1/4/0/1/0) — order `funcs/instrs/undefined_bytes/decompiled/decompile_failed`.
 
-`git diff test-scripts/expected-results.json`: `97 insertions(+), 1 deletion(-)` (the deletion is the
-`probe_count` line).
+`git diff test-scripts/expected-results.json` (vs the 136-probe baseline): `98 insertions(+), 1
+deletion(-)` (the deletion is the `probe_count` line).
 
 ### 4.4 Corpus (real-world modules)
 
@@ -288,6 +302,49 @@ Only difference: `rust_simd128` now shows `warn=1` — the **pre-existing DWARF*
 `WASM DWARF: no source line entries could be mapped to the program` (the recorded baseline was
 generated in a different worktree/run); it is not produced by this change and no core metric moved.
 
+### 4.5 Negative harness (optional; partial)
+
+The full negative set was launched with:
+
+```powershell
+& .\test-scripts\spectest\run_spectest_negative.ps1 -SkipPrepare `
+    -ImportDir "$env:TEMP\specneg-all\import" -ModulesJson "$env:TEMP\specneg-all\modules.json" `
+    -OutDir "$env:TEMP\ci-h1\specneg-after" -MaxCpu 2
+```
+
+Chunks 1–6 (1200 modules) all completed `rc=0`; the run then aborted at chunk 7/15 **because a
+concurrent `build-install` swapped the extension out from under it** (`Language not found for
+'Wasm:LE:32:default'` — the integrator was rebuilding the pinned install at the same time). No final
+`negative.json` was produced, so the full-set totals were not re-measured end-to-end.
+
+Deterministic partial result over those first 1200 modules, by re-parsing the chunk logs with the
+harness's own classification (an `Import failed for file:` / `No load spec found` line = rejected):
+
+* **91 rejected / 1109 accepted.**
+* **Exactly 24 modules now reject with the new B1 diagnostics** (`Unsupported section id ...` /
+  `Duplicate section ...`) that the pre-change loader accepted silently:
+  `binary-leb128.{36,40,65,66,71,72}`, `binary.{32,33,34,35,36}`, `custom.7` (out-of-range id) and
+  `binary.{113,114,115,117,118,119,120,121,122,123,124}` (duplicate section).
+* Plus `binary.116.malformed.wasm` (duplicate **data-count**, id 12), verified individually after the
+  extra fix, in chunk 7.
+
+`REPORT-HARD.md`'s post-hardening baseline is **130 rejected / 2818 accepted** (full 2948). All 25
+modules above were among the accepted ones there (REPORT-HARD §6.3 notes the remaining accepted-empty
+are "dominated by ... out-of-range section ids / duplicate sections (B4)"), and `binary-leb128.43`
+was already rejected before this change. So B1's net effect is **+24 rejected**, i.e. an expected
+full-set total of **154 rejected / 2794 accepted** (extrapolated from the partial run + the targeted
+checks; a clean end-to-end re-run is left to the integrator).
+
+### 4.6 Note on concurrent measurement
+
+While this workstream was finishing, the integrator ran `build-install.ps1` / `check-local.ps1`
+several times in the *same* worktree and pinned install. That is what produced: a mid-run extension
+swap that killed the negative harness (above), a transient `buildExtension UP-TO-DATE` (the integrator
+had already compiled the final sources), and a red gate caused by commit `4674bfd` adding
+`module(..., sort=False)` to `H1_05` (a parameter the shared `wasm_probe_lib.module()` does not have).
+That last one was fixed in `3e6bad2` by building `H1_05` from raw section bytes; the gate is green
+again (see §4.2). The final measured state is commit `3e6bad2`.
+
 ---
 
 ## 5. Open questions / notes for the integrator
@@ -300,8 +357,10 @@ generated in a different worktree/run); it is not produced by this change and no
 2. **`i64.const` offset in a 32-bit memory.** Such a module is malformed (the offset type must match
    the memory's index type). `getMemoryOffset()` now returns the value, so the segment is placed
    (truncated into `ram`) instead of being dropped. Valid 32-bit modules are unaffected.
-3. **`SEC_DATACOUNT` (id 12)** is a known id but has no section class; it is still skipped silently.
-   This keeps common real modules (`data count` before `code`) importing unchanged.
+3. **`SEC_DATACOUNT` (id 12)** is a known id but has no section class; a *single* data-count section
+   is still skipped silently (the loader does not need its content), which keeps common real modules
+   (`data count` before `code`) importing unchanged. A *duplicate* data-count section is now rejected
+   (the check keys on the raw id — see §1.2/§4.5).
 4. **Ordering warnings are noisy on some existing probes** (e.g. the frozen probes that emit
    `function` before `type`, or `export` before `element`). They are warnings only and change no
    metric, but if the integrator prefers a quieter log the `canonicalRank` warning can be dropped
