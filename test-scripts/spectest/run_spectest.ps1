@@ -20,8 +20,8 @@
     .\test-scripts\spectest\run_spectest.ps1 -Files i32,i64,f32,f64,memory,bulk -Detail
 #>
 param(
-    [string]$ToolsDir = "$env:TEMP\spectest-tools",
-    [string]$OutDir = "$env:TEMP\spectest-run",
+    [string]$ToolsDir = (Join-Path ([IO.Path]::GetTempPath()) "spectest-tools"),
+    [string]$OutDir = (Join-Path ([IO.Path]::GetTempPath()) "spectest-run"),
     [string]$GhidraDir = $env:GHIDRA_INSTALL_DIR,
     [string]$Subset = "core",
     [string[]]$Files = @(),
@@ -37,11 +37,18 @@ $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot
 $repo = Split-Path -Parent (Split-Path -Parent $here)   # test-scripts/spectest -> repo root
 
+# Host-agnostic launchers. Ghidra ships BOTH `analyzeHeadless` and `analyzeHeadless.bat` on every
+# platform (a .bat cannot be executed by PowerShell on Linux), and CI Linux runners only guarantee
+# `python3` while Windows uses `python`. wabt drops the `.exe` suffix on Linux.
+$isWindowsOS = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
+$python      = if ($isWindowsOS) { "python" } else { "python3" }
+$wastExeName = if ($isWindowsOS) { "wast2json.exe" } else { "wast2json" }
+
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 $env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
 
 # --- 1. tools -------------------------------------------------------------------------------------
-$wast2json = Join-Path $ToolsDir "wabt-1.0.42\bin\wast2json.exe"
+$wast2json = Join-Path $ToolsDir "wabt-1.0.42/bin/$wastExeName"
 $specDir = Get-ChildItem $ToolsDir -Directory -Filter "spec-*" -ErrorAction SilentlyContinue |
     Select-Object -First 1
 if (-not $SkipFetch -and (-not (Test-Path $wast2json) -or -not $specDir)) {
@@ -61,7 +68,7 @@ if (-not $NoPrepare) {
     if ($Files.Count -gt 0) { $prepArgs += @("--files", ($Files -join ",")) }
     else { $prepArgs += @("--subset", $Subset) }
     if ($MaxPerWast -gt 0) { $prepArgs += @("--max-per-wast", "$MaxPerWast") }
-    & python @prepArgs
+    & $python @prepArgs
     if ($LASTEXITCODE -ne 0) { throw "prepare_spec_tests.py failed ($LASTEXITCODE)" }
 }
 
@@ -76,7 +83,6 @@ Remove-Item -Recurse -Force $proj -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $proj | Out-Null
 
 $supportDir = Join-Path $GhidraDir "support"
-$isWindowsOS = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
 if ($isWindowsOS) {
     $headless = Join-Path $supportDir "analyzeHeadless.bat"
 } else {
@@ -103,8 +109,7 @@ Write-Host ("run: {0} {1}" -f $headless, ($all -join " ")) -ForegroundColor Dark
 
 # --- 4. parse -------------------------------------------------------------------------------------
 Write-Host "== summarising ==" -ForegroundColor Cyan
-$dir = Split-Path -Parent $here
-& python (Join-Path $here "parse_spec_results.py") `
+& $python (Join-Path $here "parse_spec_results.py") `
     --log $log --modules (Join-Path $OutDir "modules.json") --out $OutDir
 if ($LASTEXITCODE -ne 0) { throw "parse_spec_results.py failed ($LASTEXITCODE)" }
 
