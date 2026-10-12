@@ -76,69 +76,66 @@ not (fully) disassembled at all, which is worse than a wrong mnemonic.
 | Multi-value blocks and type-index blocktypes | `17` |
 | Function / global / local names from `.name`; DWARF types | code |
 
-### 2.2 Loads and disassembles, but the result is wrong (highest risk)
+### 2.2 Fixed by the modern-WASM waves (previously wrong or unsupported)
 
-| Feature | Symptom | Root cause |
-| --- | --- | --- |
-| Multi-memory (memarg `memidx`) | `i32.load align=0x42 offset=0x1` plus a spurious `unreachable`; instruction boundaries shift | alignment bit 6 (`0x40`) is not interpreted; only two LEB fields are read (`loadaddr`/`storeaddr`/`loadaddr2`/`atomicaddr3` in the `.sinc` files, `readLeb128` pairs in `WasmFunctionAnalysis.java`) |
-| Multi-memory (loading) | only `.memory0` is created; `(memory 1)(memory 7)` loses the second memory entirely | the loader deliberately refuses non-zero memory indices: `WasmLoader.getMemoryAddress()` throws for `memidx != 0` and `loadMemories()` `continue`s past them (tables *do* support multiple indices, via the `table` address space) |
-| memory64 | **fixed** (`REPORT-N.md`): the index type propagates to the pre-analyzer and to the SLEIGH address computation (`ctx_mem64`); addresses are computed in 64-bit pcode and truncated into the 32-bit `ram` space (exact below 4 GiB, wraps above — documented, and the listing marks the form `(i64 index)`); probe `05` now decodes with `undefined_bytes=0` | index type used to be hardwired to 32-bit (`sp1_32`) and the loader clamped every memory to `CODE_BASE` |
-| Shared / 64-bit / custom-page-size limits | shared/`maximum`/index-type fields are dropped from the parsed limits, and a following limits entry desyncs | `WasmResizableLimits` only reads a `maximum` when `flags == 1` (shared = 3, memory64 = 4/5, page-size = 8) |
-| Multi-value returns | **fixed** (`REPORT-MV.md`): results are returned as a packed struct through the `__wasm` output pentry (plus tail-padding zeroing in the epilogue), so every result is visible and callers consume them all | `WasmSignatureAnalyzer` used to apply only `returns[0]` |
-| GC `struct`/`array` type entries | type section loads, but a `0x5F` struct is parsed as a function type (form byte read, value ignored) | `WasmFuncType` assumes `0x60`; `WasmTypeSection` has no `rec`/`sub`/`struct`/`array` handling |
-| `.name` subsections | label (3) explicitly `TODO`; field (10)/tag (11) become `WasmNameUnknownSubsection`; type/table/memory/elem/data names are parsed but never applied to symbols | `WasmNameSubsection.createSubsection`, `WasmLoader` (only function/global/local names are applied) |
+Every row of the original inventory that is not listed as open in 2.3 is now fixed and covered by
+probes; the per-workstream evidence lives in the archived reports (`archive/reports`) and the
+machine-checked expectations in `test-scripts/expected-results.json`.
 
-### 2.3 Not supported (function body undefined, or import fails)
+| Feature | Status |
+| --- | --- |
+| Multi-memory (memarg `memidx`, several memories, loading) | fixed (`REPORT-A-DS`/`REPORT-N`): alignment bit 6 consumed, `memidx` exposed, one block per memory; probes `06`, `A01`-`A04`, `B05`, `18` |
+| memory64 | fixed (`REPORT-N`): index type propagates, 64-bit address pcode truncated into `ram` (exact below 4 GiB); probes `05`, `M64_01`-`M64_08` |
+| Shared / 64-bit / custom-page-size limits | fixed (`REPORT-B`): flags decoded fully, following limits entries stay aligned |
+| Multi-value returns | fixed (`REPORT-MV`): results returned as a packed struct; probes `M01`-`M12`, `16`, `17` |
+| GC type entries (`struct`/`array`/`rec`/`sub`) | fixed (`REPORT-E`): real Ghidra structures/arrays; probes `E01`-`E20` |
+| GC instructions (`0xFB`) | fixed (`REPORT-E`): `struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`; probes `E10`-`E18` |
+| New exception handling (`try_table`, `throw_ref`, `exnref`) | fixed (`REPORT-F`): probes `11`, `30`-`39` |
+| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`): probes `12`, `F01`-`F07`; the *type model* is still coarse (see 2.3) |
+| Extended-const and GC constant expressions | fixed (`REPORT-SF` + `B14`): probes `19`, `20`, `22`-`27`, `B07`-`B15` |
+| Stack switching / JSPI (`cont.new` ... `switch`) | fixed (`REPORT-H5`): probes `H01`-`H10` (continuation *types* still open, see 2.3) |
+| JS string builtins / stringref (`0xFB >= 0x80`) | fixed (`REPORT-H5`): probes `S01`-`S10`; unassigned sub-opcodes render as `unimplemented (reserved)` |
+| Wide arithmetic (`0xFC 0x13`-`0x16`), `memory.discard` (`0xFC 0x12`) | fixed (`REPORT-H5`): probes `A07`, `A09`, `S07` |
+| `.name` subsections 3/10/11 | parsed (`REPORT-D`); label names are now **real symbols** at the branch targets (`REPORT-H6`); the remaining subsections are comment-only |
+| Component model binaries | fixed (`REPORT-C2`): header recognised, embedded core modules import as real programs |
+| DWARF line info | fixed (`REPORT-DW`) |
+| Loader hardening (locals/memory/table bounds, honest failures) | fixed (`REPORT-HARD`, see 6.2) |
+| Section id/order/duplicate diagnostics, 64-bit data-segment offsets | fixed (`REPORT-H1`): out-of-range/duplicate sections are rejected with a diagnostic; i64 offsets are placed, `>= 4 GiB` clamped with a log |
 
-| Feature (proposal) | Symptom | Class |
-| --- | --- | --- |
-| New exception handling: `try_table` (0x1F), `throw_ref` (0x0A), `exnref` (0x69), `catch_ref` clauses | `Validation error … pop from empty stack`; body undefined (probe `11`: 1 instr, 5 undefined bytes) | analysis failure |
-| Typed function references: `(ref null $t)` / `(ref $t)`, `call_ref` (0x14), `return_call_ref` (0x15), `br_on_null`, `br_on_non_null`, `ref.as_non_null` | `NullPointerException` in `WasmSignatureAnalyzer` (`ValType.asDataType()` on `null`), then `ValType.getSize()` NPE inside the decompiler process → **decompilation fails entirely** (probe `12`) | crash |
-| GC instructions (0xFB): `struct.*`, `array.*`, `i31.*`, `ref.test/cast`, `br_on_cast*`, `any/extern.convert_*` | `0xFB` is not an opcode in any table; desync (probe `09`: 1 undefined byte) | decode gap |
-| Extended-const constant expressions (`i32.add` etc. in globals/offsets) | **Import fails**: `IllegalArgumentException: Missing end byte` (probe `19`) | hard load failure |
-| GC constant expressions (`struct.new`, `ref.i31` in globals/offsets) | **Import fails**: `Invalid instruction opcode 251 in constant expression` for an inline `0xFB` opcode, or `… opcode 0 …` once a 2-byte `(ref 0)` valtype precedes it (the valtype is unhandled so the initializer parse is misaligned) — probe `20` | hard load failure |
-| Custom page sizes (`memory.discard`), wide arithmetic | `0xFC` coverage stops at sub-opcode `0x11` | decode gap |
-| Stack switching / JSPI (`cont.new`, `cont.bind`, `suspend`, `resume`, `switch`, contref types) | no mnemonics (Emscripten `-sASYNCIFY=2` emits this) | decode gap |
-| JS string builtins / stringref (`string.new_utf8`, `string.concat`, …) | no mnemonics (0xFB ≥ 0x80) | decode gap |
-| Shared-everything threads (shared tables/globals, `global.atomic.*`) | no mnemonics; also blocked by the limits bug | decode gap |
-| Component model binaries | **fixed**: components are unpacked and the embedded core module imports as a real program (`REPORT-C2.md`); probe `21` (bare header, no modules) still fails by design | loader gap (resolved) |
+### 2.3 Still open
 
-Probe expectations for regression testing live in `test-scripts/gen_feature_probes.py`; each roadmap
-item below names the probes that must change when it is finished.
+| Item | State / evidence |
+| --- | --- |
+| **B3 - memory index >= 9** breaks the memarg re-parse in the analysis | in flight (h4) |
+| **B8 - `table64`, memory64 > 4 GiB** | in flight (h4); below 4 GiB is exact, above truncates into `ram` (documented) |
+| **Reference-typing precision** - every `(ref null ht)` maps to `externref` while `ref.null` pushes `anyref`, so a conformant reference-typed block/function signature fails validation (`pop type mismatch`) and its body stays undecoded | in flight (h7); probe `E15` (conformant form: 1 instr / 27 undefined bytes) |
+| **`ref.null <concrete type index>` in a function body** leaves undefined bytes (`B18`, `B28`: 3 bytes each) - the SLEIGH `:ref.null valtype` entry only matches single-byte valtypes | in flight (h7) |
+| **`cont` types** - `(cont $ft)` in the type section is rejected by the GC type parser, so continuation type indices resolve as ordinary function types | open (loader/type-section change); h5's `H01`-`H10` probes are declared `unsupported` because of it |
+| **Custom page sizes** - the limits flag decodes, but `MEMORY_PAGE_SIZE` is fixed at 64 KiB, so block sizes/addresses are wrong for a module that declares a custom page size | open (semantic, low priority for RE) |
+| **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
+| **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
+| **Emulation coverage** - 9 recorded spec-`assert_*` gaps (out-of-bounds traps, `call_indirect` type mismatch, wrong trap kind, `memory.grow/size` CALLOTHER in the emulator's pcode, div/rem traps, float-to-int trunc traps, `br_table large` value, mutable-global init, NaN payload) | recorded in `REPORT-H3`; emulator coverage, not decoder gaps |
+| **B9 policy** - 219 spec-negative modules are accepted as bare bytes (lenient loader) | needs a product decision |
+| Unassigned opcode spaces (`0xE7+`, unassigned `0xFB >= 0x80`, unassigned `0xFC`) | deliberately rendered as visible `unimplemented`, with the operand lengths mirrored in the pre-analyzer; genuinely unknown lengths fail safe |
 
 ### 2.4 Observed baseline (reproducible with the commands above)
 
-Recorded on the Ghidra 12.1.4 build of commit `430cbe2`; `u=` is `undefined_bytes`, `d=` is
-`decompiled/failed`. Use this as the before-picture when implementing a roadmap item.
+The authoritative per-probe expectations are machine-checked data, not prose:
 
-Note: probe `20` was hardened after the first inventory — it is now a spec-valid module
-(`(global (ref 0) (struct.new 0))`); the earlier revision was missing the heap-type byte of the
-`(ref 0)` valtype, which made the parser report a different opcode. Re-measure a probe whenever its
-bytes change.
+* `test-scripts/expected-results.json` - the probe gate (172 probes at the time of writing:
+  `funcs`/`instrs`/`undefined_bytes`/`decompiled`/`decompile_failed` per probe plus expected import
+  failures), enforced by `.github/workflows/probes.yml` and locally by `test-scripts/check-local.ps1`.
+* `test-scripts/fixture-validity.json` - the external-oracle classification of every probe (see 6.5).
+* Real module `rasterbator_rs_bg.wasm`: `functions=437 decompiled=437 failed=0 instructions=61658
+  undefined_bytes=156` - the 156 bytes are 39 import stubs x 4, i.e. **0 real decode gaps**; checked on
+  every local run with `-RealModule`.
+* Spec suite (core subset): 271/271 imported, 2747/2747 functions decompiled,
+  `real_undefined_bytes=0` (`test-scripts/spectest-expected.json`, `.github/workflows/spectest.yml`).
 
-| # | Probe | funcs | instrs | u | d | Verdict |
-| --- | --- | --- | --- | --- | --- | --- |
-| 01 | `baseline_i32` | 1 | 3 | 0 | 1/0 | ok |
-| 02 | `externref_param` | 1 | 3 | 0 | 1/0 | ok |
-| 03 | `externref_table` | 1 | 4 | 0 | 1/0 | ok (`.table0` created) |
-| 04 | `shared_memory_atomic` | 1 | 4 | 0 | 1/0 | **fixed (R1.2)**: limits flags decode fully (`shared`/`maximum`/64-bit/page-size preserved) |
-| 05 | `memory64` | 1 | **4** | **0** | 1/0 | **fixed (memory64)**: 64-bit index decodes and the body analyses cleanly |
-| 06 | `multi_memory` | 1 | 7 | 0 | 1/0 | **wrong**: `i32.load align=0x42 offset=0x1` + spurious `unreachable` |
-| 07 | `data_count_bulk_memory` | 1 | 7 | 0 | 1/0 | ok |
-| 08 | `gc_struct_type` | 1 | 2 | 0 | 1/0 | **fixed (GC)**: `type_0` is now a real `gc_struct_type` with named fields |
-| 09 | `gc_struct_new` | 1 | 5 | **1** | 1/0 | `0xFB` undefined, desync (`unreachable` ×2) |
-| 10 | `eh_legacy_try_catch` | 1 | 6 | 0 | 1/0 | ok |
-| 11 | `eh_try_table` | 1 | **4** | **0** | 1/0 | **fixed (new EH)**: real `try_table` with clause handling |
-| 12 | `call_ref` | 1 | 4 | 1 | **1/0** | **mostly fixed (R1.5)**: `(ref null $t)` parses, no NPEs, decompiles; the `call_ref` *instruction* (0x14) is still undecoded (function-references workstream) |
-| 13 | `tail_call` | 2 | 5 | 0 | 2/0 | ok |
-| 14 | `relaxed_simd` | 1 | 6 | 0 | 1/0 | ok |
-| 15 | `simd` | 1 | 6 | 0 | 1/0 | ok |
-| 16 | `multivalue_return` | 2 | 9 | 0 | 2/0 | decodes, but only the first result appears in the prototype |
-| 17 | `multivalue_block` | 1 | 7 | 0 | 1/0 | ok |
-| 18 | `shared_then_plain_memory` | 1 | 3 | 0 | 1/0 | limits **fixed (R1.2)**; the loader still skips `memidx != 0` (multi-memory workstream) |
-| 19 | `extended_const_global` | – | – | – | – | **import failed** (`Missing end byte`) |
-| 20 | `gc_global_init` (`(global (ref 0) (struct.new 0))`) | – | – | – | – | **import failed** (`Invalid instruction opcode 0 in constant expression` — the 2-byte `(ref 0)` valtype is unhandled, so the initializer parse is misaligned) |
-| 21 | `component_model` | – | – | – | – | **import failed** (`No load spec found`) |
+Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.locals`, `.local`,
+`.case`, `.default`); the real module's 61,658 counted instructions are 60,556 real wasm instructions
++ 1,102 markers - verified byte-exactly against WABT `wasm-objdump` (see
+`archive/reports/research/notdec-reuse-analysis.md`).
 
 ## 3. Why this matters by toolchain
 
@@ -153,6 +150,8 @@ bytes change.
 * **Emscripten `-sASYNCIFY=2` (JSPI)** — stack switching, unsupported.
 
 ## 4. Roadmap
+
+**Status: items 0-9 below were implemented by the modern-WASM waves (see 2.2). What remains open is listed in 2.3; this section is kept as the original task breakdown and acceptance criteria.**
 
 Ordered by leverage. "Effort" is a rough size estimate (S ≈ hours, M ≈ a day, L ≈ several days).
 
