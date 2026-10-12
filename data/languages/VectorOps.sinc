@@ -17,6 +17,12 @@ loadaddr2: memalign memoffset is memalign; memoffset; sp2_32 {
 	export addr;
 }
 
+## @@MM: memarg carrying a memory index (see BasicOps.sinc)
+loadaddr2: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; sp2_32 {
+	addr:4 = memoffset:4 + sp2_32 + memidx_label:4 * $(MEMORY_STRIDE);
+	export addr;
+}
+
 sp1_lane8_val: tmp_sp is ctx_sp; laneidx [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 1) * $(REG_SIZE) + laneidx * 1;] {
 	export *[register]:1 tmp_sp;
 }
