@@ -19,8 +19,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
@@ -63,8 +65,26 @@ public class WasmModule {
 		header = new WasmHeader(reader);
 		int lastRank = -1;
 		WasmSectionId lastOrdered = null;
+		/*
+		 * B4: every non-custom section may appear at most once. The check uses the raw section id
+		 * rather than the parsed WasmSection, because a known-but-unmodelled id (SEC_DATACOUNT)
+		 * does not produce a section object and would otherwise escape the check.
+		 */
+		Set<Integer> seenNonCustom = new HashSet<>();
 		while (reader.getPointerIndex() < reader.length()) {
+			long sectionStart = reader.getPointerIndex();
+			int rawId = reader.readNextUnsignedByte();
+			reader.setPointerIndex(sectionStart);
+
 			WasmSection section = WasmSection.createSection(reader);
+			if (rawId != 0 && !seenNonCustom.add(rawId)) {
+				String name = rawId < WasmSectionId.values().length
+						? WasmSectionId.values()[rawId].toString()
+						: "id " + rawId;
+				throw new IOException("Duplicate section " + name + " (id " + rawId
+						+ ") at file offset 0x" + Long.toHexString(sectionStart)
+						+ ": a non-custom section may appear at most once");
+			}
 			if (section == null) {
 				/*
 				 * Only a known-but-unmodelled section id returns null (today: SEC_DATACOUNT, id 12 -
@@ -80,18 +100,7 @@ public class WasmModule {
 				customSections.add((WasmCustomSection) section);
 				continue;
 			}
-
-			/*
-			 * B4 (REPORT-HARD.md / REPORT-H1.md): a duplicate non-custom section is malformed.
-			 * sectionMap.put() used to overwrite the earlier section silently, hiding the
-			 * duplication (two type sections, two code sections, ...).
-			 */
-			if (sectionMap.putIfAbsent(section.getId(), section) != null) {
-				throw new IOException("Duplicate section " + section.getId() + " (id "
-						+ section.getId().ordinal() + ") at file offset 0x"
-						+ Long.toHexString(section.getSectionOffset())
-						+ ": a non-custom section may appear at most once");
-			}
+			sectionMap.put(section.getId(), section);
 
 			/*
 			 * The core spec requires the non-custom sections in a canonical order, but this loader

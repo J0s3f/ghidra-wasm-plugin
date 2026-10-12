@@ -19,6 +19,9 @@ B1 - section id / duplicate-section diagnostics (REPORT-HARD.md finding B4)
                                       "Duplicate section SEC_TYPE ..."
     H1_04_duplicate_code_section.wasm two code sections (id 10)        -> import_failed
                                       "Duplicate section SEC_CODE ..."
+    H1_13_duplicate_datacount.wasm    two data-count sections (id 12)   -> import_failed
+                                      "Duplicate section SEC_DATACOUNT ..." (id 12 has no
+                                      section class, so the check keys on the raw id)
     H1_05_out_of_order_sections.wasm  memory(5) before type(1)         -> import_ok + warning
 
 B2 - active data segments with a 64-bit offset (REPORT-N.md section 7 item 8)
@@ -97,6 +100,15 @@ write("H1_04_duplicate_code_section.wasm", module(
     func_section([0]),
     code_section([i32_const(7) + END]),
     code_section([]),
+))
+
+# =====================================================================================
+# B1 - two data-count sections (id 12). Id 12 has no section class (the loader skips its
+# content), so this also pins that the duplicate check keys on the raw section id.
+# =====================================================================================
+write("H1_13_duplicate_datacount.wasm", module(
+    data_count_section(0),
+    data_count_section(0),
 ))
 
 # =====================================================================================

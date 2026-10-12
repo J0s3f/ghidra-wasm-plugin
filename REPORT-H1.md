@@ -43,13 +43,19 @@ if (id >= WasmSectionId.values().length) {
 ```
 
 `src/main/java/wasm/format/WasmModule.java` — a duplicate non-custom section fails the import, and an
-odd section order is only warned about:
+odd section order is only warned about. The duplicate check keys on the **raw section id** (peeked
+with a read/rewind) rather than on the parsed `WasmSection`, because a known-but-unmodelled id
+(`SEC_DATACOUNT`, id 12) produces no section object and would otherwise escape the check (the negative
+suite contains exactly this case, `binary.116`):
 
 ```java
-if (sectionMap.putIfAbsent(section.getId(), section) != null) {
-    throw new IOException("Duplicate section " + section.getId() + " (id "
-            + section.getId().ordinal() + ") at file offset 0x"
-            + Long.toHexString(section.getSectionOffset())
+long sectionStart = reader.getPointerIndex();
+int rawId = reader.readNextUnsignedByte();
+reader.setPointerIndex(sectionStart);
+WasmSection section = WasmSection.createSection(reader);
+if (rawId != 0 && !seenNonCustom.add(rawId)) {
+    throw new IOException("Duplicate section " + name + " (id " + rawId
+            + ") at file offset 0x" + Long.toHexString(sectionStart)
             + ": a non-custom section may appear at most once");
 }
 ...
