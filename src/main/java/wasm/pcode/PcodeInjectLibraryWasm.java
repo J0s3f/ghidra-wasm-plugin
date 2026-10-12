@@ -41,8 +41,10 @@ public class PcodeInjectLibraryWasm extends PcodeInjectLibrary {
 			case "funcEntryCallOther":
 				return new InjectPayloadWasmEntry(sourceName);
 			case "popCallOther":
-			case "callEpilogueCallOther":
 				return new InjectPayloadWasmPop(sourceName);
+			case "callEpilogueCallOther":
+				/* function return: results are packed contiguously into the output registers */
+				return new InjectPayloadWasmPop(sourceName, true);
 			case "callPrologueCallOther":
 				return new InjectPayloadWasmCallPrologue(sourceName);
 			case "pushCallOther":

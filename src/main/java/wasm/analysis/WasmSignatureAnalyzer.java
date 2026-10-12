@@ -23,7 +23,11 @@ import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.DataTypeConflictHandler;
+import ghidra.program.model.data.DataTypeManager;
+import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.Undefined;
 import ghidra.program.model.data.VoidDataType;
 import ghidra.program.model.lang.Processor;
@@ -70,11 +74,16 @@ public class WasmSignatureAnalyzer extends AbstractAnalyzer {
 
 	private static void setFunctionSignature(Program program, Function function, WasmFuncSignature sig) throws Exception {
 		DataType returnType;
-		if (sig.getReturns().length > 0) {
-			/* TODO handle multiple returns */
-			returnType = sig.getReturns()[0].asSignatureDataType();
-		} else {
+		ValType[] returns = sig.getReturns();
+		if (returns.length == 0) {
 			returnType = VoidDataType.dataType;
+		}
+		else if (returns.length == 1) {
+			returnType = returns[0].asSignatureDataType();
+		}
+		else {
+			/* multiple results: all of them, as a struct returned by value */
+			returnType = multiValueReturnType(program, returns);
 		}
 
 		function.setCallingConvention("__wasm");
@@ -103,6 +112,45 @@ public class WasmSignatureAnalyzer extends AbstractAnalyzer {
 		if (!paramsMatch(params, function.getParameters())) {
 			function.replaceParameters(params, FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.IMPORTED);
 		}
+	}
+
+	/**
+	 * Build the return type of a function with more than one result: a
+	 * packed structure with one field per result, in result order. The
+	 * struct is returned by value in the output register block of the
+	 * __wasm prototype (the {@code oN} registers, cspec pentry at
+	 * register 0x30000000): the function epilogue packs the results
+	 * contiguously into that block (InjectPayloadWasmPop) and callers
+	 * read them back from it (InjectPayloadWasmPush), so the whole
+	 * result tuple is visible to the decompiler as one value.
+	 *
+	 * The struct is packed (no alignment padding): field {@code i} sits
+	 * at the sum of the sizes of the previous fields, exactly where the
+	 * epilogue writes it. The type is registered in the program's data
+	 * type manager under a name derived from the result tuple, so every
+	 * function with the same tuple shares one named type.
+	 *
+	 * @param program the program
+	 * @param returns the function's result types (length >= 2)
+	 * @return the struct data type
+	 */
+	private static DataType multiValueReturnType(Program program, ValType[] returns) {
+		StringBuilder name = new StringBuilder("wasm_ret");
+		for (ValType type : returns) {
+			name.append('_').append(type.name());
+		}
+		DataTypeManager dataTypeManager = program.getDataTypeManager();
+		CategoryPath category = new CategoryPath("/wasm");
+		DataType existing = dataTypeManager.getDataType(category, name.toString());
+		if (existing != null) {
+			return existing;
+		}
+		StructureDataType struct = new StructureDataType(category, name.toString(), 0);
+		struct.setPackingEnabled(true);
+		for (int i = 0; i < returns.length; i++) {
+			struct.add(returns[i].asSignatureDataType(), "f" + i, null);
+		}
+		return dataTypeManager.addDataType(struct, DataTypeConflictHandler.REPLACE_HANDLER);
 	}
 
 	@Override

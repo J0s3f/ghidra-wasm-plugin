@@ -64,8 +64,27 @@ public class InjectPayloadWasmPush extends InjectPayloadCallother {
 		long stackHeight = stackEffect.getPushHeight();
 		ValType[] todo = stackEffect.getToPush();
 		Address stackAddress = program.getRegister("s0").getAddress().add(stackHeight * WasmLoader.REG_SIZE);
-		for (int i = 0; i < todo.length; i++) {
-			ops.emitCopy(baseAddress.add(i * WasmLoader.REG_SIZE), stackAddress.add(i * WasmLoader.REG_SIZE), todo[i].getSize());
+		/*
+		 * A push of function results (pushCallOther(&o0) at the end of
+		 * call / call_indirect) reads the results back from the output
+		 * register block, where the callee's epilogue packed them
+		 * contiguously (see InjectPayloadWasmPop). Pushes of block
+		 * arguments (pushCallOther(&t0)) keep one value per REG_SIZE-wide
+		 * slot, matching the popCallOther side of doBranch.
+		 */
+		boolean packedContiguously = baseAddress.equals(program.getRegister("o0").getAddress());
+		if (packedContiguously) {
+			int offset = 0;
+			for (int i = 0; i < todo.length; i++) {
+				ops.emitCopy(baseAddress.add(offset),
+						stackAddress.add(i * WasmLoader.REG_SIZE), todo[i].getSize());
+				offset += todo[i].getSize();
+			}
+		}
+		else {
+			for (int i = 0; i < todo.length; i++) {
+				ops.emitCopy(baseAddress.add(i * WasmLoader.REG_SIZE), stackAddress.add(i * WasmLoader.REG_SIZE), todo[i].getSize());
+			}
 		}
 
 		return ops.getPcodeOps();
