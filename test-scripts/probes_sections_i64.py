@@ -121,6 +121,7 @@ write("H1_05_out_of_order_sections.wasm", module(
     func_section([0]),
     export_section([("f", 0, 0)]),
     code_section([i32_const(7) + END]),
+    sort=False,                                        # deliberately misordered
 ))
 
 # =====================================================================================
