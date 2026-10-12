@@ -66,9 +66,6 @@ public class WasmEnums {
 		// Reference types (reference-types proposal)
 		funcref(0x70),
 		externref(0x6f),
-		// Reference types (reference-types proposal)
-		funcref(0x70),
-		externref(0x6f),
 
 		// GC reference types (abstract heap types, encoded as negative s33)
 		// These are represented as distinct ValType entries for easier handling.
