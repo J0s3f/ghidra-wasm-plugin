@@ -142,6 +142,42 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		registerPcodeOpBehavior("popcnt", new BitCountOpBehaviour("popcnt", Integer::bitCount, Long::bitCount));
 	}
 
+	/**
+	 * Normalize the argument list handed to {@link OpBehaviorOther#evaluate}.
+	 *
+	 * <p>Ghidra 12.1 changed
+	 * {@link EmulateInstructionStateModifier#executeCallOther(PcodeOp)} to strip the
+	 * CALLOTHER userop-index varnode before invoking the behaviour, and documented it on
+	 * {@link OpBehaviorOther#evaluate}: "The original {@link PcodeOp#CALLOTHER} first
+	 * input has been stripped (i.e., CALLOTHER index value), leaving only the inputs
+	 * that were specified as arguments to the named pcodeop within the language spec".
+	 * Ghidra &le; 11.x passed the full {@code PcodeOp.getInputs()} array instead,
+	 * userop index included.
+	 *
+	 * <p>These behaviours were written for the old layout
+	 * (e.g. {@code funcEntryCallOther(&i0,&l0)} -&gt; {@code inputs[1] == i0} and
+	 * {@code inputs[2] == l0}, {@code inputs.length == 3}). On Ghidra &ge; 12.1 they
+	 * therefore saw exactly one operand too few and aborted the first emulated
+	 * instruction with {@code funcEntryCallOther requires two inputs}.
+	 *
+	 * <p>Accept either layout: {@code expected} arguments (new API, index stripped) or
+	 * {@code expected + 1} (old API, index at {@code inputs[0]}).
+	 *
+	 * @param inputs operands as delivered by the emulator
+	 * @param expected number of language-spec arguments
+	 * @param opName userop name, for the error message
+	 * @return the {@code expected} language-spec arguments
+	 */
+	private static Varnode[] getArgs(Varnode[] inputs, int expected, String opName) {
+		if (inputs.length == expected) {
+			return inputs; // Ghidra >= 12.1: userop index already stripped
+		}
+		if (inputs.length == expected + 1) {
+			return Arrays.copyOfRange(inputs, 1, inputs.length); // Ghidra <= 11.x: index at [0]
+		}
+		throw new LowlevelError(opName + " requires " + expected + " input(s), got " + inputs.length);
+	}
+
 	private WasmFunctionAnalysis getAnalysis(Address address) {
 		// Optimization: cache the analysis for the current function, so we only need to
 		// search if the function changes
@@ -172,12 +208,10 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		@Override
 		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
 			MemoryState memState = emu.getMemoryState();
-			if (inputs.length != 2) {
-				throw new LowlevelError(name + " requires one input");
-			}
+			Varnode[] args = getArgs(inputs, 1, name);
 
-			int size = inputs[1].getSize();
-			long value = memState.getValue(inputs[1]);
+			int size = args[0].getSize();
+			long value = memState.getValue(args[0]);
 			int result;
 			if (size == 4) {
 				result = i32Func.applyAsInt((int)value);
@@ -195,12 +229,10 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		@Override
 		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
 			MemoryState memState = emu.getMemoryState();
-			if (inputs.length != 3) {
-				throw new LowlevelError("funcEntryCallOther requires two inputs");
-			}
+			Varnode[] args = getArgs(inputs, 2, "funcEntryCallOther");
 
-			long inputOffset = inputs[1].getOffset();
-			long localsOffset = inputs[2].getOffset();
+			long inputOffset = args[0].getOffset();
+			long localsOffset = args[1].getOffset();
 			AddressSpace regSpace = emu.getLanguage().getAddressFactory().getAddressSpace("register");
 
 			WasmFunctionAnalysis funcAnalysis = getAnalysis(emu.getExecuteAddress());
@@ -222,11 +254,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		@Override
 		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
 			// Pop operands from stack to a register block
-			if (inputs.length != 2) {
-				throw new LowlevelError("popCallOther requires one input");
-			}
+			Varnode[] args = getArgs(inputs, 1, "popCallOther");
 
-			long baseOffset = inputs[1].getOffset();
+			long baseOffset = args[0].getOffset();
 
 			WasmFunctionAnalysis funcAnalysis = getAnalysis(emu.getExecuteAddress());
 			if (funcAnalysis == null) {
@@ -248,11 +278,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		@Override
 		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
 			// Push operands from one register block to stack
-			if (inputs.length != 2) {
-				throw new LowlevelError("pushCallOther requires one input");
-			}
+			Varnode[] args = getArgs(inputs, 1, "pushCallOther");
 
-			long baseOffset = inputs[1].getOffset();
+			long baseOffset = args[0].getOffset();
 
 			WasmFunctionAnalysis funcAnalysis = getAnalysis(emu.getExecuteAddress());
 			if (funcAnalysis == null) {
@@ -274,11 +302,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		@Override
 		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
 			MemoryState memState = emu.getMemoryState();
-			if (inputs.length != 2) {
-				throw new LowlevelError("callPrologueCallOther requires one input");
-			}
+			Varnode[] args = getArgs(inputs, 1, "callPrologueCallOther");
 
-			long baseOffset = inputs[1].getOffset();
+			long baseOffset = args[0].getOffset();
 
 			// Push locals onto shadow stack
 			WasmFunctionAnalysis funcAnalysis = getAnalysis(emu.getExecuteAddress());
@@ -310,11 +336,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		@Override
 		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
 			MemoryState memState = emu.getMemoryState();
-			if (inputs.length != 2) {
-				throw new LowlevelError("callEpilogueCallOther requires one input");
-			}
+			Varnode[] args = getArgs(inputs, 1, "callEpilogueCallOther");
 
-			long baseOffset = inputs[1].getOffset();
+			long baseOffset = args[0].getOffset();
 
 			// Pop LR from shadow stack
 			helper.popShadowStackLR(memState);
