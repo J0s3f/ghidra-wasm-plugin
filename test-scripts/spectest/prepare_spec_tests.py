@@ -52,6 +52,9 @@ SUBSETS = {
     ],
 }
 SUBSETS["core"] = SUBSETS["control"] + SUBSETS["memory"] + SUBSETS["numeric"] + SUBSETS["table"]
+# "all" and "simd" are resolved at runtime against the .wast files present in --spec.
+SUBSETS["all"] = []
+SUBSETS["simd"] = []
 
 
 def run_wast2json(wast2json, wast_path, json_path):
@@ -86,6 +89,11 @@ def main():
 
     if args.files:
         names = [n.strip() for n in args.files.split(",") if n.strip()]
+    elif args.subset == "all":
+        names = sorted(os.path.splitext(f)[0] for f in os.listdir(spec) if f.endswith(".wast"))
+    elif args.subset == "simd":
+        names = sorted(os.path.splitext(f)[0] for f in os.listdir(spec)
+                       if f.startswith("simd_") and f.endswith(".wast"))
     else:
         names = SUBSETS[args.subset]
     # de-duplicate, preserve order

@@ -58,6 +58,11 @@ except NameError:            # Python 3 (e.g. when run under pyghidra) has no `u
     unicode = str
     basestring = str
 
+try:
+    from jpype import JArray
+except ImportError:          # Jython / not under PyGhidra
+    JArray = None
+
 ## Ensure output is not buffered
 class Unbuffered(object):
    def __init__(self, stream):
@@ -133,9 +138,12 @@ def encode_arg(ei):
     else:
         raise Exception("unknown value type %s" % eit)
 
-class EmulatedProgram(FlatProgramAPI):
+class EmulatedProgram(object):
+    # NOTE: composition, not inheritance. PyGhidra (JPype) cannot subclass Java classes, so we hold a
+    # FlatProgramAPI instead of extending it (the original Jython script subclassed it directly).
     def __init__(self, program):
-        super(EmulatedProgram, self).__init__(program)
+        self.currentProgram = program
+        self.flat = FlatProgramAPI(program)
         self.emuHelper = EmulatorHelper(program)
         self.wasmHelper = WasmEmulationHelper(self.emuHelper.language)
         self.analysis = WasmAnalysis.getState(program)
@@ -146,6 +154,18 @@ class EmulatedProgram(FlatProgramAPI):
         self.emuHelper.setBreakpoint(self.retAddr)
         self.emuHelper.setBreakpoint(self.nullAddr)
 
+    def getNamespace(self, *args):
+        return self.flat.getNamespace(*args)
+
+    def getSymbols(self, *args):
+        return self.flat.getSymbols(*args)
+
+    def getDataAt(self, *args):
+        return self.flat.getDataAt(*args)
+
+    def getFunctionAt(self, *args):
+        return self.flat.getFunctionAt(*args)
+
     def run_function(self, function, args):
         stackBase = self.emuHelper.language.getRegister("s0").address
         memState = self.emuHelper.emulator.memState
@@ -154,10 +174,14 @@ class EmulatedProgram(FlatProgramAPI):
             raise Exception("wrong number of arguments: got %d, expected %d" % (len(args), len(function.signature.arguments)))
 
         biArgs = [BigInteger(1, encode_arg(arg)[::-1]) for arg in args]
+        if JArray is not None:
+            # PyGhidra/JPype cannot pick between the long[] and BigInteger[] overloads from a Python
+            # list, so build a java.math.BigInteger[] explicitly.
+            biArgs = JArray(BigInteger)(biArgs)
         self.wasmHelper.simulateCall(self.emuHelper.emulator, ret_addr, function.entryPoint.offset, biArgs)
 
         while 1:
-            if not self.emuHelper.run(self.monitor):
+            if not self.emuHelper.run(monitor):
                 err = self.emuHelper.lastError
                 if err.startswith("Unimplemented CALLOTHER pcodeop (halt_trap)"):
                     raise EmulationError("unreachable")
@@ -224,7 +248,7 @@ def execute_action(progs, action):
     export_ns = prog.getNamespace(None, "export")
     syms = prog.getSymbols(field, export_ns)
     if not syms:
-        raise ValueError("exported name %s not found" % (field.encode("unicode_escape"),))
+        raise ValueError("exported name %s not found" % (esc(field),))
     sym_addr = syms[0].address
 
     if atype == "get":
@@ -233,7 +257,7 @@ def execute_action(progs, action):
     elif atype == "invoke":
         func = prog.getFunctionAt(sym_addr)
         if func is None:
-            raise ValueError("exported symbol %s is not a function" % (field.encode("unicode_escape"),))
+            raise ValueError("exported symbol %s is not a function" % (esc(field),))
         return prog.run_function(func, action["args"])
     else:
         raise ValueError("action type %s is not known" % (atype,))
@@ -325,8 +349,14 @@ def compare_result(result, expected):
         ei = expected[i]
         compare_result_value(ei, ri)
 
+def esc(s):
+    """Readable escaping for names that may contain non-printable bytes."""
+    if not isinstance(s, basestring):
+        s = unicode(s)
+    return s.encode("unicode_escape").decode("ascii", "backslashreplace")
+
 def format_action(action):
-    return "%s %s" % (action["type"], action["field"].encode("unicode_escape"))
+    return "%s %s" % (action["type"], esc(action["field"]))
 
 def format_exception():
     etype, exc, tb = sys.exc_info()
@@ -337,21 +367,36 @@ def format_exception():
         return etype.__name__
 
 def parse_args():
-    """Return (json_fn, opts) from the script arguments, falling back to a file chooser."""
-    raw = list(getScriptArgs())
+    """Return (json_fn, opts) from the script arguments, falling back to a file chooser.
+
+    Accepts both --opt=value and --opt value forms (Ghidra's launcher may split on '=').
+    """
+    raw = [str(a) for a in getScriptArgs()]
     json_fn = None
     opts = {"max_commands": 0, "report": None, "decode_only": False}
-    for a in raw:
-        if a.startswith("--max-commands="):
-            opts["max_commands"] = int(a.split("=", 1)[1])
-        elif a.startswith("--report="):
-            opts["report"] = a.split("=", 1)[1]
+    i = 0
+    while i < len(raw):
+        a = raw[i]
+        val = None
+        if a.startswith("--") and "=" in a:
+            a, val = a.split("=", 1)
+        if a == "--max-commands":
+            if val is None:
+                i += 1
+                val = raw[i]
+            opts["max_commands"] = int(val)
+        elif a == "--report":
+            if val is None:
+                i += 1
+                val = raw[i]
+            opts["report"] = val
         elif a == "--decode-only":
             opts["decode_only"] = True
         elif json_fn is None:
             json_fn = a
         else:
             raise Exception("unrecognized script argument: %s" % a)
+        i += 1
     if json_fn is None:
         file = askFile("wast .json file", "Open")
         json_fn = file.absolutePath
