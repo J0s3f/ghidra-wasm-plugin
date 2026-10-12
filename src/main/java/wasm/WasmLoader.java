@@ -58,6 +58,7 @@ import ghidra.util.task.TaskMonitor;
 import wasm.format.StructureBuilder;
 import wasm.format.WasmConstants;
 import wasm.format.WasmEnums.WasmExternalKind;
+import wasm.format.WasmEnums.ValType;
 import wasm.format.WasmHeader;
 import wasm.format.WasmModule;
 import wasm.format.sections.WasmNameSection;
@@ -746,8 +747,20 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			int memidx = (int) dataSegment.getIndex();
 			/* @@MM: active data segments for every memory (memory >= 1 included). */
 
-			Long offset = dataSegment.getMemoryOffset();
+			/*
+			 * B2 (REPORT-N.md §7 item 8): getMemoryOffset() now reads an i64.const offset too, and
+			 * resolveDataSegmentOffset() additionally resolves a global.get of a defined i64 global
+			 * (memory64 data segments). An unresolved offset (an imported global, or an unparsed
+			 * expression) still degrades to "segment skipped with a warning", never a crash.
+			 */
+			Long offset = resolveDataSegmentOffset(module, dataSegment);
 			if (offset == null) {
+				if (dataSegment.isActive()) {
+					Msg.warn(this, "Skipping active data segment " + dataidx + " (memory " + memidx
+							+ "): its offset expression could not be resolved statically"
+							+ (dataSegment.hasUnknownOffset() ? " (it was not parsed)" : "")
+							+ " (see REPORT-H1.md)");
+				}
 				continue;
 			}
 
@@ -758,6 +771,69 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 				Msg.error(this, "Failed to initialize memory " + memidx + " with data segment " + dataidx + " at " + memStart, e);
 			}
 		}
+	}
+
+	/**
+	 * Resolve the static offset of an active data segment.
+	 *
+	 * <p>An {@code i32.const}/{@code i64.const} offset is returned directly. A {@code global.get}
+	 * offset is resolved only when it refers to a defined (non-imported) i64 global whose
+	 * initializer is itself a constant: that is the memory64 case (an active segment of a 64-bit
+	 * memory must be offset by an i64 global). An imported global's value is not known until
+	 * instantiation, so it - and a 32-bit {@code global.get} offset, whose placement was
+	 * already dropped before this change - returns null (the caller skips the segment with a
+	 * warning).
+	 */
+	private static Long resolveDataSegmentOffset(WasmModule module, WasmDataSegment dataSegment) {
+		Long direct = dataSegment.getMemoryOffset();
+		if (direct != null) {
+			return direct;
+		}
+		Long globalidx = dataSegment.getOffsetGlobalIndex();
+		if (globalidx == null) {
+			return null;
+		}
+		int idx = (int) (long) globalidx;
+		if (idx < 0) {
+			return null;
+		}
+		List<WasmImportEntry> globalImports = module.getImports(WasmExternalKind.EXT_GLOBAL);
+		WasmGlobalType globalType;
+		byte[] initBytes;
+		if (idx < globalImports.size()) {
+			/* Imported global: its value is only known once the module is instantiated. */
+			globalType = globalImports.get(idx).getGlobalType();
+			initBytes = null;
+		}
+		else {
+			List<WasmGlobalEntry> globals = module.getNonImportedGlobals();
+			int local = idx - globalImports.size();
+			if (local >= globals.size()) {
+				return null;
+			}
+			globalType = globals.get(local).getGlobalType();
+			initBytes = globals.get(local).asBytes(module);
+		}
+		if (globalType == null || globalType.getType() != ValType.i64) {
+			/*
+			 * Only an i64 global offsets a memory64 segment. Leaving a 32-bit global.get offset
+			 * unresolved keeps 32-bit-memory placement byte-for-byte unchanged (it was dropped
+			 * before this change too; see REPORT-H1.md).
+			 */
+			return null;
+		}
+		if (initBytes == null || initBytes.length < 8) {
+			return null;
+		}
+		return littleEndianLong(initBytes);
+	}
+
+	private static long littleEndianLong(byte[] bytes) {
+		long value = 0;
+		for (int i = 0; i < 8; i++) {
+			value |= (bytes[i] & 0xFFL) << (8 * i);
+		}
+		return value;
 	}
 
 	private void loadGlobals(Program program, FileBytes fileBytes, WasmModule module, TaskMonitor monitor) {

@@ -625,6 +625,23 @@ public final class ConstantExpression implements StructConverter {
 		return null;
 	}
 
+	/**
+	 * Returns the value of an {@code i32.const} or {@code i64.const} initializer, or {@code null}
+	 * for anything else (global.get, an unparsed/folded-failure expression, ...).
+	 *
+	 * <p>Unlike {@link #asI32()} this also reads an {@code i64} value, which is exactly what a
+	 * memory64 active data segment offset uses ({@code WasmDataSegment.getMemoryOffset()}). An
+	 * i64 value at or above 2^63 comes back as a negative long, which the loader treats as an
+	 * out-of-range address (clamped and logged by {@code WasmLoader.getMemoryAddress}) - never a
+	 * crash (see REPORT-N.md §7 item 8, REPORT-H1.md).
+	 */
+	public Long asConstValue() {
+		if (type == ConstantInstruction.I32_CONST || type == ConstantInstruction.I64_CONST) {
+			return ((LEB128Info) value).asLong();
+		}
+		return null;
+	}
+
 	public Long asGlobalGet() {
 		if (type == ConstantInstruction.GLOBAL_GET) {
 			return ((LEB128Info) value).asLong();

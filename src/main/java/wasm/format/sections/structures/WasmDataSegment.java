@@ -72,9 +72,33 @@ public class WasmDataSegment implements StructConverter {
 
 	public Long getMemoryOffset() {
 		if (offsetExpr != null) {
-			return offsetExpr.asI32();
+			/*
+			 * B2 (REPORT-N.md §7 item 8): asI32() could not read an i64.const offset, so a memory64
+			 * active segment was dropped before the loader placed its bytes. asConstValue() returns
+			 * the value for both i32.const and i64.const.
+			 */
+			return offsetExpr.asConstValue();
 		}
 		return null;
+	}
+
+	/** The global index of a `global.get` offset expression, or null for a const/other offset. */
+	public Long getOffsetGlobalIndex() {
+		if (offsetExpr != null) {
+			return offsetExpr.asGlobalGet();
+		}
+		return null;
+	}
+
+	/** True if this is an active segment (mode 0, or mode 2 with an explicit memory index). */
+	public boolean isActive() {
+		long modeVal = mode.asLong();
+		return modeVal == 0 || modeVal == 2;
+	}
+
+	/** True if the segment is active but its offset expression contains unparsed opcodes. */
+	public boolean hasUnknownOffset() {
+		return offsetExpr != null && offsetExpr.isUnknown();
 	}
 
 	public long getSize() {

@@ -53,8 +53,15 @@ public abstract class WasmSection implements StructConverter {
 		LEB128Info contentLength = reader.readNext(LEB128Info::unsigned);
 		reader.setPointerIndex(reader.getPointerIndex() + contentLength.asLong());
 
-		if(id >= WasmSectionId.values().length)
-			return null;
+		if (id >= WasmSectionId.values().length) {
+			/*
+			 * B4 (REPORT-HARD.md / REPORT-H1.md): a section id outside the modelled set is malformed
+			 * WebAssembly (core spec, binary/modules: "malformed section id"). It used to be skipped
+			 * silently, which produced an empty program with no diagnostic at all.
+			 */
+			throw new IOException("Unsupported section id 0x" + Integer.toHexString(id)
+					+ " at file offset 0x" + Long.toHexString(sectionOffset));
+		}
 
 		BinaryReader sectionReader = reader.clone(sectionOffset);
 
