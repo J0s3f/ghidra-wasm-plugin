@@ -774,6 +774,158 @@
       "decompile_failed": null,
       "import_ok": false
     },
+    "M01_multivalue_i32_i32.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M02_multivalue_three_i32.wasm": {
+      "funcs": 2,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M03_multivalue_four_i32.wasm": {
+      "funcs": 2,
+      "instrs": 13,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M04_multivalue_mixed_i32_f64.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M05_multivalue_i64_i32.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M06_multivalue_i32_i64.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M07_multivalue_f64_f64.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M08_multivalue_caller_arith.wasm": {
+      "funcs": 2,
+      "instrs": 16,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M09_multivalue_block.wasm": {
+      "funcs": 1,
+      "instrs": 8,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M10_multivalue_import.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 4,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M11_multivalue_return_call.wasm": {
+      "funcs": 2,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M12_multivalue_call_indirect.wasm": {
+      "funcs": 2,
+      "instrs": 14,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF01_select_after_terminator.wasm": {
+      "funcs": 5,
+      "instrs": 44,
+      "undefined_bytes": 0,
+      "decompiled": 5,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_f32_load.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_i64_load8_s.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_i64_store.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_i64_store16.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_local_set.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF03_large_br_table.wasm": {
+      "funcs": 1,
+      "instrs": 4007,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "bare_component_header.wasm": {
       "funcs": null,
       "instrs": null,
@@ -799,7 +951,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 99,
+  "probe_count": 118,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
