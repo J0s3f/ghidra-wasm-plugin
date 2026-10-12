@@ -1,0 +1,140 @@
+# @@SS -- WebAssembly typed stack switching (the stack-switching / JSPI proposal), added for
+# wasm-ghidra. Seven opcodes use the 0xE0-0xE6 space:
+#
+#   0xE0 cont.new $ct            : [(ref null $ft)] -> [(ref $ct)]
+#   0xE1 cont.bind $ct $ct'      : [t3* (ref null $ct)] -> [(ref $ct')]
+#   0xE2 suspend $t             : [t1*] -> [t2*]
+#   0xE3 resume $ct hdl*        : [t1* (ref null $ct)] -> [t2*]
+#   0xE4 resume_throw $ct $e hdl* : [te* (ref null $ct)] -> [t2*]
+#   0xE5 resume_throw_ref $ct hdl* : [exnref (ref null $ct)] -> [t2*]
+#   0xE6 switch $ct1 $t         : [t1* (ref null $ct1)] -> [t2*]
+#
+# hdl* is a vector of clauses, each one of:
+#   0x00 $t:u32 $l:u32   (on <tag> <label>)   -> branch to label $l
+#   0x01 $t:u32          (on <tag> switch)    -> direct switch
+# The clause vector is decoded as one directive instruction per clause (:.ss_handler), exactly
+# like try_table's catch clauses: WasmFunctionAnalysis marks each clause address with
+# DIRECTIVE_SS_HANDLER and each clause consumes only its own bytes, so the continuation body
+# starts immediately after the vector. The pre-analyzer does not turn the clauses into branch
+# targets (a suspend is a run-time event, not a static branch), it only names them.
+#
+# The plugin deliberately does not model continuation semantics. Every instruction emits a
+# dedicated callother (wasm_cont_new, wasm_resume, ...) whose declared inputs/outputs mirror the
+# modelled stack effect, so the decompiler shows the operation and its results. The *exact*
+# effect (the continuation/ tag type's parameter and result lists) is modelled in
+# WasmFunctionAnalysis; the callother has one variant per "shape" (0..1 params, 0..1 results)
+# selected by ctx_ss_shape, so an arity beyond that degrades to the closest modelled shape while
+# the pre-analyzer still walks the true stack. Continuations/tags are opaque 4-byte values.
+#
+# See spec (binary/instructions): 0xe0-0xe6, see the proposal's Overview.md "Binary format".
+
+# Directive type for one resume/resume_throw/resume_throw_ref handler clause. Must stay in sync
+# with ContextRegister.DIRECTIVE_SS_HANDLER in wasm/analysis/WasmFunctionAnalysis.java.
+@define DIRECTIVE_SS_HANDLER 6
+
+define pcodeop wasm_cont_new;
+define pcodeop wasm_cont_bind;
+define pcodeop wasm_suspend;
+define pcodeop wasm_resume;
+define pcodeop wasm_resume_throw;
+define pcodeop wasm_resume_throw_ref;
+define pcodeop wasm_switch;
+
+# The label index of a handler clause (its tag uses the shared `tagidx` operand).
+ss_label: ULeb128 is ULeb128 {
+	export ULeb128;
+}
+
+# ---------------------------------------------------------------- cont.new
+# [(ref null $ft)] -> [(ref $ct)]: the function reference is replaced in place by the new
+# continuation reference (same slot, sp1).
+:cont.new "type="^typeidx is opc=0xE0; typeidx; sp1_32; ctx_is_directive=0 {
+	sp1_32 = wasm_cont_new(typeidx:4, sp1_32);
+}
+
+# ---------------------------------------------------------------- cont.bind
+# [t3* (ref null $ct)] -> [(ref $ct')]: the bound prefix t3* sits below the continuation
+# reference. ctx_ss_shape is the number of bound arguments (0 or 1) the callother models.
+:cont.bind "type="^typeidx "type2="^typeidx2u is opc=0xE1; typeidx; typeidx2u; sp1_32; ctx_ss_shape=0; ctx_is_directive=0 {
+	sp1_32 = wasm_cont_bind(typeidx:4, typeidx2u:4, sp1_32);
+}
+:cont.bind "type="^typeidx "type2="^typeidx2u is opc=0xE1; typeidx; typeidx2u; sp1_32; sp2_32; ctx_ss_shape=1; ctx_is_directive=0 {
+	sp2_32 = wasm_cont_bind(typeidx:4, typeidx2u:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- suspend
+# [t1*] -> [t2*]: ctx_ss_shape = p*2 + r, p/r = modelled (0/1) parameter/result count.
+:suspend "tag="^tagidx is opc=0xE2; tagidx; ctx_ss_shape=0; ctx_is_directive=0 {
+	wasm_suspend(tagidx:4);
+}
+:suspend "tag="^tagidx is opc=0xE2; tagidx; sp0_32; ctx_ss_shape=1; ctx_is_directive=0 {
+	sp0_32 = wasm_suspend(tagidx:4);
+}
+:suspend "tag="^tagidx is opc=0xE2; tagidx; sp1_32; ctx_ss_shape=2; ctx_is_directive=0 {
+	wasm_suspend(tagidx:4, sp1_32);
+}
+:suspend "tag="^tagidx is opc=0xE2; tagidx; sp1_32; ctx_ss_shape=3; ctx_is_directive=0 {
+	sp1_32 = wasm_suspend(tagidx:4, sp1_32);
+}
+
+# ---------------------------------------------------------------- resume
+# [t1* (ref null $ct)] -> [t2*], then the handler-vector clauses (directives).
+:resume "type="^typeidx "handlers="^count is opc=0xE3; typeidx; count; sp1_32; ctx_ss_shape=0; ctx_is_directive=0 {
+	wasm_resume(typeidx:4, sp1_32);
+}
+:resume "type="^typeidx "handlers="^count is opc=0xE3; typeidx; count; sp1_32; ctx_ss_shape=1; ctx_is_directive=0 {
+	sp1_32 = wasm_resume(typeidx:4, sp1_32);
+}
+:resume "type="^typeidx "handlers="^count is opc=0xE3; typeidx; count; sp1_32; sp2_32; ctx_ss_shape=2; ctx_is_directive=0 {
+	wasm_resume(typeidx:4, sp2_32, sp1_32);
+}
+:resume "type="^typeidx "handlers="^count is opc=0xE3; typeidx; count; sp1_32; sp2_32; ctx_ss_shape=3; ctx_is_directive=0 {
+	sp2_32 = wasm_resume(typeidx:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- resume_throw
+# [te* (ref null $ct)] -> [t2*]: ctx_ss_shape = (tag params 0/1)*2 + (results 0/1).
+:resume_throw "type="^typeidx "tag="^tagidx "handlers="^count is opc=0xE4; typeidx; tagidx; count; sp1_32; ctx_ss_shape=0; ctx_is_directive=0 {
+	wasm_resume_throw(typeidx:4, tagidx:4, sp1_32);
+}
+:resume_throw "type="^typeidx "tag="^tagidx "handlers="^count is opc=0xE4; typeidx; tagidx; count; sp1_32; ctx_ss_shape=1; ctx_is_directive=0 {
+	sp1_32 = wasm_resume_throw(typeidx:4, tagidx:4, sp1_32);
+}
+:resume_throw "type="^typeidx "tag="^tagidx "handlers="^count is opc=0xE4; typeidx; tagidx; count; sp1_32; sp2_32; ctx_ss_shape=2; ctx_is_directive=0 {
+	wasm_resume_throw(typeidx:4, tagidx:4, sp2_32, sp1_32);
+}
+:resume_throw "type="^typeidx "tag="^tagidx "handlers="^count is opc=0xE4; typeidx; tagidx; count; sp1_32; sp2_32; ctx_ss_shape=3; ctx_is_directive=0 {
+	sp2_32 = wasm_resume_throw(typeidx:4, tagidx:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- resume_throw_ref
+# [exnref (ref null $ct)] -> [t2*]: ctx_ss_shape = results 0/1.
+:resume_throw_ref "type="^typeidx "handlers="^count is opc=0xE5; typeidx; count; sp1_32; sp2_32; ctx_ss_shape=0; ctx_is_directive=0 {
+	wasm_resume_throw_ref(typeidx:4, sp2_32, sp1_32);
+}
+:resume_throw_ref "type="^typeidx "handlers="^count is opc=0xE5; typeidx; count; sp1_32; sp2_32; ctx_ss_shape=1; ctx_is_directive=0 {
+	sp2_32 = wasm_resume_throw_ref(typeidx:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- switch
+# [t1* (ref null $ct1)] -> [t2*]: ctx_ss_shape = (params 0/1)*2 + (tag results 0/1).
+:switch "type="^typeidx "tag="^tagidx is opc=0xE6; typeidx; tagidx; sp1_32; ctx_ss_shape=0; ctx_is_directive=0 {
+	wasm_switch(typeidx:4, tagidx:4, sp1_32);
+}
+:switch "type="^typeidx "tag="^tagidx is opc=0xE6; typeidx; tagidx; sp1_32; ctx_ss_shape=1; ctx_is_directive=0 {
+	sp1_32 = wasm_switch(typeidx:4, tagidx:4, sp1_32);
+}
+:switch "type="^typeidx "tag="^tagidx is opc=0xE6; typeidx; tagidx; sp1_32; sp2_32; ctx_ss_shape=2; ctx_is_directive=0 {
+	wasm_switch(typeidx:4, tagidx:4, sp2_32, sp1_32);
+}
+:switch "type="^typeidx "tag="^tagidx is opc=0xE6; typeidx; tagidx; sp1_32; sp2_32; ctx_ss_shape=3; ctx_is_directive=0 {
+	sp2_32 = wasm_switch(typeidx:4, tagidx:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- handler-vector clauses
+# One directive instruction per clause (see the header comment). No pcode: the clause only
+# names the tag/label and keeps the byte stream aligned with the pre-analyzer's walk.
+:.ss_handler "on tag="^tagidx "label="^ss_label is opc=0x00; tagidx; ss_label; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_SS_HANDLER) {
+}
+:.ss_handler "on tag="^tagidx "switch" is opc=0x01; tagidx; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_SS_HANDLER) {
+}

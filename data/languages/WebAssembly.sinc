@@ -180,6 +180,15 @@ sp3_128: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 3) * $(REG_SIZ
 	export *[register]:16 tmp_sp;
 }
 
+# @@STR: the widest string instruction (stringview_wtf8.encode_*) pops four values.
+sp4_32: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 4) * $(REG_SIZE);] {
+	export *[register]:4 tmp_sp;
+}
+
+sp4_64: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 4) * $(REG_SIZE);] {
+	export *[register]:8 tmp_sp;
+}
+
 br_target: ctx_br_target is ctx_br_target {
 	export *[ram]:4 ctx_br_target;
 }
@@ -697,106 +706,20 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 	sp0_64 = f64:8;
 }
 
-# @@UNIMP begin -----------------------------------------------------------------------
-# Opcodes this plugin does not decode yet are rendered as `unimplemented` (R1.1) so that
-# the listing is visibly incomplete instead of wrong or silently missing. Each pattern
-# consumes exactly the encoded immediates, which keeps every following instruction at its
-# true address. The pre-analyzer mirrors these lengths in
-# wasm/analysis/WasmFunctionAnalysis.java (skipUnimplementedOperands), so the two decoders
-# stay aligned.
+# @@SS/@@STR/@@WA begin ----------------------------------------------------------------
+# Operands shared by the stack-switching / JS-string-builtins / wide-arithmetic instructions
+# (the instructions themselves live in StackSwitchOps.sinc, StringOps.sinc and
+# WideArithOps.sinc, all included at the bottom of this file).
 #
-# Covered here: stack switching (cont.new / cont.bind / suspend / switch), JS string
-# builtins and stringref (0xFB >= 0x80), wide arithmetic (i64.add128 / i64.sub128 /
-# i64.mul_wide_s / i64.mul_wide_u) and memory.discard.
-#
-# NOT covered, on purpose ("fail safe": no bytes are consumed, so the unknown opcode
-# byte stays undefined and the rest of the function still decodes): resume (0xE3),
-# resume_throw (0xE4) and resume_throw_ref (0xE5), whose trailing handler vector has no
-# statically decodable length.
+# The graceful-degradation fallback (:unimplemented) still exists for opcodes that are not
+# modelled: 0xE7+ (unassigned stack switching), unassigned 0xFB >= 0x80 sub-opcodes, and the
+# unassigned 0xFC sub-opcodes. There the instruction is rendered visibly incomplete instead of
+# being silently wrong, and the pre-analyzer mirrors the operand lengths in
+# wasm/analysis/WasmFunctionAnalysis.java.
 stringidx: "string="^ULeb128 is ULeb128 {
 	export ULeb128;
 }
-
-# Stack switching: 0xE0 cont.new t | 0xE1 cont.bind t t' | 0xE2 suspend t | 0xE6 switch ct t
-:unimplemented "0xe0 cont.new type="^typeidx is opc=0xE0; typeidx; ctx_is_directive=0 {
-}
-:unimplemented "0xe1 cont.bind type="^typeidx "type2="^typeidx2u is opc=0xE1; typeidx; typeidx2u; ctx_is_directive=0 {
-}
-:unimplemented "0xe2 suspend tag="^tagidx is opc=0xE2; tagidx; ctx_is_directive=0 {
-}
-:unimplemented "0xe6 switch type="^typeidx "tag="^tagidx is opc=0xE6; typeidx; tagidx; ctx_is_directive=0 {
-}
-
-# Wide arithmetic and memory.discard (0xFC prefix).
-:unimplemented "0xfc:18 memory.discard "memidx_label is opc=0xFC; opc2_18; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfc:19 i64.add128" is opc=0xFC; opc2_19; ctx_is_directive=0 {
-}
-:unimplemented "0xfc:20 i64.sub128" is opc=0xFC; opc2_20; ctx_is_directive=0 {
-}
-:unimplemented "0xfc:21 i64.mul_wide_s" is opc=0xFC; opc2_21; ctx_is_directive=0 {
-}
-:unimplemented "0xfc:22 i64.mul_wide_u" is opc=0xFC; opc2_22; ctx_is_directive=0 {
-}
-
-# JS string builtins / stringref (0xFB 0x80..0xbf). Sub-opcode values are decimal opc2_N.
-:unimplemented "0xfb:128 string.new_utf8 "memidx_label is opc=0xFB; opc2_128; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:129 string.new_wtf16 "memidx_label is opc=0xFB; opc2_129; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:130 string.const "stringidx is opc=0xFB; opc2_130; stringidx; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:131 string.measure_utf8" is opc=0xFB; opc2_131; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:132 string.measure_wtf8" is opc=0xFB; opc2_132; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:133 string.measure_wtf16" is opc=0xFB; opc2_133; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:134 string.encode_utf8 "memidx_label is opc=0xFB; opc2_134; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:135 string.encode_wtf16 "memidx_label is opc=0xFB; opc2_135; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:136 string.concat" is opc=0xFB; opc2_136; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:137 string.eq" is opc=0xFB; opc2_137; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:138 string.is_usv_sequence" is opc=0xFB; opc2_138; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:139 string.new_lossy_utf8 "memidx_label is opc=0xFB; opc2_139; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:140 string.new_wtf8 "memidx_label is opc=0xFB; opc2_140; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:141 string.encode_lossy_utf8 "memidx_label is opc=0xFB; opc2_141; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:142 string.encode_wtf8 "memidx_label is opc=0xFB; opc2_142; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:144 string.as_wtf8" is opc=0xFB; opc2_144; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:145 stringview_wtf8.advance" is opc=0xFB; opc2_145; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:146 stringview_wtf8.encode_utf8 "memidx_label is opc=0xFB; opc2_146; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:154 stringview_wtf16.get_codeunit" is opc=0xFB; opc2_154; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:155 stringview_wtf16.encode "memidx_label is opc=0xFB; opc2_155; memidx_label; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:156 stringview_wtf16.slice" is opc=0xFB; opc2_156; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:160 string.as_iter" is opc=0xFB; opc2_160; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:161 stringview_iter.next" is opc=0xFB; opc2_161; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:162 stringview_iter.advance" is opc=0xFB; opc2_162; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:180 string.new_lossy_utf8_array" is opc=0xFB; opc2_180; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:181 string.new_wtf8_array" is opc=0xFB; opc2_181; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:182 string.encode_lossy_utf8_array" is opc=0xFB; opc2_182; ctx_is_directive=0 {
-}
-:unimplemented "0xfb:183 string.encode_wtf8_array" is opc=0xFB; opc2_183; ctx_is_directive=0 {
-}
-# @@UNIMP end
+# @@SS/@@STR/@@WA end
 
 @include "BasicOps.sinc"
 @include "VectorOps.sinc"
@@ -804,3 +727,6 @@ stringidx: "string="^ULeb128 is ULeb128 {
 @include "RelaxedSimdOps.sinc"
 @include "EH2Ops.sinc"   # @@EH: new exception handling (try_table, throw_ref)
 @include "GCOps.sinc"    # @@GC: garbage collection opcodes (0xFB)
+@include "StackSwitchOps.sinc"  # @@SS: stack switching / JSPI (0xE0-0xE6)
+@include "WideArithOps.sinc"    # @@WA: wide arithmetic + memory.discard (0xFC 0x12-0x16)
+@include "StringOps.sinc"       # @@STR: JS string builtins / stringref (0xFB 0x80-0xB7)
