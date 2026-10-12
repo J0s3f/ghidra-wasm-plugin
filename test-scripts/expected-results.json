@@ -614,6 +614,78 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "B3_01_memidx9_load.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B3_02_memidx127_store.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B3_03_memidx128_load.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B3_04_memidx1000_load_store.wasm": {
+      "funcs": 1,
+      "instrs": 8,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B8_01_table64_elem.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B8_02_table64_huge_skipped.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B8_03_table64_then_table32.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B8_04_mem64_over4g.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B8_05_mem64_just_over4g.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "C01_import_thunk.wasm": {
       "funcs": 3,
       "instrs": 3,
@@ -1014,6 +1086,38 @@
       "decompile_failed": null,
       "import_ok": false
     },
+    "J06_func_section_without_code.wasm": {
+      "funcs": 0,
+      "instrs": 0,
+      "undefined_bytes": 0,
+      "decompiled": 0,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "L01_name_labels.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "L02_name_labels_bad_index.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "L03_name_labels_malformed.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "M01_multivalue_i32_i32.wasm": {
       "funcs": 2,
       "instrs": 9,
@@ -1391,7 +1495,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 173,
+  "probe_count": 186,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
