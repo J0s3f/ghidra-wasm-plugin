@@ -263,7 +263,37 @@ feature:
 Remember that SIMD/relaxed-SIMD opcodes (0xFD) and prefixes are **LEB128-encoded** opcodes: `0xAE` is
 `i32x4.add (174)` only as `FD AE 01`.
 
-## 6. References
+## 6. Spec-suite baseline (new, added after the harness landed)
+
+A headless harness for the *official* WebAssembly spec testsuite now exists under
+`test-scripts/spectest/` (see `REPORT-G.md` and `test-scripts/spectest-BASELINE.md`). It is a
+measurement tool, not a fix; metrics below were reproduced by the integrator.
+
+* **core subset** (73 `.wast`): 271 valid modules, **271 imported (100 %)**, 33192 instructions,
+  2746/2747 functions decompiled, 458 undefined bytes = 428 import-stub bytes + **30 real decode-gap
+  bytes**.
+* **all subset incl. SIMD** (147 `.wast`): 257 modules, 257 imported, 48005 instructions, 210
+  undefined bytes = 176 stub + **34 real**; the SIMD suite is clean (99 modules, 0 gaps).
+
+Ranked findings (bug leads for the next rounds):
+
+1. **`select` (0x1B) is not decoded after an unconditional terminator** (`unreachable`, `br`,
+   `br_table`, `return`) - the only real decode gap. Repro: `unwind.wast`, functions
+   `select-after-unreachable` / `select-after-br` / `select-after-br_table` / `select-after-return`;
+   `select-after-br_if` decodes fine, which isolates the trigger (suspect the
+   `ctx_operand_size`-conditioned `select` constructors).
+2. **Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body).
+3. **`WasmStackVariableAnalyzer` exceptions**: `Index 0 out of bounds for length 0`
+   (`i64.store`, `i64.store16`, `f32.load`, `i64.load8_s`) and `GenericAddress cannot be cast to
+   Register` (`local.set`).
+4. **Import stubs are modelled as 4-byte body-less functions** (428 bytes of `EXTERNAL` block noise
+   per importing module).
+5. Emulation-based `assert_*` execution is still blocked (`funcEntryCallOther requires two inputs`
+   under PyGhidra), so this baseline covers loading, disassembly and decompilation only;
+   `assert_invalid`/`assert_malformed` rejection behaviour and the proposal suites (`proposals/`) are
+   follow-ups.
+
+## 7. References
 
 * WebAssembly 3.0 / core spec: <https://webassembly.github.io/spec/core/>
 * Proposals (GC, tail calls, exception handling, memory64, multi-memory, relaxed SIMD, threads,
