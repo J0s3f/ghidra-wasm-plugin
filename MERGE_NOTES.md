@@ -32,7 +32,7 @@ Ghidra 12.1.4).
 ## Verification
 
 The plugin was built against Ghidra 12.1.4, installed to
-`C:\Tools\ghidra_12.1.4_PUBLIC\Ghidra\Extensions\Ghidra-WASM`, and verified by importing
+`C:\Tools\ghidra_12.1.4_PUBLIC\Ghidra\Extensions\`, and verified by importing
 `rasterbator_rs_bg.wasm` (Rust/wasm-bindgen, 179 KiB) headlessly with
 `test-scripts/DumpDecomp.java`:
 
@@ -41,6 +41,12 @@ SUMMARY functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes
 ```
 
 All 437 recovered functions disassemble and decompile successfully.
+
+## Next steps
+
+[MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) inventories the plugin's coverage of modern WebAssembly
+(what works, what silently produces wrong code, what fails), backed by 21 generated probe modules and
+the `test-scripts/` harness, and lists the planned extension work in priority order.
 
 ## Building
 

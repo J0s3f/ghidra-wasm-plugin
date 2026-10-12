@@ -4,7 +4,9 @@ Module to load WebAssembly files into Ghidra, supporting disassembly and decompi
 > the useful work found in downstream forks, and is verified to build and run against Ghidra 12.1.x.
 > Prebuilt extensions are attached to the
 > [releases](https://github.com/J0s3f/ghidra-wasm-plugin/releases) of this fork. See
-> [MERGE_NOTES.md](MERGE_NOTES.md) for the list of merged changes and verification results.
+> [MERGE_NOTES.md](MERGE_NOTES.md) for the list of merged changes and verification results, and
+> [MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) for a feature-by-feature inventory of modern WebAssembly
+> support (with a probe harness and roadmap for extending it).
 
 ## Features
 
@@ -94,6 +96,11 @@ WasmLoader.loadDataToMemory(currentProgram, WasmAnalysis.getState(currentProgram
 ```
 
 ## Limitations and Known Bugs
+
+See [MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) for a feature-by-feature inventory of what the plugin
+does and does not understand in modern WebAssembly (GC, typed function references, new exception
+handling, memory64, multi-memory, stack switching, …), how each gap was measured, and the planned
+fix order. In addition:
 
 - Currently, inlining functions (via marking them "In Line") is not supported
 and will confuse the decompiler. This is because the inlined function's
