@@ -1,5 +1,9 @@
 Module to load WebAssembly files into Ghidra, supporting disassembly and decompilation.
 
+> **Fork note:** this fork (`merged-upstream-prs`) merges the outstanding upstream pull requests and
+> the useful work found in downstream forks, and is verified to build and run against Ghidra 12.1.x.
+> See [MERGE_NOTES.md](MERGE_NOTES.md) for the list of merged changes and verification results.
+
 ## Features
 
 - Support for all WebAssembly 1.0 opcodes
