@@ -15,7 +15,7 @@ scripts on `main` regenerate every result table:
 | `robustness-RESULTS.md` | `test-scripts/robustness-sweep.ps1` |
 
 The authoritative machine-checked expectations stay on `main` as data, not prose:
-`test-scripts/expected-results.json` (136-probe gate) and `test-scripts/spectest-expected.json`
+`test-scripts/expected-results.json` (169-probe gate) and `test-scripts/spectest-expected.json`
 (spec-suite gate).
 ## Research reports (`reports/research/`)
 
