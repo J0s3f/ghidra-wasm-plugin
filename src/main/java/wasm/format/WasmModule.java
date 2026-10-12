@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import ghidra.app.util.bin.BinaryReader;
+import ghidra.util.Msg;
 import wasm.format.WasmEnums.WasmExternalKind;
 import wasm.format.sections.WasmCodeSection;
 import wasm.format.sections.WasmCustomSection;
@@ -60,18 +61,77 @@ public class WasmModule {
 
 	public WasmModule(BinaryReader reader) throws IOException {
 		header = new WasmHeader(reader);
+		int lastRank = -1;
+		WasmSectionId lastOrdered = null;
 		while (reader.getPointerIndex() < reader.length()) {
 			WasmSection section = WasmSection.createSection(reader);
-			if (section == null)
+			if (section == null) {
+				/*
+				 * Only a known-but-unmodelled section id returns null (today: SEC_DATACOUNT, id 12 -
+				 * the loader does not need its content, so skipping it is deliberate). An id outside
+				 * the enum throws in WasmSection.createSection() instead of being skipped silently.
+				 */
 				continue;
+			}
 			sections.add(section);
 
 			/* Except for custom sections, all other sections may appear at most once. */
 			if (section.getId() == WasmSectionId.SEC_CUSTOM) {
 				customSections.add((WasmCustomSection) section);
-			} else {
-				sectionMap.put(section.getId(), section);
+				continue;
 			}
+
+			/*
+			 * B4 (REPORT-HARD.md / REPORT-H1.md): a duplicate non-custom section is malformed.
+			 * sectionMap.put() used to overwrite the earlier section silently, hiding the
+			 * duplication (two type sections, two code sections, ...).
+			 */
+			if (sectionMap.putIfAbsent(section.getId(), section) != null) {
+				throw new IOException("Duplicate section " + section.getId() + " (id "
+						+ section.getId().ordinal() + ") at file offset 0x"
+						+ Long.toHexString(section.getSectionOffset())
+						+ ": a non-custom section may appear at most once");
+			}
+
+			/*
+			 * The core spec requires the non-custom sections in a canonical order, but this loader
+			 * is deliberately lenient for real-world modules: an odd order (and an omitted section)
+			 * is tolerated with a warning at most, never a rejection (see REPORT-H1.md).
+			 */
+			int rank = canonicalRank(section.getId());
+			if (rank < lastRank) {
+				Msg.warn(WasmModule.class, "Section " + section.getId() + " (id "
+						+ section.getId().ordinal() + ") at file offset 0x"
+						+ Long.toHexString(section.getSectionOffset())
+						+ " is out of the canonical section order (it follows " + lastOrdered
+						+ "); tolerated by this loader (see REPORT-H1.md)");
+			}
+			lastRank = Math.max(lastRank, rank);
+			lastOrdered = section.getId();
+		}
+	}
+
+	/**
+	 * Canonical file position of a non-custom section (core spec order; the exception-handling tag
+	 * section sits between the memory and global sections). Used only to warn about a tolerated
+	 * ordering oddity, never to reject a module.
+	 */
+	private static int canonicalRank(WasmSectionId id) {
+		switch (id) {
+			case SEC_TYPE: return 0;
+			case SEC_IMPORT: return 1;
+			case SEC_FUNCTION: return 2;
+			case SEC_TABLE: return 3;
+			case SEC_LINEARMEMORY: return 4;
+			case SEC_TAG: return 5;
+			case SEC_GLOBAL: return 6;
+			case SEC_EXPORT: return 7;
+			case SEC_START: return 8;
+			case SEC_ELEMENT: return 9;
+			case SEC_DATACOUNT: return 10;
+			case SEC_CODE: return 11;
+			case SEC_DATA: return 12;
+			default: return -1;
 		}
 	}
 
