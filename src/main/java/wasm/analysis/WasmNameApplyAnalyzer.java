@@ -53,10 +53,10 @@ import wasm.format.sections.structures.WasmNameSubsection.WasmNameSubsectionId;
  * <ul>
  * <li>table / memory / element / data names -> a Ghidra label at the corresponding
  * block or segment address,</li>
- * <li>label names (subsection 3) -> a plate comment on the containing function
- * (the plugin's pre-analyzer resolves labels to addresses only in a transient
- * context register, so label index -> address is not exposed after analysis; see
- * REPORT-D.md),</li>
+ * <li>label names (subsection 3) -> a real Ghidra label at the address the label branches
+ * to (the loop's start, otherwise the construct's {@code end}); a label name that cannot
+ * be resolved to an address (unknown function, out-of-range label index, or a function
+ * whose pre-analysis failed) falls back to a plate comment on the containing function,</li>
  * <li>type names (4), field names (10) and tag names (11) -> a comment on the module
  * block, because Ghidra data types for wasm function/struct types are not materialised
  * in the program's data type manager,</li>
@@ -253,10 +253,13 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 	}
 
 	/**
-	 * Label names are an indirect map funcidx -> (labelidx -> name). The plugin resolves
-	 * labels to branch targets only inside the transient analysis context register, so
-	 * the mapping labelidx -> address is not available here; the names are recorded as a
-	 * plate comment on the containing function instead.
+	 * Label names are an indirect map funcidx -> (labelidx -> name), where labelidx is the
+	 * extended-name-section, function-wide index (the order the block/loop/if/try constructs
+	 * appear in the body). The pre-analyzer records the address each label branches to
+	 * ({@link WasmFunctionAnalysis#getLabelTargets()}), so each name becomes a real Ghidra
+	 * label at that target address. A name whose index does not resolve (unknown function,
+	 * label index past the last construct, or a function the pre-analyzer could not analyse)
+	 * is kept as a plate comment instead, so nothing is silently dropped.
 	 */
 	private void applyLabelNames(Program program, WasmAnalysis state, WasmNameSection nameSection,
 			TaskMonitor monitor) {
@@ -277,16 +280,52 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 			if (funcidx < 0 || funcidx >= functions.size()) {
 				continue;
 			}
-			Function function = program.getFunctionManager()
-					.getFunctionAt(functions.get((int) funcidx).getStartAddr());
+			Address functionStart = functions.get((int) funcidx).getStartAddr();
+			Function function = program.getFunctionManager().getFunctionAt(functionStart);
 			if (function == null) {
 				continue;
 			}
-			StringBuilder sb = new StringBuilder("WebAssembly label names:");
+
+			Map<Integer, Address> targets = labelTargets(state, functionStart);
+			StringBuilder unresolved = new StringBuilder();
 			for (Map.Entry<Long, String> label : new TreeMap<>(entry.getValue()).entrySet()) {
-				sb.append(" [").append(label.getKey()).append("]=").append(label.getValue());
+				long labelidx = label.getKey();
+				Address target = (labelidx >= 0 && labelidx <= Integer.MAX_VALUE)
+						? targets.get((int) labelidx)
+						: null;
+				if (target != null) {
+					applyLabel(program, target, label.getValue(),
+						"label_" + funcidx + "_" + labelidx);
+				}
+				else {
+					if (unresolved.length() > 0) {
+						unresolved.append(' ');
+					}
+					unresolved.append('[').append(labelidx).append("]=").append(label.getValue());
+				}
 			}
-			appendPlateComment(program, function.getEntryPoint(), sb.toString());
+			if (unresolved.length() > 0) {
+				appendPlateComment(program, function.getEntryPoint(),
+					"WebAssembly label names (no address): " + unresolved);
+			}
+		}
+	}
+
+	/**
+	 * The label target addresses the pre-analyzer recorded for one function, or an empty map
+	 * when the function could not be analysed (malformed body). Never throws.
+	 */
+	private Map<Integer, Address> labelTargets(WasmAnalysis state, Address functionStart) {
+		try {
+			WasmFunctionAnalysis funcAnalysis = state.getFunctionAnalysis(functionStart);
+			if (funcAnalysis == null) {
+				return java.util.Collections.emptyMap();
+			}
+			return funcAnalysis.getLabelTargets();
+		}
+		catch (Exception e) {
+			Msg.warn(this, TAG + "could not resolve label targets for " + functionStart, e);
+			return java.util.Collections.emptyMap();
 		}
 	}
 
