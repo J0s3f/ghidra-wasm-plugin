@@ -117,7 +117,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **Emulation coverage** - 9 recorded spec-`assert_*` gaps (out-of-bounds traps, `call_indirect` type mismatch, wrong trap kind, `memory.grow/size` CALLOTHER in the emulator's pcode, div/rem traps, float-to-int trunc traps, `br_table large` value, mutable-global init, NaN payload) | recorded in `REPORT-H3`; emulator coverage, not decoder gaps |
 | **Memory index >= 8 collides with `CODE_BASE`** - memory 8's block cannot be created (the loader logs it); `MEMORY_STRIDE` places memory *n* at `n << 32`, which runs into the code space | open, pre-existing design limitation (found while fixing B3; a memory index >= 9 needed >= 10 memories, which is how it surfaced) |
 | **`WasmPreAnalyzer.guessCStackGlobalForFunction`** still uses an unbounded `MemoryByteProvider` (the B3 fix bounded the `WasmAnalysis` one only) | open, low risk (left as-is to avoid perturbing the C-stack guess on existing modules) |
-| **B9 policy** - 219 spec-negative modules are accepted as bare bytes (lenient loader) | needs a product decision |
+| **B9** - spec-negative modules accepted as bare bytes (lenient loader) | **resolved (policy: keep accepting, warn)**: `WasmLoader.warnIfNothingLoaded` logs "Module accepted but nothing was decoded" with the declared/loaded counts whenever a module that declares content yields no functions, memories or tables; probe `J06_func_section_without_code` pins it |
 | Unassigned opcode spaces (`0xE7+`, unassigned `0xFB >= 0x80`, unassigned `0xFC`) | deliberately rendered as visible `unimplemented`, with the operand lengths mirrored in the pre-analyzer; genuinely unknown lengths fail safe |
 
 ### 2.4 Observed baseline (reproducible with the commands above)
@@ -385,10 +385,11 @@ workstream - see §6.2 - and the fixes were re-verified by the integrator):
 3. **B2/J01/M03/NS12 - absurd memory minimum (high). → FIXED.** Limits validated (`initial <= maximum`,
    32-bit <= 65536 pages, 64-bit <= 2^48) and blocks capped at 256 MiB; ~10 s bounded rejection instead
    of a 2 GiB block and an analysis wedge.
-4. **B4 (medium) - out-of-range section ids and duplicate sections dropped invisibly: OPEN.** The exact
-   patch is documented in `REPORT-HARD.md` but needs `WasmSection.java`/`WasmModule.java`.
+4. **B4 (medium) - out-of-range section ids and duplicate sections dropped invisibly: FIXED** (h1:
+   `WasmSection`/`WasmModule` reject them with a diagnostic - see `REPORT-H1.md`).
    **B5 fixed** (table limits validated; oversized tables skipped with a diagnostic);
-   **B6** (219 modules accepted as bare bytes) is by design in a lenient loader.
+   **B6/B9** (219 modules accepted as bare bytes) is by design in a lenient loader - since B9 it
+   warns explicitly ("Module accepted but nothing was decoded"), see 2.3.
 5. **B7 (low) - rejections are now deliberate loader diagnostics** for the paths that were fixed
    (section markup, locals, memory/table limits) instead of "no loader matched" / "no memory blocks".
 

@@ -94,5 +94,86 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
 4. Add the WABT/Binaryen decode-oracle comparison for the real corpus to the suite that already exists
    (`corpus-sweep.ps1`), so "our decode matches a second engine on real modules" becomes a checked
    property. *(S-M)*
-5. Then the quality work: stack-as-aggregate + SROA (`WasmStackVariableAnalyzer`), and - if that
-   leaves a struct-recovery gap worth closing - the intra-procedural Retypd port. *(M/L)*
+5. **Stack-as-aggregate + SROA** (`WasmStackVariableAnalyzer`) *(M)* - the highest-leverage step.
+   Retypd's own model says the signal that drives struct recovery is *offset-width access* labels
+   (`X.σN@k` = "N bits accessed at offset k"), which is exactly what SROA materialises for
+   Ghidra's decompiler. Do this first.
+
+   **Retypd port - decision: measure before porting** (assessment written after reading the
+   Retypd pipeline at
+   <https://decompilation.wiki/fundamentals/type-recovery/lattice-constraint-simp/>). The page
+   documents the whole machinery: capability labels with variance (`load`/`σN@k` covariant,
+   `store`/`in` contravariant), constraint generation from six IR pattern categories, a quotient
+   graph with unification (including the `load`/`store` compatibility pairing), Add/Sub fixpoint
+   propagation, initial sketches, and a pushdown system with Caucal saturation (O(n^3)) plus SCC
+   breaking to expose recursive types. Three reasons not to port it wholesale:
+   * Its value proposition is *polymorphic type inference from untyped machine code* (register
+     moves, pointer arithmetic, unknown constants). WebAssembly is typed at the instruction level
+     and our loader already emits real Ghidra datatypes (GC structs/arrays, DWARF, signatures,
+     named labels), so most of Retypd's input signal is already available to Ghidra's own
+     decompiler, which performs lattice-style type propagation internally.
+   * The paper's 9.24 % -> 85 % struct-recovery number compares *NotDec* (a weak LLVM-IR-based
+     decompiler) with and without Retypd. It does not transfer to Ghidra's decompiler; treating it
+     as our target would be apples-to-oranges.
+   * The engine is a Python package (GPL-3.0, so copyable, but a Python runtime/venv inside a Java
+     Ghidra extension is a heavy deployment dependency), and a full Java reimplementation of the
+     solver is L+ with permanent maintenance cost.
+
+   **Decision procedure (to run when item 5 comes up):** after SROA lands, measure on the real
+   corpus (the 437-function module plus the 13 corpus modules) how many functions end up with
+   struct-typed parameters/locals and how many raw-offset accesses (`field_0x…`/`DAT_…`) remain.
+   If the remaining gap is large, port only the *targeted intra-procedural subset* - constraint
+   generation plus unification over memory accesses with widths/offsets (the `σN@k` part) as an
+   **optional** Java analyzer that writes recovered structs back - and skip the
+   pushdown-system/recursive-type machinery (only needed for self-referential structures). If the
+   gap is small, record the measurement and drop the port. Keeping the existing
+   `retypd-ghidra-plugin` as a documented optional third-party add-on (not vendored) remains an
+   option.
+
+## 6. External input: the Decompilation Wiki (read for the type-recovery decision)
+
+Pages read: type-recovery/overview, type-recovery/var-detection, lattice-constraint-simp,
+cfg-recovery/lifting, cfg-recovery/jump-resolving, structuring/overview,
+structuring/schema-based/switch-structuring, structuring/gotoless, evaluation, applied-research/symbol-recovery,
+applications/program-reconstruction (<https://decompilation.wiki/>). What it changes for us:
+
+**A. A concrete recipe for the SROA workstream (adopt).** The variable-detection page describes
+DIVINE's *Aggregate Structure Identification*: infer the frame size from the stack-pointer
+adjustment, then split the region into **atoms** from the observed accesses - fixed-offset accesses
+from a pointer (`[eax]`, `[eax+4]`, `[eax+16]`) are structure fields, and strided/affine patterns
+become arrays - then iterate with value-set analysis. The same page notes **Ghidra performs VSA
+intraprocedurally**, so the leverage is in feeding it a proper memory model, not in replacing its
+typing. This is exactly what stack-as-aggregate + SROA does: size the aggregate from the frame
+layout, then materialise one variable/field per observed (width, offset) access so Ghidra's own VSA
+can propagate types through them. The SROA workstream should follow this recipe and evidence each
+step.
+
+**B. Two new feature candidates (recorded, not committed).**
+1. *Toolchain/runtime symbol recognition*: wasm modules come from ~3 toolchains; recognizing
+   wasm-bindgen (`__wbindgen_*`), Emscripten runtime/`dynCall_*`/`emscripten_*`, musl
+   (`malloc`/`free`/`memcpy`...), Rust alloc/panic shims by name patterns plus structural
+   fingerprints, and applying real names/signatures, is high-value for wasm RE. (The wiki's
+   symbol-recovery page is ML-focused, which we deliberately do not adopt; the goal is validated,
+   the method is classic fingerprinting.) *Effort M.*
+2. *Array recovery from strided/affine access patterns in linear memory*: group computed addresses
+   by base/stride (`4[8,22]`-style) to suggest arrays in linear memory (Emscripten/Rust heap
+   buffers), using the wiki's strided-interval and affine-relation ideas. *Effort M.*
+
+**C. Evaluation: add a quality metric, not just success metrics (adopt).** Our harness measures
+decode/decompile *success* (functions decompiled, undefined bytes, instructions). The evaluation
+page's variable-typing methodology is ground truth from **DWARF** compared against recovered
+variable locations/types; we already ship DWARF line info and have debug-info-bearing corpus
+modules, so a DWARF-based type/variable-recovery metric is cheap (S-M) and is exactly the
+measurement needed for the Retypd decision in section 5. Also noted: source-relative structuring
+metrics (gotos, boolean expressions, calls, graph edit distance - SAILR) and full-function
+recompilability; a cheap proxy for us is counting gotos/labels in the decompiled C. Long-term
+option: emulation-based differential correctness (we have the spec-assertion harness from h3).
+
+**D. Confirmations (no action).** Lifting: P-Code is one of the listed ILs; our SLEIGH language +
+pre-analyzer is the lifter. Jump resolving: wasm's indirect calls are typed and resolvable from
+element segments, which the loader already does. Switch structuring: `br_table` makes the
+compiler's switch lowering explicit, so jump-table recovery is unnecessary - but materialising the
+case values for the decompiler is what makes Ghidra emit a `switch`, which the pre-analyzer already
+does (bounded for huge tables, see SF03). Type recovery: wasm supplies the "type sinks" (explicit
+signatures) for free, and lattice-based push-down typing is what Ghidra already performs internally
+- further support for "SROA first, Retypd only if measured".
