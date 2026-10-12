@@ -5,7 +5,7 @@ Ghidra 12.1.4 private install `C:\Users\micro\AppData\Local\Temp\opencode\ghidra
 
 Headline: **the type section parses GC records (rec/sub/struct/array + all storage and heap
 types) and every `0xFB` GC instruction decodes with correct byte lengths and pre-analyzer stack
-effects.** All 13 new probes (`E01…E20`) import with `undefined_bytes = 0` and every function
+effects.** All 14 new probes (`E01…E20`) import with `undefined_bytes = 0` and every function
 decompiles. Baseline `08` now parses as a struct (was a function type), `09` goes
 `undefined_bytes 1 → 0` with no spurious `unreachable`, and `20`'s import error moves from a
 misaligned *"opcode 0"* to a clean *"opcode 251"* — the remaining blocker is a one-line hook in
@@ -151,7 +151,8 @@ ram:80000027  end
 `func_type_0_0`). For `E01` the 9 fields are visible, e.g. `form`, `field_count`,
 `field_5_i8_mut`, `field_7_refnull_type0` (2 bytes), `field_8_ref_type0_mut` (2 bytes); for `E02`
 `element_i32_mut`, `element_i8_mut`, `element_funcref`, `element_refnull_type0_mut`; for `E03`
-`rec_group` + `subtype` + nested `gc_func_type`.
+`rec_group` + `subtype` + nested `gc_func_type`; for `E04` `field_0_exnref … field_11_noexn`,
+`field_12_refnull_func`, `field_13_ref_extern`, `field_14_refnull_any`.
 
 ### 3.2 All other baseline probes
 
@@ -165,6 +166,7 @@ Unchanged except incidental `12` (see §2): `01`–`07`, `10`, `11`, `13`–`18`
 | `E01_gc_struct_type` | struct with i32/i64/f32/f64/v128/i8/i16 + `(ref null 0)` + `(ref 0)` | 1 | 2 | 0 | 1-0 |
 | `E02_gc_array_type` | arrays of i32, i8, funcref, `(ref null 0)` | 1 | 2 | 0 | 1-0 |
 | `E03_gc_rec_subtype` | rec group (struct + sub final struct + func), bare `0x50 sub` func, `sub final 0` struct | 2 | 5 | 0 | 2-0 |
+| `E04_gc_abstract_heaptypes` | every abstract heap-type shorthand `0x69 exnref … 0x74 noexn`, directly and inside `(ref null ht)` / `(ref ht)` | 1 | 2 | 0 | 1-0 |
 | `E10_gc_struct_new_get_set` | `struct.new`, `struct.new_default`, `struct.get`, `struct.set` | 1 | 13 | 0 | 1-0 |
 | `E18_gc_struct_get_su` | `struct.get_s`, `struct.get_u` on a packed i8 field | 1 | 11 | 0 | 1-0 |
 | `E11_gc_array_new_get_len` | `array.new`, `array.new_default`, `array.new_fixed`, `array.get`, `array.len` | 1 | 18 | 0 | 1-0 |

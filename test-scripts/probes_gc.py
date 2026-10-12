@@ -79,11 +79,36 @@ write("E03_gc_rec_subtype.wasm", module(
     code_section([i32_const(1) + END, END]),
 ))
 
+# E04: abstract heap-type shorthands 0x69-0x74, both directly as a storage type and inside
+#      (ref null ht) / (ref ht). Empty function.
+write("E04_gc_abstract_heaptypes.wasm", module(
+    type_section(
+        b"\x5F" + vec([
+            bytes([HT_EXN]) + b"\x00",        # exnref (0x69)
+            bytes([HT_ARRAY]) + b"\x00",      # arrayref (0x6a)
+            bytes([HT_STRUCT]) + b"\x01",     # structref (0x6b)
+            bytes([HT_I31]) + b"\x00",        # i31ref (0x6c)
+            bytes([HT_EQ]) + b"\x00",         # eqref (0x6d)
+            bytes([HT_ANY]) + b"\x01",        # anyref (0x6e)
+            bytes([0x6F]) + b"\x00",          # externref (0x6f)
+            bytes([0x70]) + b"\x00",          # funcref (0x70)
+            bytes([0x71]) + b"\x00",          # none (0x71)
+            bytes([0x72]) + b"\x00",          # noextern (0x72)
+            bytes([0x73]) + b"\x00",          # nofunc (0x73)
+            bytes([0x74]) + b"\x00",          # noexn (0x74)
+            ref_null(HT_FUNC) + b"\x00",      # (ref null func)
+            ref_(HT_EXTERN) + b"\x01",        # (ref extern)
+            ref_null(HT_ANY) + b"\x00",       # (ref null any)
+        ]),
+        functype([], [])),
+    func_section([1]),
+    export_section([("f", 0, 0)]),
+    code_section([END]),
+))
+
 # =============================================================================================
 # struct instructions
 # =============================================================================================
-
-# E10: struct.new / struct.new_default / struct.get / struct.set
 write("E10_gc_struct_new_get_set.wasm", module(
     type_section(struct_type([(I32, True)]), functype([], [I32])),
     func_section([1]),
