@@ -42,4 +42,5 @@ tasks.named('buildExtension') {
 	exclude 'MERGE_NOTES.md'
 	exclude 'MODERN_WASM_GAPS.md'
 	exclude 'RELEASE_NOTES.md'
+	exclude 'REPORT-*.md'
 }
