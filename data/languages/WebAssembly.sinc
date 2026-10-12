@@ -310,6 +310,15 @@ macro doBranch(br_target) {
 	doBranch(br_target);
 }
 
+# @@BRTABLE_CAP: past the per-br_table cap on modelled branches, the remaining labels are
+# consumed by this byte-only directive. It keeps the byte stream aligned (no undefined bytes)
+# but contributes no pcode and no basic block, so a pathological br_table (the spec suite's
+# br_table.wast `large`, ~16k labels) cannot explode the decompiler's control-flow graph.
+# The pre-analyzer emits it from setBrTableCaseIgnored(); DIRECTIVE_CASE_IGNORED must stay in
+# sync with ContextRegister.DIRECTIVE_CASE_IGNORED in wasm/analysis/WasmFunctionAnalysis.java.
+:.case_ignored is ULeb128; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_CASE_IGNORED) {
+}
+
 :.default br_target is ULeb128; br_target; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_DEFAULT) {
 	doBranch(br_target);
 }

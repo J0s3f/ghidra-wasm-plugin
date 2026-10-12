@@ -41,6 +41,16 @@ import wasm.format.sections.structures.WasmFuncType;
  */
 public class WasmFunctionAnalysis {
 
+	/**
+	 * Upper bound on the number of br_table labels the pre-analyzer materialises as branch
+	 * instructions in one br_table. Each case is a separate basic block ending in a conditional
+	 * branch, and a pathological br_table (the spec suite's br_table.wast `large` function has
+	 * ~16k labels) makes the native decompiler process die. Past the cap the labels are still
+	 * consumed (by the byte-only `.case_ignored` directive) but contribute no control flow, and a
+	 * warning is logged. See REPORT-SF.md finding 3.
+	 */
+	static final int MAX_BR_TABLE_CASES = 1024;
+
 	private WasmFuncSignature func;
 	/* null in the value stack means Unknown */
 	private List<ValType> valueStack = new ArrayList<>();
@@ -137,23 +147,18 @@ public class WasmFunctionAnalysis {
 		 */
 		public void setOperandSize(Address address, ValType type) {
 			if (type == null) {
-				// might be null if we're in an unreachable area
-				// @@UNIMP: ... or because the function contains an instruction whose
-				// stack effect we could not model. In that case degrade the width guess
-				// to 32-bit rather than leaving the disassembler an inherited value.
-				if (!degradeWidths) {
-					return;
-				}
+				/*
+				 * The width is unknown: either we are in unreachable (polymorphic) code - the
+				 * spec test suite has dedicated `select`-after-<terminator> functions for exactly
+				 * this - or the function contains an instruction whose stack effect we could not
+				 * model. An instruction's *encoding* never depends on the operand width, but the
+				 * `ctx_operand_size`-conditioned constructors (select, local.*, global.*, ...)
+				 * need a defined value, otherwise no constructor matches and the byte is left
+				 * undefined. Default to 32-bit instead of leaving the context unset.
+				 */
 				type = ValType.i32;
 			}
 			setRegister(address, REG_OPERAND_SIZE, type.getSize());
-		}
-
-		// @@UNIMP: set when the owning function contains an unmodelled instruction.
-		private boolean degradeWidths;
-
-		public void setDegradeWidths(boolean value) {
-			degradeWidths = value;
 		}
 
 		/** Mark this try instruction as dispatching to a handler (its branch target). */
@@ -164,6 +169,12 @@ public class WasmFunctionAnalysis {
 		// @@EH begin: new exception handling (try_table / throw_ref). See EH2Ops.java / EH2Ops.sinc.
 		/** Directive type for one try_table catch clause; must match DIRECTIVE_EH_CLAUSE in EH2Ops.sinc. */
 		private static final int DIRECTIVE_EH_CLAUSE = 4;
+
+		/**
+		 * Directive type for a br_table label past the modelled-case cap; must match
+		 * DIRECTIVE_CASE_IGNORED in WebAssembly.slaspec. See {@link #MAX_BR_TABLE_CASES}.
+		 */
+		private static final int DIRECTIVE_CASE_IGNORED = 5;
 
 		/**
 		 * Disassemble this "instruction" as one catch clause of a try_table (catch/catch_ref/
@@ -218,6 +229,17 @@ public class WasmFunctionAnalysis {
 				setRegister(address, REG_DIRECTIVE_TYPE, DIRECTIVE_CASE);
 				setRegister(address, REG_CASE_INDEX, index);
 			}
+		}
+
+		/**
+		 * Disassemble this br_table label as a byte-only directive: it consumes the label's
+		 * bytes (keeping the stream aligned) but emits no branch and no basic block. Used for the
+		 * labels past {@link #MAX_BR_TABLE_CASES} so that one pathological br_table cannot
+		 * explode the decompiler's control-flow graph.
+		 */
+		public void setBrTableCaseIgnored(Address address) {
+			setRegister(address, REG_IS_DIRECTIVE, 1);
+			setRegister(address, REG_DIRECTIVE_TYPE, DIRECTIVE_CASE_IGNORED);
 		}
 	}
 
@@ -694,7 +716,6 @@ public class WasmFunctionAnalysis {
 
 	private void markUnimplemented() {
 		hasUnimplementedOps = true;
-		contextreg.setDegradeWidths(true);
 	}
 
 	/** 0xFB sub-opcode 0x00..0x1e is a (modelled) GC instruction, owned by GCOps. */
@@ -924,9 +945,22 @@ public class WasmFunctionAnalysis {
 			popValue(instAddress, ValType.i32);
 			for (int i = 0; i < count + 1; i++) {
 				Address caseAddress = func.getStartAddr().add(reader.getPointerIndex());
-				contextreg.setBrTableCase(caseAddress, (i < count) ? i : -1);
 				long labelidx = readLeb128(reader);
 
+				if (i >= MAX_BR_TABLE_CASES) {
+					// @@BRTABLE_CAP: bound the control-flow graph. The label bytes are consumed
+					// by a byte-only directive (no branch, no block) so the stream stays aligned,
+					// but we do not model the branch or touch the value stack.
+					if (i == MAX_BR_TABLE_CASES) {
+						Msg.warn(this, "br_table at " + instAddress + " has " + (count + 1)
+								+ " labels; only the first " + MAX_BR_TABLE_CASES
+								+ " are modelled as branches (the rest are decoded without control flow)");
+					}
+					contextreg.setBrTableCaseIgnored(caseAddress);
+					continue;
+				}
+
+				contextreg.setBrTableCase(caseAddress, (i < count) ? i : -1);
 				ControlFrame block = getBlock(caseAddress, labelidx);
 				ValType[] arguments = block.getBranchArguments();
 				ValType[] actualArgs = popValues(caseAddress, arguments);
