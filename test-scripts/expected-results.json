@@ -750,6 +750,62 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "F01_return_call_ref.wasm": {
+      "funcs": 2,
+      "instrs": 8,
+      "undefined_bytes": 1,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "F02_ref_as_non_null.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 1,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "F03_br_on_null.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 1,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "F04_br_on_null_fallthrough.wasm": {
+      "funcs": 1,
+      "instrs": 8,
+      "undefined_bytes": 1,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "F05_br_on_non_null.wasm": {
+      "funcs": 1,
+      "instrs": 8,
+      "undefined_bytes": 1,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "F06_call_ref_through_table.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 1,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "F07_funcref_mixed.wasm": {
+      "funcs": 2,
+      "instrs": 20,
+      "undefined_bytes": 2,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "J03_locals_count_neg.wasm": {
       "funcs": 1,
       "instrs": 1,
@@ -1015,7 +1071,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 126,
+  "probe_count": 133,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
