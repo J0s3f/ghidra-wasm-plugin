@@ -33,6 +33,18 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
      fixture can never enter the baseline again.
    * Note: `wasm-opt` must **not** be the rejection oracle - in release 133 it aborts
      (`0xC0000409`) instead of failing cleanly. `wasm-dis` is the reliable one.
+   * Fix recipe (verified against the sources): the shared assembler
+     `test-scripts/wasm_probe_lib.py:module()` concatenates its arguments without ordering, so every
+     call site that passes `table_section`/`memory_section` before `func_section`, or
+     `global`/`export` before `func`, emits a non-conformant module. ~23 call sites are affected
+     (`gen_feature_probes.py` x6, `probes_types.py` x15, `probes_analysis.py`, `probes_multivalue.py`).
+     Canonicalise inside `module()` with a rank map (custom sections first; **`datacount` (12) before
+     `code` (10)** - the one id-order exception) plus a `sort=False` opt-out for the modules that are
+     *deliberately* misordered (`D04_sections_wrong_order.wasm` in `make_malformed_corpus.py`, and any
+     same-purpose case in the negative/section probe sets). The loader is order-independent, so the
+     regenerated baseline should be byte-identical - any metric that moves is a finding in itself.
+     Also fix the 8 export entries in `probes_multivalue.py` (`("f", 1, 1)` -> `("f", 0, 1)`; kind 1 is
+     a table index). Re-run the scan over the *merged* tree, since per-agent probe files add new sites.
 2. **Metric semantics**: our `instrs` metric counts pre-analyzer marker instructions
    (`.locals`, `.local`, `.case`, `.default`) - the reference module is **61,658 counted = 60,556 real
    wasm instructions + 1,102 markers**. Either expose `real_instrs` in `WasmFeatureReport.java` or
