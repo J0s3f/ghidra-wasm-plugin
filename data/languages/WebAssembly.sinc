@@ -563,28 +563,66 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 
 
 ## Memory Instructions
-:memory.size memidx is opc=0x3f; memidx; sp0_32; ctx_is_directive=0 {
+## @@M64: two variants per instruction, selected by ctx_mem64 (see WebAssembly.slaspec and the
+## @@M64 block in WasmFunctionAnalysis.java): the plain form is the historical 32-bit-index
+## form (used by every 32-bit memory, byte for byte unchanged), the " (i64 index)" form is a
+## 64-bit-index (memory64) form whose address/offset operands are i64. The operands are typed
+## exactly as the core spec's validation rules require (load/store [at]->[t], memory.size
+## []->[at], memory.grow [at]->[at], memory.fill [at i32 at], memory.init [at i32 i32],
+## memory.copy x1 x2 [at1 at2 min(at1,at2)]).
+:memory.size memidx is opc=0x3f; memidx; ctx_mem64=0; sp0_32; ctx_is_directive=0 {
 	sp0_32 = memory_size(memidx:4);
 }
 
-:memory.grow memidx is opc=0x40; memidx; sp1_32; ctx_is_directive=0 {
+:memory.size memidx " (i64 index)" is opc=0x3f; memidx; ctx_mem64=3; sp0_64; ctx_is_directive=0 {
+	sp0_64 = memory_size(memidx:4);
+}
+
+:memory.grow memidx is opc=0x40; memidx; ctx_mem64=0; sp1_32; ctx_is_directive=0 {
 	sp1_32 = memory_grow(memidx:4, sp1_32);
 }
 
-:memory.init dataidx memidx is opc=0xfc; opc2_8; dataidx; memidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+:memory.grow memidx " (i64 index)" is opc=0x40; memidx; ctx_mem64=3; sp1_64; ctx_is_directive=0 {
+	sp1_64 = memory_grow(memidx:4, sp1_64);
+}
+
+:memory.init dataidx memidx is opc=0xfc; opc2_8; dataidx; memidx; ctx_mem64=0; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
 	memory_init(dataidx, memidx:4, sp1_32, sp2_32, sp3_32);
+}
+
+## @@M64: [at i32 i32] - only the destination offset is i64.
+:memory.init dataidx memidx " (i64 index)" is opc=0xfc; opc2_8; dataidx; memidx; ctx_mem64=3; sp1_32; sp2_32; sp3_64; ctx_is_directive=0 {
+	memory_init(dataidx, memidx:4, sp1_32, sp2_32, sp3_64);
 }
 
 :data.drop dataidx is opc=0xfc; opc2_9; dataidx; ctx_is_directive=0 {
 	data_drop(dataidx);
 }
 
-:memory.copy memidx memidx2 is opc=0xfc; opc2_10; memidx; memidx2; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+:memory.copy memidx memidx2 is opc=0xfc; opc2_10; memidx; memidx2; ctx_mem64=0; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
 	memory_copy(memidx:4, memidx2:4, sp1_32, sp2_32, sp3_32);
 }
 
-:memory.fill memidx is opc=0xfc; opc2_11; memidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+## @@M64: memory.copy x1 x2: [at1(dst) at2(src) min(at1,at2)(len)], one variant per width pair.
+:memory.copy memidx memidx2 " (i64 dst)" is opc=0xfc; opc2_10; memidx; memidx2; ctx_mem64=1; sp1_32; sp2_32; sp3_64; ctx_is_directive=0 {
+	memory_copy(memidx:4, memidx2:4, sp1_32, sp2_32, sp3_64);
+}
+
+:memory.copy memidx memidx2 " (i64 src)" is opc=0xfc; opc2_10; memidx; memidx2; ctx_mem64=2; sp1_32; sp2_64; sp3_32; ctx_is_directive=0 {
+	memory_copy(memidx:4, memidx2:4, sp1_32, sp2_64, sp3_32);
+}
+
+:memory.copy memidx memidx2 " (i64 index)" is opc=0xfc; opc2_10; memidx; memidx2; ctx_mem64=3; sp1_64; sp2_64; sp3_64; ctx_is_directive=0 {
+	memory_copy(memidx:4, memidx2:4, sp1_64, sp2_64, sp3_64);
+}
+
+:memory.fill memidx is opc=0xfc; opc2_11; memidx; ctx_mem64=0; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
 	memory_fill(memidx:4, sp1_32, sp2_32, sp3_32);
+}
+
+## @@M64: [at(dst) i32(value) at(len)].
+:memory.fill memidx " (i64 index)" is opc=0xfc; opc2_11; memidx; ctx_mem64=3; sp1_64; sp2_32; sp3_64; ctx_is_directive=0 {
+	memory_fill(memidx:4, sp1_64, sp2_32, sp3_64);
 }
 
 ## Numeric Instructions: const

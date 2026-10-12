@@ -89,6 +89,15 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 * data/languages/WebAssembly.sinc.
 	 */
 	public final static long MEMORY_STRIDE = 0x10000000L;
+	/*
+	 * @@M64: `ram` is a 32-bit address space (see WebAssembly.ldefs), so 0xffffffff is the
+	 * highest address any block or data segment can be mapped to. A 64-bit (memory64)
+	 * memory whose declared size does not fit, or a data segment at an offset beyond
+	 * 4 GiB, is clamped to the end of the space - and logged - instead of overflowing.
+	 */
+	public final static long RAM_MAX_ADDRESS = 0xffffffffL;
+	/* The size of one WebAssembly linear-memory page. */
+	public final static long MEMORY_PAGE_SIZE = 65536L;
 	/* Size of each register */
 	public final static int REG_SIZE = 16;
 
@@ -146,9 +155,22 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 * <p>Memory 0 lives at ram offset 0 (unchanged); memory N &gt;= 1 lives at
 	 * {@code N * MEMORY_STRIDE} (see {@link #MEMORY_STRIDE}), matching the address the
 	 * SLEIGH memarg decoders compute for a memarg that carries a memory index.
+	 *
+	 * <p>@@M64: a 64-bit (memory64) memory may address up to 2^64, which the 32-bit
+	 * {@code ram} space cannot represent. Anything that does not fit is clamped to the
+	 * top of the space and logged rather than overflowing into a wrong address.
 	 */
 	public static Address getMemoryAddress(AddressFactory addressFactory, int memidx, long offset) {
-		return addressFactory.getAddressSpace("ram").getAddress(memidx * MEMORY_STRIDE + offset);
+		long base = ((long) memidx) * MEMORY_STRIDE;
+		long address = base + offset;
+		if (memidx < 0 || offset < 0 || base < 0 || address < 0 || address > RAM_MAX_ADDRESS) {
+			Msg.warn(WasmLoader.class, "Address memidx=" + memidx + " offset=0x" + Long.toHexString(offset)
+					+ " does not fit the 32-bit `ram` address space; clamping to 0x"
+					+ Long.toHexString(RAM_MAX_ADDRESS)
+					+ " (memory64 addresses/data above 4 GiB are not modelled; see REPORT-N.md)");
+			address = RAM_MAX_ADDRESS;
+		}
+		return addressFactory.getAddressSpace("ram").getAddress(address);
 	}
 
 	public static Address getGlobalAddress(AddressFactory addressFactory, int globalidx) {
@@ -331,7 +353,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		}
 	}
 
-	private static void createMemoryBlock(Program program, int memidx, long length, TaskMonitor monitor) {
+	private static void createMemoryBlock(Program program, int memidx, long length, boolean is64Bit, TaskMonitor monitor) {
 		if (length == 0) {
 			return;
 		}
@@ -355,9 +377,32 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			block.setWrite(false);
 			block.setExecute(false);
 			block.setSourceName("Wasm Memory");
+			if (is64Bit) {
+				/*
+				 * @@M64: make the (lossy) representation visible in the listing. The block
+				 * is a 32-bit `ram` region, but the module's memory is 64-bit-addressed;
+				 * only effective addresses below 4 GiB are modelled exactly.
+				 */
+				block.setComment("64-bit (memory64) linear memory: the index type is i64, but the block is "
+						+ "mapped into the 32-bit `ram` space, so only addresses below 4 GiB are represented "
+						+ "(accesses above that wrap; see REPORT-N.md)");
+			}
 		} catch (Exception e) {
 			Msg.error(WasmLoader.class, "Failed to create memory block " + memidx + " at " + dataStart, e);
 		}
+	}
+
+	/**
+	 * @@M64: the byte size of a memory's declared initial size (pages), with saturation.
+	 * A 64-bit memory can declare a u64 page count; anything that does not fit - or whose
+	 * byte size would overflow - becomes {@link Long#MAX_VALUE} so the caller's clamp can
+	 * never be defeated by an integer overflow.
+	 */
+	private static long memoryByteSize(long pages) {
+		if (pages < 0 || pages > (Long.MAX_VALUE / MEMORY_PAGE_SIZE)) {
+			return Long.MAX_VALUE;
+		}
+		return pages * MEMORY_PAGE_SIZE;
 	}
 
 	private static void createGlobalBlock(Program program, DataType dataType, byte[] initBytes, int globalidx, int mutability, TaskMonitor monitor) {
@@ -555,9 +600,27 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			 * @@MM: memory 0 keeps its historical size clamp (CODE_BASE, 2 GiB); memories
 			 * >= 1 are clamped to MEMORY_STRIDE so that one oversized memory cannot run
 			 * into the next memory's region (see getMemoryAddress).
+			 *
+			 * @@M64: the size of a 64-bit memory is a u64, so it is computed with
+			 * saturation and then clamped (and logged) like any other memory. `ram` is a
+			 * 32-bit space, so a memory larger than its clamp is only partly represented.
 			 */
 			long clamp = (memidx == 0) ? CODE_BASE : MEMORY_STRIDE;
-			createMemoryBlock(program, memidx, Math.min(mem.getInitial() * 65536L, clamp), monitor);
+			long declared = memoryByteSize(mem.getInitial());
+			long length = Math.min(declared, clamp);
+			if (length != declared) {
+				Msg.warn(WasmLoader.class, "Memory " + memidx + (mem.is64Bit() ? " (i64 index)" : "")
+						+ " declares " + (declared == Long.MAX_VALUE ? "an unrepresentably large" : "" + declared)
+						+ " byte(s) but is mapped to " + length + " byte(s) (32-bit `ram` space / "
+						+ "MEMORY_STRIDE limit); accesses beyond the mapped size are not modelled "
+						+ "(see REPORT-N.md)");
+			} else if (mem.is64Bit()) {
+				Msg.info(WasmLoader.class, "Memory " + memidx + " has a 64-bit (i64) index type; its "
+						+ length + " byte(s) are mapped into the 32-bit `ram` space at 0x"
+						+ Long.toHexString(((long) memidx) * MEMORY_STRIDE)
+						+ " (addresses/offsets >= 4 GiB wrap; see REPORT-N.md)");
+			}
+			createMemoryBlock(program, memidx, length, mem.is64Bit(), monitor);
 		}
 	}
 

@@ -32,7 +32,11 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.ProgramContext;
 import ghidra.util.Msg;
 import wasm.format.WasmEnums.ValType;
+import wasm.format.WasmEnums.WasmExternalKind;
+import wasm.format.WasmModule;
 import wasm.format.sections.structures.WasmFuncType;
+import wasm.format.sections.structures.WasmImportEntry;
+import wasm.format.sections.structures.WasmResizableLimits;
 
 /**
  * This preanalysis pass is partially patterned after the validation algorithm
@@ -86,6 +90,8 @@ public class WasmFunctionAnalysis {
 		private static final RegisterDefinition REG_CASE_INDEX = new RegisterDefinition(32, 63);
 		private static final RegisterDefinition REG_BR_TARGET = new RegisterDefinition(64, 95);
 		private static final RegisterDefinition REG_SP = new RegisterDefinition(96, 127);
+		/* @@M64: memory index / address-operand width code, see setMemoryWidths(). */
+		private static final RegisterDefinition REG_MEM64 = new RegisterDefinition(14, 15);
 
 		private static final int DIRECTIVE_CASE = 0;
 		private static final int DIRECTIVE_DEFAULT = 1;
@@ -154,6 +160,17 @@ public class WasmFunctionAnalysis {
 
 		public void setDegradeWidths(boolean value) {
 			degradeWidths = value;
+		}
+
+		/**
+		 * @@M64: record the width code of the memory instruction's address operands (see the
+		 * MEM_CTX_* constants). 0 is the default ("every address operand is 32-bit") and is
+		 * never written, so 32-bit memories keep the context untouched byte for byte.
+		 */
+		public void setMemoryWidths(Address address, int code) {
+			if (code != 0) {
+				setRegister(address, REG_MEM64, code);
+			}
 		}
 
 		/** Mark this try instruction as dispatching to a handler (its branch target). */
@@ -497,26 +514,92 @@ public class WasmFunctionAnalysis {
 	 * memory index follows before the offset. Modules that never set the flag (every
 	 * single-memory module, i.e. all previously supported input) read exactly two LEBs,
 	 * unchanged.
+	 *
+	 * @return the memory index the memarg addresses (0 when the memarg has no flags)
 	 */
-	private static void readMemarg(BinaryReader reader) throws IOException {
+	private static long readMemarg(BinaryReader reader) throws IOException {
 		long flags = readLeb128(reader); /* align / flags */
+		long memidx = 0;
 		if (flags >= 0x40 && flags < 0x80) {
-			readLeb128(reader); /* memidx */
+			memidx = readLeb128(reader); /* memidx */
 		}
 		readLeb128(reader); /* offset */
+		return memidx;
 	}
 
-	private void memoryLoad(BinaryReader reader, Address instAddress, ValType destType) throws IOException {
-		readMemarg(reader);
-		popValue(instAddress, ValType.i32);
+	// @@M64 ---------------------------------------------------------------------
+	// memory64: a memory's index type (i32 or i64) is a property of the *module*, not
+	// of the instruction, so the decoder (SLEIGH) cannot see it. The walker therefore
+	// looks the memory up in the module's memory declarations and records the operand
+	// width in the context register (ctx_mem64, see WebAssembly.slaspec) at the address
+	// of every memory instruction. SLEIGH then has one constructor per width code.
+	//
+	// The codes mirror the validation rules in the core spec (valid/instructions.html):
+	//   load/store          : [at] -> [t]                    at = index type
+	//   memory.size         : [] -> [at]
+	//   memory.grow         : [at] -> [at]
+	//   memory.fill  x      : [at i32 at] -> []
+	//   memory.init  x y    : [at i32 i32] -> []
+	//   memory.copy  x1 x2  : [at1 at2 min(at1,at2)] -> []
+	private static final int MEM_CTX_I32 = 0;
+	/** memory.copy with an i64 destination and an i32 source (length is the min, i32). */
+	private static final int MEM_CTX_COPY_DST64 = 1;
+	/** memory.copy with an i32 destination and an i64 source (length is the min, i32). */
+	private static final int MEM_CTX_COPY_SRC64 = 2;
+	/** i64 index type: every address/offset operand of the instruction is i64. */
+	private static final int MEM_CTX_I64 = 3;
+
+	/** The index type of linear memory {@code memidx}, from the module's memory declarations. */
+	private static ValType memoryIndexType(WasmAnalysis analysis, long memidx) {
+		WasmModule module = analysis.getModule();
+		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_MEMORY);
+		WasmResizableLimits limits = null;
+		if (memidx >= 0 && memidx < imports.size()) {
+			limits = imports.get((int) memidx).getMemoryType();
+		} else {
+			List<WasmResizableLimits> memories = module.getNonImportedMemories();
+			long local = memidx - imports.size();
+			if (local >= 0 && local < memories.size()) {
+				limits = memories.get((int) local);
+			}
+		}
+		return (limits != null && limits.is64Bit()) ? ValType.i64 : ValType.i32;
+	}
+
+	/** Record the index type of one memory in the context register and return it. */
+	private ValType setMemoryIndexContext(WasmAnalysis analysis, Address instAddress, long memidx) {
+		ValType indexType = memoryIndexType(analysis, memidx);
+		contextreg.setMemoryWidths(instAddress, indexType == ValType.i64 ? MEM_CTX_I64 : MEM_CTX_I32);
+		return indexType;
+	}
+
+	/** memory.copy x1 x2: the three operands are typed at1, at2, min(at1,at2). */
+	private void setMemoryCopyContext(Address instAddress, ValType dstType, ValType srcType) {
+		int code;
+		if (dstType == ValType.i64 && srcType == ValType.i64) {
+			code = MEM_CTX_I64;
+		} else if (dstType == ValType.i64) {
+			code = MEM_CTX_COPY_DST64;
+		} else if (srcType == ValType.i64) {
+			code = MEM_CTX_COPY_SRC64;
+		} else {
+			code = MEM_CTX_I32;
+		}
+		contextreg.setMemoryWidths(instAddress, code);
+	}
+
+	private void memoryLoad(WasmAnalysis analysis, BinaryReader reader, Address instAddress, ValType destType) throws IOException {
+		ValType indexType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
+		popValue(instAddress, indexType);
 		pushValue(instAddress, destType);
 	}
 
-	private void memoryStore(BinaryReader reader, Address instAddress, ValType destType) throws IOException {
-		readMemarg(reader);
+	private void memoryStore(WasmAnalysis analysis, BinaryReader reader, Address instAddress, ValType destType) throws IOException {
+		ValType indexType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
 		popValue(instAddress, destType);
-		popValue(instAddress, ValType.i32);
+		popValue(instAddress, indexType);
 	}
+	// @@M64 end
 
 	/**
 	 * catch / catch_all: like else, the instruction ends the try body (or the previous handler) with a branch to the
@@ -1086,7 +1169,7 @@ public class WasmFunctionAnalysis {
 		case 0x2D: /* i32.load8_u memarg */
 		case 0x2E: /* i32.load16_s memarg */
 		case 0x2F: /* i32.load16_u memarg */
-			memoryLoad(reader, instAddress, ValType.i32);
+			memoryLoad(analysis, reader, instAddress, ValType.i32);
 			break;
 		case 0x29: /* i64.load memarg */
 		case 0x30: /* i64.load8_s memarg */
@@ -1095,42 +1178,44 @@ public class WasmFunctionAnalysis {
 		case 0x33: /* i64.load16_u memarg */
 		case 0x34: /* i64.load32_s memarg */
 		case 0x35: /* i64.load32_u memarg */
-			memoryLoad(reader, instAddress, ValType.i64);
+			memoryLoad(analysis, reader, instAddress, ValType.i64);
 			break;
 		case 0x2A: /* f32.load memarg */
-			memoryLoad(reader, instAddress, ValType.f32);
+			memoryLoad(analysis, reader, instAddress, ValType.f32);
 			break;
 		case 0x2B: /* f64.load memarg */
-			memoryLoad(reader, instAddress, ValType.f64);
+			memoryLoad(analysis, reader, instAddress, ValType.f64);
 			break;
 
 		case 0x36: /* i32.store memarg */
 		case 0x3A: /* i32.store8 memarg */
 		case 0x3B: /* i32.store16 memarg */
-			memoryStore(reader, instAddress, ValType.i32);
+			memoryStore(analysis, reader, instAddress, ValType.i32);
 			break;
 		case 0x37: /* i64.store memarg */
 		case 0x3C: /* i64.store8 memarg */
 		case 0x3D: /* i64.store16 memarg */
 		case 0x3E: /* i64.store32 memarg */
-			memoryStore(reader, instAddress, ValType.i64);
+			memoryStore(analysis, reader, instAddress, ValType.i64);
 			break;
 		case 0x38: /* f32.store memarg */
-			memoryStore(reader, instAddress, ValType.f32);
+			memoryStore(analysis, reader, instAddress, ValType.f32);
 			break;
 		case 0x39: /* f64.store memarg */
-			memoryStore(reader, instAddress, ValType.f64);
+			memoryStore(analysis, reader, instAddress, ValType.f64);
 			break;
 
 		case 0x3F: /* memory.size */ {
-			readLeb128(reader); /* memidx */
-			pushValue(instAddress, ValType.i32);
+			/* @@M64: the result is the memory's index type. */
+			ValType indexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader)); /* memidx */
+			pushValue(instAddress, indexType);
 			break;
 		}
 		case 0x40: /* memory.grow */ {
-			readLeb128(reader); /* memidx */
-			popValue(instAddress, ValType.i32);
-			pushValue(instAddress, ValType.i32);
+			/* @@M64: both the delta and the result are the memory's index type. */
+			ValType indexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader)); /* memidx */
+			popValue(instAddress, indexType);
+			pushValue(instAddress, indexType);
 			break;
 		}
 
@@ -1423,10 +1508,11 @@ public class WasmFunctionAnalysis {
 				break;
 			case 0x08: /* memory.init x */ {
 				readLeb128(reader); /* dataidx */
-				readLeb128(reader); /* memidx */
+				/* @@M64: [at i32 i32] - the destination offset is the memory's index type. */
+				ValType indexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader)); /* memidx */
 				popValue(instAddress, ValType.i32);
 				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				break;
 			}
 			case 0x09: /* data.drop x */ {
@@ -1434,18 +1520,24 @@ public class WasmFunctionAnalysis {
 				break;
 			}
 			case 0x0A: /* memory.copy */ {
-				readLeb128(reader); /* memidx */
-				readLeb128(reader); /* memidx2 */
-				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
+				long memidx = readLeb128(reader);
+				long memidx2 = readLeb128(reader);
+				/* @@M64: [at1 at2 min(at1,at2)] - one width per source/destination memory. */
+				ValType dstType = memoryIndexType(analysis, memidx);
+				ValType srcType = memoryIndexType(analysis, memidx2);
+				ValType lenType = (dstType == ValType.i64 && srcType == ValType.i64) ? ValType.i64 : ValType.i32;
+				setMemoryCopyContext(instAddress, dstType, srcType);
+				popValue(instAddress, lenType);
+				popValue(instAddress, srcType);
+				popValue(instAddress, dstType);
 				break;
 			}
 			case 0x0B: /* memory.fill */ {
-				readLeb128(reader); /* memidx */
+				/* @@M64: [at i32 at]. */
+				ValType indexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader)); /* memidx */
+				popValue(instAddress, indexType);
 				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				break;
 			}
 			case 0x0C: /* table.init x y */ {
@@ -1514,10 +1606,10 @@ public class WasmFunctionAnalysis {
 			case 0x8: /* v128.load16_splat */
 			case 0x9: /* v128.load32_splat */
 			case 0xA: /* v128.load64_splat */
-				memoryLoad(reader, instAddress, ValType.v128);
+				memoryLoad(analysis, reader, instAddress, ValType.v128);
 				break;
 			case 0xB: /* v128.store */
-				memoryStore(reader, instAddress, ValType.v128);
+				memoryStore(analysis, reader, instAddress, ValType.v128);
 				break;
 			case 0xC: /* v128.const */
 				reader.readNextByteArray(16); /* value */
@@ -1673,25 +1765,28 @@ public class WasmFunctionAnalysis {
 			case 0x55: /* v128.load16_lane */
 			case 0x56: /* v128.load32_lane */
 			case 0x57: /* v128.load64_lane */
-				readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
+				/* @@M64: the address is the memory's index type. */
+				ValType laneLoadType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
 				reader.readNextByte(); /* laneidx */
 				popValue(instAddress, ValType.v128);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, laneLoadType);
 				pushValue(instAddress, ValType.v128);
 				break;
 			case 0x58: /* v128.store8_lane */
 			case 0x59: /* v128.store16_lane */
 			case 0x5A: /* v128.store32_lane */
 			case 0x5B: /* v128.store64_lane */
-				readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
+				/* @@M64: the address is the memory's index type. */
+				ValType laneStoreType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
 				reader.readNextByte(); /* laneidx */
 				popValue(instAddress, ValType.v128);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, laneStoreType);
 				break;
 			case 0x5C: /* v128.load32_zero */
 			case 0x5D: /* v128.load64_zero */
-				readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
-				popValue(instAddress, ValType.i32);
+				/* @@M64: the address is the memory's index type. */
+				ValType zeroLoadType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
+				popValue(instAddress, zeroLoadType);
 				pushValue(instAddress, ValType.v128);
 				break;
 			case 0x5E: /* f32x4.demote_f64x2_zero */
@@ -1953,32 +2048,33 @@ public class WasmFunctionAnalysis {
 				reader.readNextUnsignedByte();
 				break;
 			}
-			readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
+			/* @@MM: memarg (may carry a memidx); @@M64: the address is the index type. */
+			ValType indexType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
 			if (opcode2 == 0x00) { /* memory.atomic.notify */
 				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				pushValue(instAddress, ValType.i32);
 			} else if (opcode2 == 0x01 || opcode2 == 0x02) { /* memory.atomic.wait32 / wait64 */
 				popValue(instAddress, ValType.i64);
 				popValue(instAddress, opcode2 == 0x01 ? ValType.i32 : ValType.i64);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				pushValue(instAddress, ValType.i32);
 			} else if (opcode2 >= 0x10 && opcode2 <= 0x16) { /* loads */
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				pushValue(instAddress, (opcode2 == 0x10 || opcode2 == 0x12 || opcode2 == 0x13) ? ValType.i32 : ValType.i64);
 			} else if (opcode2 >= 0x17 && opcode2 <= 0x1D) { /* stores */
 				popValue(instAddress, (opcode2 == 0x17 || opcode2 == 0x19 || opcode2 == 0x1A) ? ValType.i32 : ValType.i64);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 			} else if (opcode2 >= 0x1E && opcode2 <= 0x47) { /* add, sub, and, or, xor, xchg */
 				ValType type = atomicType((opcode2 - 0x1E) % 7);
 				popValue(instAddress, type);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				pushValue(instAddress, type);
 			} else if (opcode2 >= 0x48 && opcode2 <= 0x4E) { /* cmpxchg */
 				ValType type = atomicType(opcode2 - 0x48);
 				popValue(instAddress, type);
 				popValue(instAddress, type);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				pushValue(instAddress, type);
 			} else {
 				Msg.warn(this, "Illegal opcode 0xfe " + String.format("0x%02x", opcode2) + " at " + instAddress);
