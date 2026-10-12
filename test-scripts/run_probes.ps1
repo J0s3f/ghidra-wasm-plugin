@@ -27,12 +27,15 @@ param(
     [string[]]$Generators,          # default: all gen_*.py + probes_*.py in $ScriptDir
     [string]$Only = "",             # wildcard filter on probe file names
     [switch]$Detail,                # also dump listings + decompiled C
-    [switch]$NoAnalysis             # skip the auto-analysis (faster, for decode-only checks)
+    [switch]$NoAnalysis,            # skip the auto-analysis (faster, for decode-only checks)
+    [int]$MaxCpu = 2,               # cap Ghidra analysis threads (many agents may run at once)
+    [string]$MaxMem = "1500M"       # cap the headless JVM heap (GHIDRA_HEADLESS_MAXMEM)
 )
 
 $ErrorActionPreference = "Stop"
 
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
+$env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
 $headless = Join-Path $GhidraDir "support\analyzeHeadless.bat"
 if (-not (Test-Path $headless)) { $headless = Join-Path $GhidraDir "support\analyzeHeadless" }
 if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $GhidraDir\support" }
@@ -67,7 +70,7 @@ $scripts = @("-scriptPath", $ScriptDir, "-postScript", "WasmFeatureReport.java")
 if ($Detail) { $scripts += @("-postScript", "ListProgram.java", "-postScript", "DumpAll.java") }
 if ($NoAnalysis) { $scripts += "-noanalysis" }
 
-$all = @($proj, "ProbeRun") + $importArgs + $scripts + @("-deleteProject")
+$all = @($proj, "ProbeRun") + $importArgs + $scripts + @("-max-cpu", "$MaxCpu", "-deleteProject")
 & $headless @all 2>&1 | Tee-Object -FilePath (Join-Path $OutDir "probe-run.log") | Out-Null
 
 Write-Host "== results ==" -ForegroundColor Cyan
