@@ -8,7 +8,7 @@ Ghidra (12.1.x).
 ## Download
 
 Attach the zip that matches your Ghidra version — for example, if you are running Ghidra 12.1.4,
-download the asset named `ghidra_12.1.4_PUBLIC_<date>_Ghidra-WASM.zip`. Install it with
+download the asset whose name begins with `ghidra_12.1.4_PUBLIC_`. Install it with
 **File → Install Extensions → +** and restart Ghidra. You do not need to unzip the file.
 
 ## What is included
