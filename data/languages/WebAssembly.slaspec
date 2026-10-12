@@ -1909,6 +1909,10 @@ define context contextreg
 	ctx_is_global_sp = (2, 2) noflow
 	ctx_directive_type = (3, 5) noflow
 	ctx_operand_size = (6, 13) noflow
+	# @@M64: memory index / address-operand width code, set by WasmFunctionAnalysis for every
+	# memory instruction (memory64). 0 = i32 index (default), 3 = i64 index,
+	# 1/2 = memory.copy with an i64 destination / i64 source (length is the min, i32).
+	ctx_mem64 = (14, 15) noflow
 	ctx_case_index = (32, 63) noflow
 	ctx_br_target = (64, 95) noflow
 	ctx_sp = (96, 127) noflow

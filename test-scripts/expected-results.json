@@ -40,8 +40,8 @@
     },
     "05_memory64.wasm": {
       "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 6,
+      "instrs": 4,
+      "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
@@ -870,6 +870,70 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "M64_01_baseline_i64_load.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_02_scalar_loads_stores.wasm": {
+      "funcs": 1,
+      "instrs": 28,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_03_memory_size_grow.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_04_bulk_memory.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_05_i64_then_i32_memidx.wasm": {
+      "funcs": 1,
+      "instrs": 13,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_06_i32_then_i64_memidx.wasm": {
+      "funcs": 1,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_07_large_static_offset.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "M64_08_simd_atomic.wasm": {
+      "funcs": 1,
+      "instrs": 17,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "SF01_select_after_terminator.wasm": {
       "funcs": 5,
       "instrs": 44,
@@ -951,7 +1015,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 118,
+  "probe_count": 126,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
