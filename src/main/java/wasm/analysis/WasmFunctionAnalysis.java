@@ -136,10 +136,24 @@ public class WasmFunctionAnalysis {
 		 * and select instructions.
 		 */
 		public void setOperandSize(Address address, ValType type) {
-			if (type != null) {
+			if (type == null) {
 				// might be null if we're in an unreachable area
-				setRegister(address, REG_OPERAND_SIZE, type.getSize());
+				// @@UNIMP: ... or because the function contains an instruction whose
+				// stack effect we could not model. In that case degrade the width guess
+				// to 32-bit rather than leaving the disassembler an inherited value.
+				if (!degradeWidths) {
+					return;
+				}
+				type = ValType.i32;
 			}
+			setRegister(address, REG_OPERAND_SIZE, type.getSize());
+		}
+
+		// @@UNIMP: set when the owning function contains an unmodelled instruction.
+		private boolean degradeWidths;
+
+		public void setDegradeWidths(boolean value) {
+			degradeWidths = value;
 		}
 
 		/** Mark this try instruction as dispatching to a handler (its branch target). */
@@ -394,7 +408,9 @@ public class WasmFunctionAnalysis {
 		ControlFrame curBlock = getBlock(instAddress, 0);
 		if (valueStack.size() <= curBlock.initialStack.size()) {
 			/* If our stack is polymorphic, popping off an empty stack is ok */
-			if (curBlock.unreachable)
+			// @@UNIMP: same tolerance once the function contains an instruction whose
+			// stack effect we could not model.
+			if (curBlock.unreachable || hasUnimplementedOps)
 				return null;
 			throw new ValidationException(instAddress, "pop from empty stack");
 		}
@@ -403,7 +419,9 @@ public class WasmFunctionAnalysis {
 
 	private ValType popValue(Address instAddress, ValType expected) {
 		ValType actual = popValue(instAddress);
-		if (actual != expected && actual != null && expected != null) {
+		// @@UNIMP: after an unmodelled instruction the types on the stack are a guess,
+		// so a mismatch is tolerated instead of blanking the function.
+		if (actual != expected && actual != null && expected != null && !hasUnimplementedOps) {
 			throw new ValidationException(instAddress, "pop type mismatch: got " + actual + ", expected " + expected);
 		}
 		return actual;
@@ -444,7 +462,12 @@ public class WasmFunctionAnalysis {
 			// outermost frame of a function that actually uses GC ops; every other block
 			// and every non-GC function keeps strict validation.
 			if (block.blockKind != BlockKind.FUNCTION || !usesGCOps) {
-				throw new ValidationException(instAddress, "block end has wrong number of parameters");
+				// @@UNIMP: a leftover operand can also be a decode artefact of an
+				// instruction this walker does not model; tolerate it rather than
+				// blanking the whole function.
+				if (!hasUnimplementedOps) {
+					throw new ValidationException(instAddress, "block end has wrong number of parameters");
+				}
 			}
 			valueStack = new ArrayList<>(block.initialStack);
 		}
@@ -468,16 +491,29 @@ public class WasmFunctionAnalysis {
 	// #endregion
 
 	// #region Common instruction code
-	private void memoryLoad(BinaryReader reader, Address instAddress, ValType destType) throws IOException {
-		readLeb128(reader); /* align */
+	/**
+	 * @@MM: read a memarg immediate. The flags/alignment field is a u32 LEB whose bit 6,
+	 * when set (2^6 &lt;= n &lt; 2^7 after decoding, exactly as in the core spec), means a
+	 * memory index follows before the offset. Modules that never set the flag (every
+	 * single-memory module, i.e. all previously supported input) read exactly two LEBs,
+	 * unchanged.
+	 */
+	private static void readMemarg(BinaryReader reader) throws IOException {
+		long flags = readLeb128(reader); /* align / flags */
+		if (flags >= 0x40 && flags < 0x80) {
+			readLeb128(reader); /* memidx */
+		}
 		readLeb128(reader); /* offset */
+	}
+
+	private void memoryLoad(BinaryReader reader, Address instAddress, ValType destType) throws IOException {
+		readMemarg(reader);
 		popValue(instAddress, ValType.i32);
 		pushValue(instAddress, destType);
 	}
 
 	private void memoryStore(BinaryReader reader, Address instAddress, ValType destType) throws IOException {
-		readLeb128(reader); /* align */
-		readLeb128(reader); /* offset */
+		readMemarg(reader);
 		popValue(instAddress, destType);
 		popValue(instAddress, ValType.i32);
 	}
@@ -632,6 +668,123 @@ public class WasmFunctionAnalysis {
 		pushValue(instAddress, ref);
 	}
 	// @@GC ---------------------------------------------------------------------
+
+	// @@UNIMP -----------------------------------------------------------------
+	// Graceful degradation for opcodes this walker does not model yet (R1.1).
+	//
+	// An opcode whose immediate operands are consumed with the wrong length shifts
+	// the whole byte stream and can blank out the function. The two tables below
+	// therefore consume exactly as many bytes as the matching `:unimplemented`
+	// constructors in data/languages/WebAssembly.sinc do:
+	//
+	//   0xE0 cont.new t             0xE1 cont.bind t t'       0xE2 suspend t
+	//   0xE6 switch ct t            0xFC 0x12 memory.discard memidx
+	//   0xFC 0x13..0x16 i64.add128/sub128/mul_wide_s/u (no immediates)
+	//   0xFB 0x80.. JS string builtins / stringref (see the table below)
+	//
+	// Where the operand length is genuinely unknown nothing is consumed ("fail
+	// safe"): the byte stays undefined and the rest of the function still decodes.
+	// (resume 0xE3 / resume_throw 0xE4 / resume_throw_ref 0xE5 are in that class:
+	// their trailing handler vector has no statically decodable length.)
+	//
+	// After such an instruction the value-stack model is unreliable, so validation
+	// is relaxed instead of throwing away the whole function (see popValue /
+	// popBlock / analyzeFunction) and unknown operand widths degrade to 32-bit.
+	private boolean hasUnimplementedOps;
+
+	private void markUnimplemented() {
+		hasUnimplementedOps = true;
+		contextreg.setDegradeWidths(true);
+	}
+
+	/** 0xFB sub-opcode 0x00..0x1e is a (modelled) GC instruction, owned by GCOps. */
+	private static boolean isGCOpcode(int sub) {
+		return sub <= 0x1E;
+	}
+
+	/**
+	 * Consume the immediate operands of an opcode that has no decoder yet, exactly as
+	 * the `:unimplemented` SLEIGH constructors in WebAssembly.sinc do.
+	 *
+	 * @return true if the operands were consumed (the length is known), false if the
+	 *         length is unknown - in which case nothing has been consumed
+	 */
+	private static boolean skipUnimplementedOperands(BinaryReader reader, int opcode, long sub) throws IOException {
+		switch (opcode) {
+		case 0xE0: /* cont.new t (stack switching) */
+			readLeb128(reader);
+			return true;
+		case 0xE1: /* cont.bind t t' */
+			readLeb128(reader);
+			readLeb128(reader);
+			return true;
+		case 0xE2: /* suspend t */
+			readLeb128(reader);
+			return true;
+		case 0xE6: /* switch ct t */
+			readLeb128(reader);
+			readLeb128(reader);
+			return true;
+		case 0xFB: /* JS string builtins / stringref (0xFB >= 0x80) */
+			switch ((int) sub) {
+			case 0x80: /* string.new_utf8 memidx */
+			case 0x81: /* string.new_wtf16 memidx */
+			case 0x82: /* string.const stringidx */
+			case 0x86: /* string.encode_utf8 memidx */
+			case 0x87: /* string.encode_wtf16 memidx */
+			case 0x8B: /* string.new_lossy_utf8 memidx */
+			case 0x8C: /* string.new_wtf8 memidx */
+			case 0x8D: /* string.encode_lossy_utf8 memidx */
+			case 0x8E: /* string.encode_wtf8 memidx */
+			case 0x92: /* stringview_wtf8.encode_utf8 memidx */
+			case 0x9B: /* stringview_wtf16.encode memidx */
+				readLeb128(reader);
+				return true;
+			case 0x83: /* string.measure_utf8 */
+			case 0x84: /* string.measure_wtf8 */
+			case 0x85: /* string.measure_wtf16 */
+			case 0x88: /* string.concat */
+			case 0x89: /* string.eq */
+			case 0x8A: /* string.is_usv_sequence */
+			case 0x90: /* string.as_wtf8 */
+			case 0x91: /* stringview_wtf8.advance */
+			case 0x9A: /* stringview_wtf16.get_codeunit */
+			case 0x9C: /* stringview_wtf16.slice */
+			case 0xA0: /* string.as_iter */
+			case 0xA1: /* stringview_iter.next */
+			case 0xA2: /* stringview_iter.advance */
+			case 0xB4: /* string.new_lossy_utf8_array */
+			case 0xB5: /* string.new_wtf8_array */
+			case 0xB6: /* string.encode_lossy_utf8_array */
+			case 0xB7: /* string.encode_wtf8_array */
+				return true;
+			default:
+				return false;
+			}
+		case 0xFC:
+			switch ((int) sub) {
+			case 0x12: /* memory.discard memidx */
+				readLeb128(reader);
+				return true;
+			case 0x13: /* i64.add128 */
+			case 0x14: /* i64.sub128 */
+			case 0x15: /* i64.mul_wide_s */
+			case 0x16: /* i64.mul_wide_u */
+				return true;
+			default:
+				return false;
+			}
+		default:
+			return false;
+		}
+	}
+
+	private void warnUnimplemented(Address instAddress, int opcode, String detail, boolean consumed) {
+		Msg.warn(this, "Unimplemented opcode " + String.format("0x%02x", opcode) + detail + " at " + instAddress
+				+ (consumed ? " (operands skipped, no semantics modelled)"
+						: " (operand length unknown; not consuming following bytes)"));
+	}
+	// @@UNIMP end
 
 	private void analyzeOpcode(WasmAnalysis analysis, Address instAddress, BinaryReader reader) throws IOException {
 		contextreg.setStackPointer(instAddress, valueStack.size());
@@ -1217,11 +1370,38 @@ public class WasmFunctionAnalysis {
 			popValue(instAddress);
 			pushValue(instAddress, ValType.i32);
 			break;
+
+		// @@UNIMP: stack-switching opcodes (0xE0-0xE6) that this walker only skips over.
+		// 0xE3/0xE4/0xE5 (resume/resume_throw/resume_throw_ref) have a trailing handler
+		// vector of statically unknown length and are deliberately left to `default`
+		// ("fail safe").
+		case 0xE0: /* cont.new t */
+		case 0xE1: /* cont.bind t t' */
+		case 0xE2: /* suspend t */
+		case 0xE6: /* switch ct t */ {
+			markUnimplemented();
+			skipUnimplementedOperands(reader, opcode, 0);
+			warnUnimplemented(instAddress, opcode, " (stack switching)", true);
+			break;
+		}
 		// @@GC: 0xFB-prefixed GC instructions (garbage collection proposal). All of
 		// the opcode decoding, immediate lengths and stack effects live in GCOps.
-		case 0xFB:
-			GCOps.handle(this, analysis, instAddress, reader);
+		// @@UNIMP: 0xFB >= 0x80 is the JS string builtins / stringref range, which
+		// GCOps declines; those are consumed here instead (see the note above).
+		case 0xFB: {
+			long subPosition = reader.getPointerIndex();
+			int sub = reader.readNextUnsignedVarIntExact(LEB128::unsigned);
+			reader.setPointerIndex(subPosition);
+			if (isGCOpcode(sub)) {
+				GCOps.handle(this, analysis, instAddress, reader);
+			} else {
+				reader.readNextUnsignedVarIntExact(LEB128::unsigned); /* consume the sub-opcode */
+				markUnimplemented();
+				boolean consumed = skipUnimplementedOperands(reader, 0xFB, sub);
+				warnUnimplemented(instAddress, 0xFB, ":" + Long.toHexString(sub), consumed);
+			}
 			break;
+		}
 		case 0xFC: {
 			int opcode2 = reader.readNextUnsignedVarIntExact(LEB128::unsigned);
 			switch (opcode2) {
@@ -1308,7 +1488,14 @@ public class WasmFunctionAnalysis {
 				break;
 			}
 			default:
-				Msg.warn(this, "Illegal opcode 0xfc " + String.format("0x%02x", opcode2) + " at " + instAddress);
+				/* @@UNIMP: memory.discard (0x12) and wide arithmetic (0x13-0x16). */
+				markUnimplemented();
+				if (skipUnimplementedOperands(reader, 0xFC, opcode2)) {
+					warnUnimplemented(instAddress, 0xFC, ":" + Integer.toHexString(opcode2), true);
+				} else {
+					Msg.warn(this, "Illegal opcode 0xfc " + String.format("0x%02x", opcode2) + " at " + instAddress
+							+ " (operand length unknown; not consuming following bytes)");
+				}
 				break;
 			}
 			break;
@@ -1486,8 +1673,7 @@ public class WasmFunctionAnalysis {
 			case 0x55: /* v128.load16_lane */
 			case 0x56: /* v128.load32_lane */
 			case 0x57: /* v128.load64_lane */
-				readLeb128(reader); /* align */
-				readLeb128(reader); /* offset */
+				readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
 				reader.readNextByte(); /* laneidx */
 				popValue(instAddress, ValType.v128);
 				popValue(instAddress, ValType.i32);
@@ -1497,16 +1683,14 @@ public class WasmFunctionAnalysis {
 			case 0x59: /* v128.store16_lane */
 			case 0x5A: /* v128.store32_lane */
 			case 0x5B: /* v128.store64_lane */
-				readLeb128(reader); /* align */
-				readLeb128(reader); /* offset */
+				readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
 				reader.readNextByte(); /* laneidx */
 				popValue(instAddress, ValType.v128);
 				popValue(instAddress, ValType.i32);
 				break;
 			case 0x5C: /* v128.load32_zero */
 			case 0x5D: /* v128.load64_zero */
-				readLeb128(reader); /* align */
-				readLeb128(reader); /* offset */
+				readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
 				popValue(instAddress, ValType.i32);
 				pushValue(instAddress, ValType.v128);
 				break;
@@ -1769,8 +1953,7 @@ public class WasmFunctionAnalysis {
 				reader.readNextUnsignedByte();
 				break;
 			}
-			readLeb128(reader); /* align */
-			readLeb128(reader); /* offset */
+			readMemarg(reader); /* @@MM: memarg (may carry a memidx) */
 			if (opcode2 == 0x00) { /* memory.atomic.notify */
 				popValue(instAddress, ValType.i32);
 				popValue(instAddress, ValType.i32);
@@ -1803,7 +1986,12 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 		default:
-			Msg.warn(this, "Illegal opcode " + String.format("0x%02x", opcode) + " at " + instAddress);
+			// @@UNIMP: unknown opcode. Nothing is consumed (the operand length is
+			// unknown), but the function is no longer abandoned: validation is relaxed
+			// from here on and the rest of the body disassembles.
+			markUnimplemented();
+			Msg.warn(this, "Illegal opcode " + String.format("0x%02x", opcode) + " at " + instAddress
+					+ " (operand length unknown; not consuming following bytes)");
 			break;
 		}
 	}
@@ -1829,7 +2017,23 @@ public class WasmFunctionAnalysis {
 		pushBlock(instAddress, new ControlFrame(instAddress, new BlockType(func)));
 		while (reader.getPointerIndex() <= functionLength) {
 			instAddress = startAddress.add(reader.getPointerIndex());
-			analyzeOpcode(analysis, instAddress, reader);
+			long position = reader.getPointerIndex();
+			try {
+				analyzeOpcode(analysis, instAddress, reader);
+			} catch (ValidationException e) {
+				// @@UNIMP: once the function contains an instruction we could not model,
+				// the stack model is unreliable; log the error and keep disassembling the
+				// rest of the body instead of blanking the function out.
+				if (!hasUnimplementedOps) {
+					throw e;
+				}
+				Msg.warn(this, "Ignoring validation error after an unimplemented instruction at "
+						+ instAddress + ": " + e.getMessage());
+			}
+			if (reader.getPointerIndex() <= position) {
+				/* defensive: always make progress through the body */
+				break;
+			}
 		}
 	}
 

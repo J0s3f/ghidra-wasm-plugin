@@ -1,19 +1,62 @@
 ## Memory Instructions
-memalign: "align="^ULeb128 is ULeb128 {
-	export ULeb128;
-}
+## @@MM: multi-memory memarg (core spec, binary/instructions.html#binary-memarg):
+##   memarg ::= align:u32 offset:u64                  if align < 2^6
+##            | flags:u32 memidx:u32 offset:u64       if 2^6 <= flags < 2^7
+## i.e. bit 6 of the *value* of the alignment field marks a memory index that precedes
+## the offset. In the flagged form the value is 64..127, so its LEB is a single byte
+## (0x40..0x7f): that is what memalign_mem matches. The unflagged forms cannot overlap
+## it (bit 6 clear for the single-byte form, bit 7 set for the multi-byte ones).
+##
+## align, no memory index: single byte, bit 6 clear (align 0..63 - all real alignments)
+memalign: "align="^val is topbit = 0 & mflag = 0 & v0
+	[ val = (0 | v0); ]
+{ export *[const]:8 val; }
+
+## ... or a multi-byte LEB (non-minimal align encodings; a u32 needs at most 5 bytes)
+memalign: "align="^val is topbit = 1 & v0; topbit = 0 & v1
+	[ val = (0 | v0 | ( v1 << 7 )); ]
+{ export *[const]:8 val; }
+
+memalign: "align="^val is topbit = 1 & v0; topbit = 1 & v1; topbit = 0 & v2
+	[ val = (0 | v0 | ( v1 << 7 ) | ( v2 << 14 )); ]
+{ export *[const]:8 val; }
+
+memalign: "align="^val is topbit = 1 & v0; topbit = 1 & v1; topbit = 1 & v2; topbit = 0 & v3
+	[ val = (0 | v0 | ( v1 << 7 ) | ( v2 << 14 ) | ( v3 << 21 )); ]
+{ export *[const]:8 val; }
+
+memalign: "align="^val is topbit = 1 & v0; topbit = 1 & v1; topbit = 1 & v2; topbit = 1 & v3; topbit = 0 & v4
+	[ val = (0 | v0 | ( v1 << 7 ) | ( v2 << 14 ) | ( v3 << 21 ) | ( v4 << 28 )); ]
+{ export *[const]:8 val; }
+
+## align with a memory index (bit 6 set, single byte 0x40..0x7f)
+memalign_mem: "align="^val is mflag = 1 & topbit = 0 & mlow
+	[ val = (0 | mlow); ]
+{ export *[const]:8 val; }
 
 memoffset: "offset="^ULeb128 is ULeb128 {
 	export ULeb128;
 }
 
+## @@MM: linear memory N is addressed at N * MEMORY_STRIDE in `ram` (memory 0 => offset 0,
+## unchanged; see @define MEMORY_STRIDE in WebAssembly.sinc and WasmLoader.MEMORY_STRIDE).
 loadaddr: memalign memoffset is memalign; memoffset; sp1_32 {
 	addr:4 = memoffset:4 + sp1_32;
 	export addr;
 }
 
+loadaddr: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; sp1_32 {
+	addr:4 = memoffset:4 + sp1_32 + memidx_label:4 * $(MEMORY_STRIDE);
+	export addr;
+}
+
 storeaddr: memalign memoffset is memalign; memoffset; sp2_32 {
 	addr:4 = memoffset:4 + sp2_32;
+	export addr;
+}
+
+storeaddr: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; sp2_32 {
+	addr:4 = memoffset:4 + sp2_32 + memidx_label:4 * $(MEMORY_STRIDE);
 	export addr;
 }
 

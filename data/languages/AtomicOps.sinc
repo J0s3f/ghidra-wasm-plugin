@@ -7,6 +7,12 @@ atomicaddr3: memalign memoffset is memalign; memoffset; sp3_32 {
 	export addr;
 }
 
+## @@MM: memarg carrying a memory index (see BasicOps.sinc)
+atomicaddr3: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; sp3_32 {
+	addr:4 = memoffset:4 + sp3_32 + memidx_label:4 * $(MEMORY_STRIDE);
+	export addr;
+}
+
 :memory.atomic.notify storeaddr is opc=0xFE; opc2_0; storeaddr; sp1_32; sp2_32; ctx_is_directive=0 {
 	sp2_32 = memory_atomic_notify(storeaddr, sp1_32);
 }

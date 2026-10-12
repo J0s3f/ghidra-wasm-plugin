@@ -79,6 +79,16 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 	public final static long IMPORT_BASE = 0x7f000000L;
 	public final static long CODE_BASE = 0x80000000L;
+	/*
+	 * @@MM: multi-memory. Linear memory N is mapped into `ram` at N * MEMORY_STRIDE
+	 * (memory 0 therefore stays at offset 0, exactly as before, so the C stack/heap
+	 * analysis and every single-memory module are unaffected). The stride keeps the
+	 * memories apart: with the module itself at CODE_BASE (0x80000000), memory
+	 * indices 0..7 fit without overlapping each other, and each memory should be at
+	 * most MEMORY_STRIDE bytes. Must stay in sync with @define MEMORY_STRIDE in
+	 * data/languages/WebAssembly.sinc.
+	 */
+	public final static long MEMORY_STRIDE = 0x10000000L;
 	/* Size of each register */
 	public final static int REG_SIZE = 16;
 
@@ -130,13 +140,15 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		return addressFactory.getAddressSpace("table").getAddress((((long) tableidx) << 32) + (itemIndex * 4));
 	}
 
+	/**
+	 * @@MM: the address of a byte in linear memory {@code memidx}.
+	 *
+	 * <p>Memory 0 lives at ram offset 0 (unchanged); memory N &gt;= 1 lives at
+	 * {@code N * MEMORY_STRIDE} (see {@link #MEMORY_STRIDE}), matching the address the
+	 * SLEIGH memarg decoders compute for a memarg that carries a memory index.
+	 */
 	public static Address getMemoryAddress(AddressFactory addressFactory, int memidx, long offset) {
-		if (memidx != 0) {
-			/* only handle memory 0 for now */
-			throw new IllegalArgumentException("non-zero memidx is not supported");
-		}
-
-		return addressFactory.getAddressSpace("ram").getAddress(offset);
+		return addressFactory.getAddressSpace("ram").getAddress(memidx * MEMORY_STRIDE + offset);
 	}
 
 	public static Address getGlobalAddress(AddressFactory addressFactory, int globalidx) {
@@ -533,17 +545,19 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			}
 			monitor.incrementProgress(1);
 
-			if (memidx != 0) {
-				/* only handle memory 0 for now */
-				continue;
-			}
 			WasmResizableLimits mem;
 			if (memidx < imports.size()) {
 				mem = imports.get(memidx).getMemoryType();
 			} else {
 				mem = memories.get(memidx - imports.size());
 			}
-			createMemoryBlock(program, memidx, Math.min(mem.getInitial() * 65536L, CODE_BASE), monitor);
+			/*
+			 * @@MM: memory 0 keeps its historical size clamp (CODE_BASE, 2 GiB); memories
+			 * >= 1 are clamped to MEMORY_STRIDE so that one oversized memory cannot run
+			 * into the next memory's region (see getMemoryAddress).
+			 */
+			long clamp = (memidx == 0) ? CODE_BASE : MEMORY_STRIDE;
+			createMemoryBlock(program, memidx, Math.min(mem.getInitial() * 65536L, clamp), monitor);
 		}
 	}
 
@@ -579,10 +593,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 			WasmDataSegment dataSegment = dataSegments.get(dataidx);
 			int memidx = (int) dataSegment.getIndex();
-			if (memidx != 0) {
-				/* only handle memory 0 for now */
-				continue;
-			}
+			/* @@MM: active data segments for every memory (memory >= 1 included). */
 
 			Long offset = dataSegment.getMemoryOffset();
 			if (offset == null) {
