@@ -365,6 +365,29 @@ macro doBranch(br_target) {
 	return [LR];
 }
 
+# @@FR: typed function references (proposal: function-references). Like call_indirect, the
+# function reference is the top operand-stack value when the instruction executes (the call
+# arguments sit below it), so it is read from stack slot ctx_sp-1 and the call is indirect
+# through it. When the reference came from ref.func or a table element the loader has already
+# resolved it to a function address, so the decompiler shows a real call through a known
+# address. The concrete referenced type $t is not modelled (see ValType.readFromReader, which
+# folds (ref null $t)/(ref $t) onto a 4-byte reference placeholder); the argument/return
+# widths come from the injected call prologue/epilogue.
+:call_ref "type="^typeidx is opc=0x14; typeidx; sp1_32; ctx_is_directive=0 {
+	ref_target:4 = sp1_32;
+	LR = inst_next;
+	callPrologueCallOther(&i0);
+	call [ref_target];
+	pushCallOther(&o0);
+}
+:return_call_ref "type="^typeidx is opc=0x15; typeidx; sp1_32; ctx_is_directive=0 {
+	ref_target:4 = sp1_32;
+	LR = inst_next;
+	callPrologueCallOther(&i0);
+	call [ref_target];
+	return [LR];
+}
+
 ## Legacy exception handling (try / catch / catch_all / throw / rethrow / delegate). A try is a block; when it has a
 ## handler (ctx_case_index=1, set by the pre-analyzer) it also dispatches to its FIRST handler on
 ## wasm_exception_caught(), passing the exception's payload when it is a single value (ctx_operand_size). Later
@@ -427,6 +450,29 @@ macro doBranch(br_target) {
 }
 :ref.func br_target is opc=0xd2; funcidx; br_target; sp0_32; ctx_is_directive=0 {
 	sp0_32 = &br_target;
+}
+
+# @@FR: function-references reference instructions. ValType carries no nullability, so
+# ref.as_non_null is a width-preserving identity (the value stays in the same stack slot).
+:ref.as_non_null is opc=0xd4; sp1_32; ctx_is_directive=0 {
+	ref_value:4 = sp1_32;
+	sp1_32 = ref_value;
+}
+
+# br_on_null: branch if the reference is null; the fall-through direction keeps the
+# (now non-null) reference on the operand stack.
+:br_on_null br_target is opc=0xd5; ULeb128; br_target; sp1_32; ctx_is_directive=0 {
+	nop();
+	if (sp1_32 != 0) goto inst_next;
+	doBranch(br_target);
+}
+
+# br_on_non_null: branch if the reference is non-null (passing it on to the target);
+# the fall-through direction consumes the null reference.
+:br_on_non_null br_target is opc=0xd6; ULeb128; br_target; sp1_32; ctx_is_directive=0 {
+	nop();
+	if (sp1_32 == 0) goto inst_next;
+	doBranch(br_target);
 }
 
 ## Parametric Instructions
