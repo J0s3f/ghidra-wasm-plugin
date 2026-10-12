@@ -1086,6 +1086,30 @@
       "decompile_failed": null,
       "import_ok": false
     },
+    "L01_name_labels.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "L02_name_labels_bad_index.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "L03_name_labels_malformed.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "M01_multivalue_i32_i32.wasm": {
       "funcs": 2,
       "instrs": 9,
@@ -1431,7 +1455,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 178,
+  "probe_count": 181,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
