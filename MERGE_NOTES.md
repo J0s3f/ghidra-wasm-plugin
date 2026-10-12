@@ -1,6 +1,6 @@
 # Merge notes (fork: J0s3f/ghidra-wasm-plugin)
 
-This branch (`merged-upstream-prs`) consolidates the useful outstanding work found in
+This branch (`main`) consolidates the useful outstanding work found in
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin) pull requests and
 forks, and adapts it so the plugin builds and works against modern Ghidra (12.1.x, verified with
 Ghidra 12.1.4).

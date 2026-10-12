@@ -1,7 +1,7 @@
 # Modern WebAssembly support: inventory, gaps and roadmap
 
 Status of this document: **inventory complete; implementation in progress**. See the status table
-below. The inventory was produced from `merged-upstream-prs` (commit `430cbe2`, plugin built against
+below. The inventory was produced from `main` (originally commit `430cbe2`, plugin built against
 Ghidra 12.1.4) and is intended as the working base for extending the plugin's coverage toward current
 WebAssembly (Wasm 3.0 + active proposals).
 
