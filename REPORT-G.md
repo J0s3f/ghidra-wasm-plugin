@@ -118,8 +118,10 @@ Feasible, and the repo is already most of the way there:
 * **Decode/decompile harness (the primary artifact) needs only Ghidra's Java headless** plus a host
   Python 3 for `prepare_spec_tests.py` / `parse_spec_results.py` (both stdlib-only; 3.12/3.13/3.14
   fine). No PyGhidra required. This is the recommended CI job.
-* **Runtime**: ~3.5 min for 271 modules with `-max-cpu 2`; the import phase is the cost. A CI run
-  should pin `-Subset core` (or smaller) and compare `summary.json` against a stored baseline.
+* **Runtime**: ~3.6 min for 271 modules (core) and ~4.0 min for 257 modules (all) with `-max-cpu 2`;
+  importing/analysis is the cost, decompilation is fast. A CI run should pin `-Subset core` (or
+  smaller) and compare `summary.json` against a stored baseline. `-Subset simd` (57 files, 472
+  modules) is available for SIMD-focused regression runs.
 * **Emulation driver (`spectest.py`) in CI is not ready**: it needs PyGhidra and a Python 3.10–3.13
   (PyGhidra 3.1.0 ships jpype wheels for cp39–cp313; **3.14 has no wheel** — I used a 3.13 venv),
   and it is currently blocked by the emulator defect (§6).
