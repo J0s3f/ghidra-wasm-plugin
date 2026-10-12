@@ -1,0 +1,31 @@
+{
+  "comment": "Positive WebAssembly spec-suite baseline. The 'core' subset is enforced by .github/workflows/spectest.yml; 'simd' is a recorded reference (a clean SIMD run). Metrics come from real harness runs - never hand-edit. Generators: 'core' = run_spectest.ps1 -Subset core -MaxPerWast 10; 'simd' = run_spectest.ps1 -Subset simd -MaxPerWast 10. Regenerate one subset with: python3 test-scripts/check-spectest.py --summary <summary.json> --subset <core|simd> --update",
+  "subsets": {
+    "core": {
+      "decompile_failed": 0,
+      "decompiled": 2747,
+      "external_stub_bytes": 428,
+      "files": 73,
+      "functions": 2747,
+      "imported": 271,
+      "instructions": 33222,
+      "modules_selected": 271,
+      "not_imported": 0,
+      "real_undefined_bytes": 0,
+      "undefined_bytes": 428
+    },
+    "simd": {
+      "decompile_failed": 0,
+      "decompiled": 1271,
+      "external_stub_bytes": 0,
+      "files": 57,
+      "functions": 1271,
+      "imported": 128,
+      "instructions": 9318,
+      "modules_selected": 128,
+      "not_imported": 0,
+      "real_undefined_bytes": 0,
+      "undefined_bytes": 0
+    }
+  }
+}

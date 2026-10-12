@@ -61,6 +61,10 @@ $env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
 # --- 0. launcher ----------------------------------------------------------------------------------
 $supportDir = Join-Path $GhidraDir "support"
 $isWindowsOS = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
+# Host-agnostic tool names: wabt drops the `.exe` suffix on Linux, and Linux runners only guarantee
+# `python3`. (The chunk runner below still uses cmd.exe/taskkill; that path is Windows-only.)
+$python      = if ($isWindowsOS) { "python" } else { "python3" }
+$wastExeName = if ($isWindowsOS) { "wast2json.exe" } else { "wast2json" }
 if ($isWindowsOS) {
     $headless = Join-Path $supportDir "analyzeHeadless.bat"
 } else {
@@ -82,7 +86,7 @@ if ($ImportDir) {
     }
 } else {
     if (-not $SkipPrepare) {
-        $wast2json = Join-Path $ToolsDir "wabt-1.0.42\bin\wast2json.exe"
+        $wast2json = Join-Path $ToolsDir "wabt-1.0.42/bin/$wastExeName"
         $specDir = Get-ChildItem $ToolsDir -Directory -Filter "spec-*" -ErrorAction SilentlyContinue |
             Select-Object -First 1
         if (-not (Test-Path $wast2json)) { throw "wast2json not found at $wast2json" }
@@ -94,7 +98,7 @@ if ($ImportDir) {
         if ($Files.Count -gt 0) { $prep += @("--files", ($Files -join ",")) }
         if ($MaxPerWastPerKind -gt 0) { $prep += @("--max-per-wast-per-kind", "$MaxPerWastPerKind") }
         if ($IncludeText) { $prep += "--include-text" }
-        & python @prep
+        & $python @prep
         if ($LASTEXITCODE -ne 0) { throw "prepare_spec_negative.py failed ($LASTEXITCODE)" }
     }
     $importDir = Join-Path $OutDir "import"

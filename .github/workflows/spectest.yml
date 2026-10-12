@@ -1,0 +1,100 @@
+name: Spec suite
+
+# Enforces the *positive* WebAssembly spec-suite baseline: the official testsuite (wabt-generated
+# valid modules) is loaded, disassembled and decompiled by the plugin and the parsed metrics in
+# test-scripts/spectest-expected.json must not regress. A decode gap (a byte the disassembler does
+# not turn into an instruction) or a decompile failure fails the job.
+#
+# This is a separate workflow from probes.yml on purpose: it needs the pinned wabt + testsuite and a
+# ~4-6 minute harness run, so it should not slow the (fast) probe gate down.
+#
+# Local twin:
+#   ./test-scripts/build-install.ps1
+#   ./test-scripts/spectest/fetch_spectest_tools.ps1
+#   ./test-scripts/spectest/run_spectest.ps1 -Subset core -MaxPerWast 10 -OutDir <out>
+#   python3 test-scripts/check-spectest.py --summary <out>/summary.json --subset core
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  spectest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Clone Repository
+      uses: actions/checkout@v7
+
+    - name: Install Java
+      uses: actions/setup-java@v6
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+
+    - name: Install Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        gradle-version: '9.2.1'
+
+    - name: Install Ghidra 12.1.4
+      uses: antoniovazquezblanco/setup-ghidra@v2
+      with:
+        auth_token: ${{ secrets.GITHUB_TOKEN }}
+        version: '12.1.4'
+
+    - name: Build
+      run: gradle buildExtension
+
+    - name: Install the built extension into Ghidra
+      run: |
+        set -euxo pipefail
+        export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:?setup-ghidra did not export GHIDRA_INSTALL_DIR}"
+        EXT_DIR="$GHIDRA_INSTALL_DIR/Ghidra/Extensions"
+        mkdir -p "$EXT_DIR"
+        find "$EXT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        # dist/ holds exactly one extension zip; install it exactly like Ghidra's extension dialog.
+        unzip -q -o "$(ls -1 dist/*.zip | head -n 1)" -d "$EXT_DIR"
+        find "$EXT_DIR" -maxdepth 3 -name '*.jar' -print
+
+    - name: Fetch pinned wabt + spec testsuite
+      run: |
+        set -euxo pipefail
+        # fetch_spectest_tools.ps1 selects the wabt release asset for the host OS (linux-x64 here).
+        pwsh -NoProfile -File ./test-scripts/spectest/fetch_spectest_tools.ps1 \
+          -ToolsDir "$RUNNER_TEMP/spectest-tools"
+
+    - name: Run the positive spec suite (core subset)
+      run: |
+        set -euxo pipefail
+        export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:?setup-ghidra did not export GHIDRA_INSTALL_DIR}"
+        # run_spectest.ps1 picks `analyzeHeadless` (not the .bat) on Linux and `python3` off Windows.
+        pwsh -NoProfile -File ./test-scripts/spectest/run_spectest.ps1 \
+          -Subset core -MaxPerWast 10 -MaxCpu 2 \
+          -ToolsDir "$RUNNER_TEMP/spectest-tools" \
+          -OutDir "$RUNNER_TEMP/spectest-core" \
+          -GhidraDir "$GHIDRA_INSTALL_DIR"
+
+    - name: Check metrics against the recorded baseline
+      run: |
+        set -euxo pipefail
+        python3 test-scripts/check-spectest.py \
+          --summary "$RUNNER_TEMP/spectest-core/summary.json" \
+          --expected test-scripts/spectest-expected.json \
+          --subset core
+
+    - name: Upload spec-suite summary and logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: spectest-core
+        path: |
+          ${{ runner.temp }}/spectest-core/summary.json
+          ${{ runner.temp }}/spectest-core/summary.md
+          ${{ runner.temp }}/spectest-core/headless.log
+          ${{ runner.temp }}/spectest-core/modules.json
+        if-no-files-found: warn
