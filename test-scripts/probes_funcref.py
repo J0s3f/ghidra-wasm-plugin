@@ -151,16 +151,18 @@ write("F05_br_on_non_null.wasm", module(
     ]),
 ))
 
-# F06: call_ref through a table-loaded function. The reference comes from table.get,
-#      which the loader resolves to the function address stored by the element segment.
+# F06: call_ref through a table-loaded function. The table is typed (ref null 0), so
+#      table.get yields a reference call_ref accepts; the loader resolves the element
+#      segment's ref.func to the function address.
 write("F06_call_ref_through_table.wasm", module(
     type_section(
         functype([I32], [I32]),      # 0: (i32)->(i32)
         functype([], [I32])),        # 1: ()->(i32)
     func_section([0, 1]),
-    table_section([(FUNCREF, 0x00, 1)]),
+    section(4, vec([ref_null(0) + b"\x00" + uleb(1)])),   # table of (ref null 0)
     export_section([("f", 0, 1)]),
-    elem_section([active_elem_funcs([0])]),
+    # active segment with explicit table index and element expressions: ref.func 0; end
+    elem_section([b"\x06" + uleb(0) + (i32_const(0) + END) + ref_null(0) + vec([b"\xD2" + uleb(0) + END])]),
     code_section([
         local_get(0) + END,                                    # func 0: callee
         i32_const(42) + i32_const(0) + table_get(0) + call_ref(0) + END,  # func 1

@@ -179,11 +179,13 @@ def global_set(i) -> bytes:
 
 
 def i32_const(v) -> bytes:
-    return b"\x41" + sleb(v)
+    """i32.const; v may be any 32-bit bit pattern (wrapped to its signed value)."""
+    return b"\x41" + sleb(((v + (1 << 31)) % (1 << 32)) - (1 << 31))
 
 
 def i64_const(v) -> bytes:
-    return b"\x42" + sleb(v)
+    """i64.const; v may be any 64-bit bit pattern (wrapped to its signed value)."""
+    return b"\x42" + sleb(((v + (1 << 63)) % (1 << 64)) - (1 << 63))
 
 
 def f32_const(v: float) -> bytes:
@@ -224,13 +226,17 @@ def return_call_indirect(typeidx, tableidx=0) -> bytes:
 
 
 def block(blocktype=0x40, body=b"") -> bytes:
-    """blocktype is 0x40 (empty), a valtype byte, or a positive type index."""
+    """blocktype is 0x40 (empty), a valtype byte, multi-byte valtype bytes, or a type index."""
+    if isinstance(blocktype, bytes):
+        return b"\x02" + blocktype + body + END
     if blocktype in (0x40, I32, I64, F32, F64, V128, FUNCREF, EXTERNREF):
         return b"\x02" + bytes([blocktype]) + body + END
     return b"\x02" + sleb(blocktype) + body + END
 
 
 def loop(blocktype=0x40, body=b"") -> bytes:
+    if isinstance(blocktype, bytes):
+        return b"\x03" + blocktype + body + END
     if blocktype in (0x40, I32, I64, F32, F64, V128, FUNCREF, EXTERNREF):
         return b"\x03" + bytes([blocktype]) + body + END
     return b"\x03" + sleb(blocktype) + body + END
@@ -271,7 +277,23 @@ def custom_section(name_str: str, payload: bytes) -> bytes:
     return section(0, name(name_str) + payload)
 
 
-def module(*sections: bytes) -> bytes:
+# Canonical core-module section order. Non-custom section ids ascend, with two
+# exceptions to the id order: the data count section (12) must precede the code
+# section (10), and the tag section (13) sits between the memory (5) and global (6)
+# sections. Custom sections (0) may appear anywhere, so they keep their exact
+# positions; only the non-custom sections are reordered into the canonical sequence.
+# Pass sort=False for a module that is deliberately misordered (see
+# make_malformed_corpus.py, probes_sections_i64.py).
+_SECTION_RANK = {1: 10, 2: 20, 3: 30, 4: 40, 5: 50, 13: 55, 6: 60, 7: 70, 8: 80, 9: 90,
+                 12: 100, 10: 110, 11: 120}
+
+
+def module(*sections: bytes, sort: bool = True) -> bytes:
+    if sort:
+        ordered = sorted((s for s in sections if s[0] != 0),
+                         key=lambda s: _SECTION_RANK.get(s[0], 1000 + s[0]))
+        it = iter(ordered)
+        sections = tuple(next(it) if s[0] != 0 else s for s in sections)
     return b"\x00asm" + struct.pack("<I", 1) + b"".join(sections)
 
 

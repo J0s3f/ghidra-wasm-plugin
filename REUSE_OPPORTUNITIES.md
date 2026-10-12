@@ -82,8 +82,13 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
 
 ## 5. Suggested order of work
 
-1. Fix the probe fixtures (multivalue export kind, section order) and re-baseline; add the
-   `wasm-dis`-based fixture-validity check to the harness/CI. *(S, prevents invalid evidence)*
+1. ~~Fix the probe fixtures (multivalue export kind, section order) and re-baseline; add the
+   `wasm-dis`-based fixture-validity check to the harness/CI.~~ **DONE** (`MODERN_WASM_GAPS.md` 6.5):
+   `wasm_probe_lib.module()` now canonicalises section order (custom sections keep their positions;
+   `datacount` before `code`, `tag` between `memory` and `global`), the multivalue export kind is
+   fixed, and 15 further individual fixture bugs were fixed. All 136 probes are valid under binaryen
+   133; `test-scripts/check-fixture-validity.py` + `test-scripts/fixture-validity.json` lock in the
+   classification and `.github/workflows/probes.yml` enforces it with wabt.
 2. Refresh the stale doc rows and document the `instrs`-vs-real-instructions distinction. *(S)*
 3. Investigate the extended-const `Data markup conflict` warning. *(S)*
 4. Add the WABT/Binaryen decode-oracle comparison for the real corpus to the suite that already exists

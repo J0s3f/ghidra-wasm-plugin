@@ -58,7 +58,7 @@ write("M01_multivalue_i32_i32.wasm", module(
     type_section(functype([], [I32, I32]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(I32, I32)),
-    export_section([("pair", 0, 0), ("f", 1, 1), ("g0", 3, 0), ("g1", 3, 1)]),
+    export_section([("pair", 0, 0), ("f", 0, 1), ("g0", 3, 0), ("g1", 3, 1)]),
     code_section([
         i32_const(1) + i32_const(2) + END,                    # pair: (1, 2)
         call(0) + global_set(0) + global_set(1) + END,          # f: call pair, store both
@@ -74,7 +74,7 @@ write("M02_multivalue_three_i32.wasm", module(
     type_section(functype([], [I32, I32, I32]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(I32, I32, I32)),
-    export_section([("triple", 0, 0), ("f", 1, 1),
+    export_section([("triple", 0, 0), ("f", 0, 1),
                     ("g0", 3, 0), ("g1", 3, 1), ("g2", 3, 2)]),
     code_section([
         i32_const(1) + i32_const(2) + i32_const(3) + END,
@@ -87,7 +87,7 @@ write("M03_multivalue_four_i32.wasm", module(
     type_section(functype([], [I32, I32, I32, I32]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(I32, I32, I32, I32)),
-    export_section([("quad", 0, 0), ("f", 1, 1),
+    export_section([("quad", 0, 0), ("f", 0, 1),
                     ("g0", 3, 0), ("g1", 3, 1), ("g2", 3, 2), ("g3", 3, 3)]),
     code_section([
         i32_const(1) + i32_const(2) + i32_const(3) + i32_const(4) + END,
@@ -104,7 +104,7 @@ write("M04_multivalue_mixed_i32_f64.wasm", module(
     type_section(functype([], [I32, F64]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(I32, F64)),
-    export_section([("pair", 0, 0), ("f", 1, 1), ("gi", 3, 0), ("gd", 3, 1)]),
+    export_section([("pair", 0, 0), ("f", 0, 1), ("gi", 3, 0), ("gd", 3, 1)]),
     code_section([
         i32_const(7) + f64_const(2.5) + END,
         # results pop top-first: global_set(1) takes the f64, global_set(0) the i32
@@ -117,7 +117,7 @@ write("M05_multivalue_i64_i32.wasm", module(
     type_section(functype([], [I64, I32]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(I64, I32)),
-    export_section([("pair", 0, 0), ("f", 1, 1), ("gl", 3, 0), ("gi", 3, 1)]),
+    export_section([("pair", 0, 0), ("f", 0, 1), ("gl", 3, 0), ("gi", 3, 1)]),
     code_section([
         i64_const(0x1122334455667788) + i32_const(-5) + END,
         # results pop top-first: global_set(1) takes the i32, global_set(0) the i64
@@ -131,7 +131,7 @@ write("M06_multivalue_i32_i64.wasm", module(
     type_section(functype([], [I32, I64]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(I32, I64)),
-    export_section([("pair", 0, 0), ("f", 1, 1), ("gi", 3, 0), ("gl", 3, 1)]),
+    export_section([("pair", 0, 0), ("f", 0, 1), ("gi", 3, 0), ("gl", 3, 1)]),
     code_section([
         i32_const(0x12345678) + i64_const(0x9ABCDEF012345678) + END,
         # results pop top-first: global_set(1) takes the i64, global_set(0) the i32
@@ -144,7 +144,7 @@ write("M07_multivalue_f64_f64.wasm", module(
     type_section(functype([], [F64, F64]), functype([], [])),
     func_section([0, 1]),
     global_section(mutable_globals(F64, F64)),
-    export_section([("pair", 0, 0), ("f", 1, 1), ("gd0", 3, 0), ("gd1", 3, 1)]),
+    export_section([("pair", 0, 0), ("f", 0, 1), ("gd0", 3, 0), ("gd1", 3, 1)]),
     code_section([
         f64_const(1.5) + f64_const(-2.25) + END,
         call(0) + global_set(0) + global_set(1) + END,
@@ -160,7 +160,7 @@ write("M07_multivalue_f64_f64.wasm", module(
 write("M08_multivalue_caller_arith.wasm", module(
     type_section(functype([], [I32, I32]), functype([], [I32, I32])),
     func_section([0, 1]),
-    export_section([("pair", 0, 0), ("f", 1, 1)]),
+    export_section([("pair", 0, 0), ("f", 0, 1)]),
     code_with_locals([
         body(i32_const(3) + i32_const(4) + END, []),          # pair: (3, 4)
         body(call(0) + local_set(1) + local_set(0) +            # f: b -> local1, a -> local0

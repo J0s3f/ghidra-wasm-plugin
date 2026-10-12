@@ -309,7 +309,7 @@ emit("D01_two_type_sections.wasm", module(type_section(T1), type_section(T1i)))
 emit("D02_two_code_sections.wasm", module(type_section(T1), func_section([0]),
       code_section([body(END)]), code_section([body(END)])))
 emit("D03_unknown_section_id.wasm", HEADER + b"\x2a" + uleb(3) + b"\x00\x00\x00")   # id 42
-emit("D04_sections_wrong_order.wasm", module(code_section([body(END)]), func_section([0]), type_section(T1)))
+emit("D04_sections_wrong_order.wasm", module(code_section([body(END)]), func_section([0]), type_section(T1), sort=False))
 emit("D05_repeat_custom_sections.wasm", module(
     custom_section("aa", b"x"), custom_section("aa", b"y"), custom_section("bb", b"z")))
 

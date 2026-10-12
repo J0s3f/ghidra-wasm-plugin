@@ -1,0 +1,464 @@
+{
+  "note": "Recorded from real runs of the probe generators. 'valid' must stay valid; 'wabt-gap' is wabt 1.0.42 not implementing the final GC/typed-ref encodings; 'unsupported' is a feature neither oracle implements; 'invalid' is a deliberately invalid negative probe.",
+  "oracles": {
+    "binaryen": "version_133",
+    "wabt": "1.0.42"
+  },
+  "probes": {
+    "01_baseline_i32.wasm": {
+      "class": "valid"
+    },
+    "02_externref_param.wasm": {
+      "class": "valid"
+    },
+    "03_externref_table.wasm": {
+      "class": "valid"
+    },
+    "04_shared_memory_atomic.wasm": {
+      "class": "valid"
+    },
+    "05_memory64.wasm": {
+      "class": "valid"
+    },
+    "06_multi_memory.wasm": {
+      "class": "valid"
+    },
+    "07_data_count_bulk_memory.wasm": {
+      "class": "valid"
+    },
+    "08_gc_struct_type.wasm": {
+      "class": "valid"
+    },
+    "09_gc_struct_new.wasm": {
+      "class": "wabt-gap",
+      "why": "0000025: error: unexpected opcode: 0xfb"
+    },
+    "10_eh_legacy_try_catch.wasm": {
+      "class": "valid"
+    },
+    "11_eh_try_table.wasm": {
+      "class": "valid"
+    },
+    "12_call_ref.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/12_call_ref.wasm:0000010: error: reference 0 is out of range (max: 0) in params"
+    },
+    "13_tail_call.wasm": {
+      "class": "valid"
+    },
+    "14_relaxed_simd.wasm": {
+      "class": "valid"
+    },
+    "15_simd.wasm": {
+      "class": "valid"
+    },
+    "16_multivalue_return.wasm": {
+      "class": "valid"
+    },
+    "17_multivalue_block.wasm": {
+      "class": "valid"
+    },
+    "18_shared_then_plain_memory.wasm": {
+      "class": "valid"
+    },
+    "19_extended_const_global.wasm": {
+      "class": "valid"
+    },
+    "20_gc_global_init.wasm": {
+      "class": "wabt-gap",
+      "why": "0000014: error: unexpected opcode: 0xfb"
+    },
+    "21_component_model.wasm": {
+      "class": "unsupported",
+      "why": "0000008: error: wasm components are not yet supported in this tool"
+    },
+    "22_extconst_two_ops.wasm": {
+      "class": "valid"
+    },
+    "23_const_f32_imm_0b.wasm": {
+      "class": "valid"
+    },
+    "24_const_f64_imm_0b.wasm": {
+      "class": "valid"
+    },
+    "25_const_v128_imm_0b.wasm": {
+      "class": "valid"
+    },
+    "26_refnull_typeidx.wasm": {
+      "class": "valid"
+    },
+    "27_extconst_data_offset.wasm": {
+      "class": "valid"
+    },
+    "30_eh2_try_table_empty.wasm": {
+      "class": "valid"
+    },
+    "31_eh2_try_table_catch.wasm": {
+      "class": "valid"
+    },
+    "32_eh2_try_table_catch_ref.wasm": {
+      "class": "valid"
+    },
+    "33_eh2_try_table_catch_all.wasm": {
+      "class": "valid"
+    },
+    "34_eh2_try_table_catch_all_ref.wasm": {
+      "class": "valid"
+    },
+    "35_eh2_throw_ref_param.wasm": {
+      "class": "valid"
+    },
+    "36_eh2_nested_try_table.wasm": {
+      "class": "valid"
+    },
+    "37_eh2_mixed_legacy_new.wasm": {
+      "class": "valid"
+    },
+    "38_eh2_exnref_global.wasm": {
+      "class": "valid"
+    },
+    "39_eh2_try_table_multi_clause.wasm": {
+      "class": "valid"
+    },
+    "A01_mm_scalar_memarg.wasm": {
+      "class": "valid"
+    },
+    "A02_mm_simd_atomic_memarg.wasm": {
+      "class": "valid"
+    },
+    "A03_mm_memory_ops.wasm": {
+      "class": "valid"
+    },
+    "A04_mm_three_memories.wasm": {
+      "class": "valid"
+    },
+    "A05_unimp_cont_new.wasm": {
+      "class": "unsupported",
+      "why": "000001f: error: unexpected opcode: 0xe0"
+    },
+    "A06_unimp_string_new_utf8.wasm": {
+      "class": "unsupported",
+      "why": "000001f: error: unexpected opcode: 0xfb"
+    },
+    "A07_unimp_memory_discard.wasm": {
+      "class": "unsupported",
+      "why": "0000020: error: unexpected opcode: 0xfc 0x12"
+    },
+    "A08_unimp_cont_bind.wasm": {
+      "class": "unsupported",
+      "why": "000001f: error: unexpected opcode: 0xe1"
+    },
+    "A09_unimp_mul_wide_u.wasm": {
+      "class": "valid"
+    },
+    "A10_unimp_then_stack_error.wasm": {
+      "class": "unsupported",
+      "why": "000001f: error: unexpected opcode: 0xe0"
+    },
+    "B01_limits_shared_max.wasm": {
+      "class": "valid"
+    },
+    "B02_limits_memory64_max.wasm": {
+      "class": "valid"
+    },
+    "B03_limits_custom_page_size.wasm": {
+      "class": "valid"
+    },
+    "B04_limits_shared_memory64.wasm": {
+      "class": "valid"
+    },
+    "B05_limits_two_memories.wasm": {
+      "class": "valid"
+    },
+    "B06_limits_two_tables.wasm": {
+      "class": "valid"
+    },
+    "B07_const_i32_add.wasm": {
+      "class": "valid"
+    },
+    "B08_const_i64_add.wasm": {
+      "class": "valid"
+    },
+    "B09_const_i32_mul.wasm": {
+      "class": "valid"
+    },
+    "B10_const_v128.wasm": {
+      "class": "valid"
+    },
+    "B11_const_ref_func.wasm": {
+      "class": "valid"
+    },
+    "B12_const_ref_null_extern.wasm": {
+      "class": "valid"
+    },
+    "B13_const_ref_null_func.wasm": {
+      "class": "valid"
+    },
+    "B14_const_unknown_gc.wasm": {
+      "class": "wabt-gap",
+      "why": "000001f: error: unexpected opcode: 0xfb"
+    },
+    "B15_const_ref_null_typeidx.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/B15_const_ref_null_typeidx.wasm:0000014: error: reference 0 is out of range (max: 1) in results"
+    },
+    "B16_valtype_ref_null_param.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/B16_valtype_ref_null_param.wasm:0000010: error: reference 0 is out of range (max: 0) in params"
+    },
+    "B17_valtype_ref_param.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/B17_valtype_ref_param.wasm:0000010: error: reference 0 is out of range (max: 0) in params"
+    },
+    "B18_valtype_ref_null_result.wasm": {
+      "class": "valid"
+    },
+    "B19_valtype_exnref.wasm": {
+      "class": "valid"
+    },
+    "B20_valtype_anyref.wasm": {
+      "class": "wabt-gap",
+      "why": "000000e: error: expected valid param type (got -0x12)"
+    },
+    "B21_valtype_eqref.wasm": {
+      "class": "wabt-gap",
+      "why": "000000e: error: expected valid param type (got -0x13)"
+    },
+    "B22_valtype_i31ref.wasm": {
+      "class": "wabt-gap",
+      "why": "000000e: error: expected valid param type (got -0x14)"
+    },
+    "B23_valtype_structref.wasm": {
+      "class": "wabt-gap",
+      "why": "0000010: error: invalid function result count 107, only 0 bytes left in section"
+    },
+    "B24_valtype_arrayref.wasm": {
+      "class": "wabt-gap",
+      "why": "000000e: error: expected valid param type (got -0x16)"
+    },
+    "B25_valtype_exnref_global.wasm": {
+      "class": "valid"
+    },
+    "B26_valtype_table_ref_null.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/B26_valtype_table_ref_null.wasm:0000010: error: reference 0 is out of range (max: 0) in results"
+    },
+    "B27_valtype_table_ref.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/B27_valtype_table_ref.wasm:0000010: error: reference 0 is out of range (max: 0) in results"
+    },
+    "B28_valtype_func_gc_struct.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/B28_valtype_func_gc_struct.wasm:0000018: error: reference 0 is out of range (max: 1) in params"
+    },
+    "B29_valtype_mixed.wasm": {
+      "class": "wabt-gap",
+      "why": "0000010: error: expected valid param type (got -0x12)"
+    },
+    "C01_import_thunk.wasm": {
+      "class": "valid"
+    },
+    "C02_invalid_body.wasm": {
+      "class": "invalid",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/C02_invalid_body.wasm:000002e: error: type mismatch in implicit return, expected [i32] but got []"
+    },
+    "C03_import_shared_mem.wasm": {
+      "class": "valid"
+    },
+    "E01_gc_struct_type.wasm": {
+      "class": "wabt-gap",
+      "why": "0000018: error: expected valid field type (got -0x8)"
+    },
+    "E02_gc_array_type.wasm": {
+      "class": "wabt-gap",
+      "why": "0000010: error: expected valid field type (got -0x8)"
+    },
+    "E03_gc_rec_subtype.wasm": {
+      "class": "wabt-gap",
+      "why": "000000c: error: unexpected type form (got -0x32)"
+    },
+    "E04_gc_abstract_heaptypes.wasm": {
+      "class": "wabt-gap",
+      "why": "0000010: error: expected valid field type (got -0x16)"
+    },
+    "E10_gc_struct_new_get_set.wasm": {
+      "class": "wabt-gap",
+      "why": "0000026: error: unexpected opcode: 0xfb"
+    },
+    "E11_gc_array_new_get_len.wasm": {
+      "class": "wabt-gap",
+      "why": "0000027: error: unexpected opcode: 0xfb"
+    },
+    "E12_gc_array_set_fill_copy.wasm": {
+      "class": "wabt-gap",
+      "why": "0000027: error: unexpected opcode: 0xfb"
+    },
+    "E13_gc_array_packed.wasm": {
+      "class": "wabt-gap",
+      "why": "000000d: error: expected valid field type (got -0x8)"
+    },
+    "E14_gc_ref_test_cast.wasm": {
+      "class": "wabt-gap",
+      "why": "0000025: error: expected valid ref.null type (got -0x15)"
+    },
+    "E15_gc_br_on_cast.wasm": {
+      "class": "invalid",
+      "why": "deliberate: the conformant form needs a reference-typed block signature, and the loader's type model cannot validate one yet (every (ref null ht) maps to externref; see MODERN_WASM_GAPS.md 6.5). Kept in this form for br_on_cast decode coverage."
+    },
+    "E16_gc_convert.wasm": {
+      "class": "wabt-gap",
+      "why": "0000023: error: unexpected opcode: 0xfb"
+    },
+    "E17_gc_array_data_elem.wasm": {
+      "class": "wabt-gap",
+      "why": "0000034: error: unexpected opcode: 0xfb"
+    },
+    "E18_gc_struct_get_su.wasm": {
+      "class": "wabt-gap",
+      "why": "000000e: error: expected valid field type (got -0x8)"
+    },
+    "E20_gc_mixed.wasm": {
+      "class": "wabt-gap",
+      "why": "0000017: error: expected valid param type (got -0x12)"
+    },
+    "F01_return_call_ref.wasm": {
+      "class": "valid"
+    },
+    "F02_ref_as_non_null.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/F02_ref_as_non_null.wasm:0000010: error: reference 0 is out of range (max: 0) in params"
+    },
+    "F03_br_on_null.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/F03_br_on_null.wasm:0000010: error: reference 0 is out of range (max: 0) in params"
+    },
+    "F04_br_on_null_fallthrough.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/F04_br_on_null_fallthrough.wasm:0000011: error: reference 0 is out of range (max: 0) in params"
+    },
+    "F05_br_on_non_null.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/F05_br_on_non_null.wasm:0000010: error: reference 0 is out of range (max: 0) in results"
+    },
+    "F06_call_ref_through_table.wasm": {
+      "class": "valid"
+    },
+    "F07_funcref_mixed.wasm": {
+      "class": "valid"
+    },
+    "J03_locals_count_neg.wasm": {
+      "class": "invalid",
+      "why": "error: function local count exceeds maximum value"
+    },
+    "J04_table_initial_4G_elems.wasm": {
+      "class": "valid"
+    },
+    "J05_functype_param_overflow.wasm": {
+      "class": "invalid",
+      "why": "0000011: error: invalid function param count 4294967295, only 1 bytes left in section"
+    },
+    "M01_multivalue_i32_i32.wasm": {
+      "class": "valid"
+    },
+    "M02_multivalue_three_i32.wasm": {
+      "class": "valid"
+    },
+    "M03_multivalue_four_i32.wasm": {
+      "class": "valid"
+    },
+    "M04_multivalue_mixed_i32_f64.wasm": {
+      "class": "valid"
+    },
+    "M05_multivalue_i64_i32.wasm": {
+      "class": "valid"
+    },
+    "M06_multivalue_i32_i64.wasm": {
+      "class": "valid"
+    },
+    "M07_multivalue_f64_f64.wasm": {
+      "class": "valid"
+    },
+    "M08_multivalue_caller_arith.wasm": {
+      "class": "valid"
+    },
+    "M09_multivalue_block.wasm": {
+      "class": "valid"
+    },
+    "M10_multivalue_import.wasm": {
+      "class": "valid"
+    },
+    "M11_multivalue_return_call.wasm": {
+      "class": "valid"
+    },
+    "M12_multivalue_call_indirect.wasm": {
+      "class": "valid"
+    },
+    "M64_01_baseline_i64_load.wasm": {
+      "class": "valid"
+    },
+    "M64_02_scalar_loads_stores.wasm": {
+      "class": "valid"
+    },
+    "M64_03_memory_size_grow.wasm": {
+      "class": "valid"
+    },
+    "M64_04_bulk_memory.wasm": {
+      "class": "valid"
+    },
+    "M64_05_i64_then_i32_memidx.wasm": {
+      "class": "valid"
+    },
+    "M64_06_i32_then_i64_memidx.wasm": {
+      "class": "valid"
+    },
+    "M64_07_large_static_offset.wasm": {
+      "class": "valid"
+    },
+    "M64_08_simd_atomic.wasm": {
+      "class": "valid"
+    },
+    "N01_full_name_section.wasm": {
+      "class": "valid"
+    },
+    "N02_no_name_section.wasm": {
+      "class": "valid"
+    },
+    "N03_malformed_name_subsection.wasm": {
+      "class": "invalid",
+      "why": "error: expected function name count (3) <= function count (1)"
+    },
+    "SF01_select_after_terminator.wasm": {
+      "class": "valid"
+    },
+    "SF02_stackvar_f32_load.wasm": {
+      "class": "valid"
+    },
+    "SF02_stackvar_i64_load8_s.wasm": {
+      "class": "valid"
+    },
+    "SF02_stackvar_i64_store.wasm": {
+      "class": "valid"
+    },
+    "SF02_stackvar_i64_store16.wasm": {
+      "class": "valid"
+    },
+    "SF02_stackvar_local_set.wasm": {
+      "class": "valid"
+    },
+    "SF03_large_br_table.wasm": {
+      "class": "valid"
+    },
+    "bare_component_header.wasm": {
+      "class": "invalid",
+      "why": "0000008: error: wasm components are not yet supported in this tool"
+    },
+    "component_with_module.wasm": {
+      "class": "unsupported",
+      "why": "0000008: error: wasm components are not yet supported in this tool"
+    },
+    "truncated_component.wasm": {
+      "class": "invalid",
+      "why": "0000008: error: wasm components are not yet supported in this tool"
+    }
+  }
+}

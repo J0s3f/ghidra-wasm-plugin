@@ -137,8 +137,11 @@ write("A07_unimp_memory_discard.wasm", _unimp_module(misc_op(0x12) + uleb(0) + _
 # A08: stack switching, cont.bind (0xE1) with two typeidx immediates.
 write("A08_unimp_cont_bind.wasm", _unimp_module(b"\xE1" + uleb(0) + uleb(0) + _tail()))
 
-# A09: wide arithmetic, i64.mul_wide_u (0xFC 0x16), no immediates.
-write("A09_unimp_mul_wide_u.wasm", _unimp_module(misc_op(0x16) + _tail()))
+# A09: wide arithmetic, i64.mul_wide_u (0xFC 0x16), no immediates. The operands are
+#      supplied so the module stays spec-valid (wabt knows the opcode); the plugin does
+#      not implement it, so the disassembly must still show `unimplemented`.
+write("A09_unimp_mul_wide_u.wasm", _unimp_module(
+    i64_const(1) + i64_const(2) + misc_op(0x16) + drop() + drop() + _tail()))
 
 # A10: the stack model after an unimplemented instruction is unknown, so a validation error it
 # causes (here i32.add with an empty stack) must not blank the body: the whole function still

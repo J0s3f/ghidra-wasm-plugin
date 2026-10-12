@@ -68,11 +68,11 @@ write("E02_gc_array_type.wasm", module(
 write("E03_gc_rec_subtype.wasm", module(
     type_section(
         rectype(
-            struct_type([(I32, True)]),
+            subtype(struct_type([(I32, True)]), final=False),         # non-final: a supertype below
             subtype(struct_type([(I64, False)]), final=True),         # 0x4F sub final
             functype([], [I32])),
         subtype(functype([], []), final=False),                       # 0x50 sub
-        subtype(struct_type([(F32, True)]), [0], final=True),         # sub final 0 (struct)
+        subtype(struct_type([(I32, True), (F32, True)]), [0], final=True),  # sub final 0: supertype field + extra
     ),
     func_section([2, 3]),
     export_section([("f", 0, 0), ("g", 0, 1)]),
@@ -223,7 +223,12 @@ write("E14_gc_ref_test_cast.wasm", module(
         i32_const(0) + END]),
 ))
 
-# E15: br_on_cast / br_on_cast_fail around a block
+# E15: br_on_cast / br_on_cast_fail around a block. NOTE: this module is *not*
+#      spec-valid: the conformant form needs a reference-typed block signature, and the
+#      loader's type model maps every `(ref null ht)` to externref (WasmEnums.ValType.
+#      readFromReader) while ref.null pushes anyref, so it cannot validate one yet.
+#      Recorded as a deliberate exception in test-scripts/fixture-validity.json; the
+#      plugin-side fix is queued (precise reference typing + subtype-aware validation).
 write("E15_gc_br_on_cast.wasm", module(
     type_section(struct_type([(I32, True)]), functype([], [I32])),
     func_section([1]),

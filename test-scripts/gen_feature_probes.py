@@ -120,7 +120,7 @@ write("12_call_ref.wasm", module(
     type_section(b"\x60" + vec([ref_null(0)]) + vec([])),  # type 0 = ((ref null 0)) -> ()
     func_section([0]),
     export_section([("f", 0, 0)]),
-    code_section([local_get(0) + call_ref(0) + END]),
+    code_section([local_get(0) + local_get(0) + call_ref(0) + END]),
 ))
 
 # 13. tail calls: return_call

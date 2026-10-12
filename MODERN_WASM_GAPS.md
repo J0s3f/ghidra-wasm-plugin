@@ -385,6 +385,52 @@ workstream - see §6.2 - and the fixes were re-verified by the integrator):
 5. **B7 (low) - rejections are now deliberate loader diagnostics** for the paths that were fixed
    (section markup, locals, memory/table limits) instead of "no loader matched" / "no memory blocks".
 
+### 6.5 Fixture-validity baseline (every probe must be a valid module)
+
+The probe suite is the evidence base for feature support, so every probe that exercises a feature
+must itself be a valid module. Two external oracles verify that:
+
+* **wabt 1.0.42** `wasm-validate --enable-all` (pinned + sha256-verified by
+  `test-scripts/spectest/fetch_spectest_tools.ps1`; the probes workflow fetches it with `-WabtOnly`)
+* **binaryen version_133** `wasm-dis --all-features` (111 MB release asset, local/full checks only:
+  `--binaryen <dir>`)
+
+`test-scripts/check-fixture-validity.py` regenerates the probes, validates each one and compares the
+verdicts against `test-scripts/fixture-validity.json` (recorded from a real run, never hand-written).
+A probe that is not recorded, or whose verdict changes, fails the gate; `--update` re-records, and
+both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
+silently.
+
+Classification of the 136 probes at the time of writing:
+
+| class | count | meaning |
+| --- | --- | --- |
+| `valid` | 89 | accepted by both oracles |
+| `wabt-gap` | 33 | wabt 1.0.42 is behind the final GC / typed-reference encodings; binaryen accepts |
+| `unsupported` | 7 | neither oracle implements the feature (components, stack switching, string builtins, `memory.discard`) |
+| `invalid` | 7 | deliberately invalid probes: 6 negative fixtures plus `E15` (see the gap below) |
+
+Fixtures fixed to reach this state: section-order canonicalisation in `wasm_probe_lib.module()`
+(36 probes), the multivalue export kind (8), plus 15 individual bugs - `M06` (out-of-range i64
+constant), `SF02` x4 (memory instructions without a memory), `A09` (missing operands), `B04`/`B06`
+(limits flags / missing table index), `B14`/`B15`/`B25` (`ref.null` immediate and a duplicate `END`
+in the global initialiser), `B16`/`B17`/`B18`/`B29`/`12_call_ref` (missing `call_ref` arguments,
+reftype used where the `ref.null` instruction belongs), `E03` (a final type used as a supertype),
+`F06` (typed table + expression element segment). `E15`'s typing bug was fixed, but the conformant
+form is blocked by the reference-typing gap below, so the probe keeps a decodable, declared-invalid
+form for now. Only fixture bytes changed; the recorded probe metrics for those modules were
+regenerated with `check-local.ps1 -Update`.
+
+**Gap exposed while fixing the fixtures (open, queued workstream):** the pre-analyzer's reference
+type model is too coarse to validate conformant reference-typed signatures. `ValType.readFromReader`
+maps *every* multi-byte `(ref null <ht>)` / `(ref <ht>)` to `externref` (a documented placeholder),
+while `ref.null` pushes `anyref`, so a module with a reference-typed block or function result fails
+validation with `pop type mismatch: got anyref, expected externref` and its body is left undecoded
+(`E15_gc_br_on_cast` in conformant form: `instrs 1, undefined_bytes 27`; with the non-conformant
+form used today: `instrs 15, undefined_bytes 0`). The fix is precise reference typing (map each
+abstract heap type to its `ValType`, concrete indices to a generic reference) plus subtype-aware
+validation; `E15` then flips from the declared `invalid` class to `wabt-gap`.
+
 ## 7. References
 
 * WebAssembly 3.0 / core spec: <https://webassembly.github.io/spec/core/>

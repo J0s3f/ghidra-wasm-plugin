@@ -105,6 +105,7 @@ def _unreachable_fn(rest):
     return module(
         type_section(functype([I32], [])),
         func_section([0]),
+        memory_section([(0x00, 1)]),        # the i64/f32 load/store variants need a memory
         export_section([("f", 0, 0)]),
         code_section([UNREACHABLE + rest + END]),
     )

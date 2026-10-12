@@ -53,10 +53,10 @@ write("B03_limits_custom_page_size.wasm", module(
     code_section([END]),
 ))
 
-# B04: shared memory64 (flags=6 = shared + 64-bit)
+# B04: shared memory64 (flags=7 = shared + has-max + 64-bit; shared memories need a max)
 write("B04_limits_shared_memory64.wasm", module(
     type_section(functype([], [])),
-    memory_section([(0x06, 10)]),  # flags=6: shared + 64-bit
+    memory_section([(0x07, 10, 20)]),  # flags=7: shared + has_max + 64-bit
     func_section([0]),
     export_section([("f", 0, 0)]),
     code_section([END]),
@@ -73,11 +73,11 @@ write("B05_limits_two_memories.wasm", module(
 
 # B06: two tables in one section - tests desync for tables too
 write("B06_limits_two_tables.wasm", module(
-    type_section(functype([], [EXTERNREF])),
-    table_section([(EXTERNREF, 0x00, 2), (FUNCREF, 0x01, 3, 5)]),  # table 0: plain; table 1: shared+max
+    type_section(functype([], [FUNCREF])),
+    table_section([(EXTERNREF, 0x00, 2), (FUNCREF, 0x01, 3, 5)]),  # table 0: plain; table 1: with max
     func_section([0]),
     export_section([("f", 0, 0)]),
-    code_section([b"\x25\x01" + END]),  # table.get 1
+    code_section([i32_const(0) + b"\x25\x01" + END]),  # i32.const 0; table.get 1 (funcref)
 ))
 
 # ---------------------------------------------------------------------------------------------
@@ -149,19 +149,20 @@ write("B13_const_ref_null_func.wasm", module(
 
 # B14: unknown opcode in constant expression (GC struct.new) - must not fail import
 write("B14_const_unknown_gc.wasm", module(
-    type_section(struct_type([(I32, False)])),
-    global_section([(I32, False, gc_op(0) + uleb(0) + END)]),  # struct.new 0 - unknown in const expr
+    type_section(struct_type([(I32, False)]), functype([], [I32])),  # 0: struct, 1: () -> i32
+    global_section([(I32, False, i32_const(0) + gc_op(0) + uleb(0))]),  # struct.new 0 - unknown in const expr
     export_section([("g", 3, 0)]),
-    func_section([0]),
+    func_section([1]),
     code_section([global_get(0) + END]),
 ))
 
-# B15: ref.null with custom heap type (multi-byte) in const expr
+# B15: ref.null with a concrete heap type (multi-byte reftype) in a const expr
 write("B15_const_ref_null_typeidx.wasm", module(
-    type_section(struct_type([(I32, False)])),
-    global_section([(ref_null(1), False, b"\xD0" + ref_null(1) + END)]),  # ref.null $type1
+    type_section(struct_type([(I32, False)]),
+                 b"\x60" + vec([]) + vec([ref_null(0)])),          # 1: () -> (ref null 0)
+    global_section([(ref_null(0), False, b"\xD0" + sleb(0))]),  # (ref null 0) = ref.null 0
     export_section([("g", 3, 0)]),
-    func_section([0]),
+    func_section([1]),
     code_section([global_get(0) + END]),
 ))
 
@@ -195,7 +196,7 @@ write("B16_valtype_ref_null_param.wasm", module(
     ),
     func_section([0, 1]),
     export_section([("f", 0, 0), ("callee", 0, 1)]),
-    code_section([local_get(0) + call_ref(0) + END, END]),
+    code_section([local_get(0) + local_get(0) + call_ref(0) + END, END]),
 ))
 
 # B17: (ref $t) as function parameter (non-nullable)
@@ -207,7 +208,7 @@ write("B17_valtype_ref_param.wasm", module(
     ),
     func_section([0, 1]),
     export_section([("f", 0, 0), ("callee", 0, 1)]),
-    code_section([local_get(0) + call_ref(0) + END, END]),
+    code_section([local_get(0) + local_get(0) + call_ref(0) + END, END]),
 ))
 
 # B18: (ref null $t) as function result
@@ -219,7 +220,7 @@ write("B18_valtype_ref_null_result.wasm", module(
     ),
     func_section([0, 1]),
     export_section([("f", 0, 0), ("maker", 0, 1)]),
-    code_section([call(1) + drop() + END, ref_null(0) + END]),
+    code_section([call(1) + drop() + END, b"\xD0" + sleb(0) + END]),
 ))
 
 # B19: exnref as parameter and local
@@ -272,10 +273,10 @@ write("B24_valtype_arrayref.wasm", module(
 
 # B25: exnref as global
 write("B25_valtype_exnref_global.wasm", module(
-    type_section(struct_type([])),
-    global_section([(0x69, False, b"\xD0\x69" + END)]),  # global exnref = ref.null exnref
+    type_section(struct_type([]), functype([], [])),      # 0: struct, 1: () -> ()
+    global_section([(0x69, False, b"\xD0\x69")]),   # global exnref = ref.null exnref
     export_section([("g", 3, 0)]),
-    func_section([0]),
+    func_section([1]),
     code_section([global_get(0) + drop() + END]),
 ))
 
@@ -306,15 +307,15 @@ write("B27_valtype_table_ref.wasm", module(
 ))
 
 # B28: function type referencing GC struct type
-# type 0: struct { i32, mut i64 }, type 1: (ref null 0) -> (ref 0)
+# type 0: struct { i32, mut i64 }, type 1: (ref null 0) -> (ref null 0)
 write("B28_valtype_func_gc_struct.wasm", module(
     type_section_multi(
         struct_type([(I32, False), (I64, True)]),
-        b"\x60" + vec([ref_null(0)]) + vec([ref_(0)])
+        b"\x60" + vec([ref_null(0)]) + vec([ref_null(0)])
     ),
-    func_section([0]),
+    func_section([1]),
     export_section([("f", 0, 0)]),
-    code_section([ref_null(0) + END]),
+    code_section([b"\xD0" + sleb(0) + END]),
 ))
 
 # B29: multiple value types in one function (mixed)
@@ -326,5 +327,6 @@ write("B29_valtype_mixed.wasm", module(
     ),
     func_section([0]),
     export_section([("f", 0, 0)]),
-    code_section([b"\x20\x00\x20\x01\x20\x02\x20\x03\x20\x04" + drop() + drop() + drop() + drop() + drop() + END]),
+    code_section([b"\x20\x00\x20\x01\x20\x02\x20\x03\x20\x04" + drop() + drop() + drop() + drop() + drop() +
+                  b"\xD0\x6A" + b"\xD0\x6D" + END]),  # ref.null array, ref.null eq (the two results)
 ))

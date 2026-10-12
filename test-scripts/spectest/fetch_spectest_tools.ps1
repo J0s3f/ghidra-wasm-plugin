@@ -22,7 +22,8 @@
 #>
 param(
     [string]$ToolsDir = (Join-Path ([IO.Path]::GetTempPath()) "spectest-tools"),
-    [switch]$Force
+    [switch]$Force,
+    [switch]$WabtOnly   # skip the spec testsuite (used by the probes workflow's fixture-validity gate)
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,20 +75,24 @@ if ($Force -or -not (Test-Path $wabtExe)) {
 Write-Host ("wabt      : {0}" -f (& $wabtExe --version))
 
 # --- spec testsuite ------------------------------------------------------------------------------
-if ($Force -or -not (Test-Path (Join-Path $specDir "i32.wast"))) {
-    $tgz = Join-Path $ToolsDir "spec-$SpecCommit.tar.gz"
-    Write-Host "downloading spec testsuite @ $SpecCommit" -ForegroundColor Cyan
-    & $curl -sL -o $tgz $SpecUrl
-    # GitHub regenerated archives are not byte-stable forever; warn rather than fail.
-    $actual = (Get-FileHash -Algorithm SHA256 -Path $tgz).Hash.ToLower()
-    if ($actual -ne $SpecSha256) {
-        Write-Warning "spec tarball sha256 differs from the recorded value ($actual vs $SpecSha256); continuing"
+if ($WabtOnly) {
+    $specDir = ""
+} else {
+    if ($Force -or -not (Test-Path (Join-Path $specDir "i32.wast"))) {
+        $tgz = Join-Path $ToolsDir "spec-$SpecCommit.tar.gz"
+        Write-Host "downloading spec testsuite @ $SpecCommit" -ForegroundColor Cyan
+        & $curl -sL -o $tgz $SpecUrl
+        # GitHub regenerated archives are not byte-stable forever; warn rather than fail.
+        $actual = (Get-FileHash -Algorithm SHA256 -Path $tgz).Hash.ToLower()
+        if ($actual -ne $SpecSha256) {
+            Write-Warning "spec tarball sha256 differs from the recorded value ($actual vs $SpecSha256); continuing"
+        }
+        if (Test-Path $specDir) { Remove-Item -Recurse -Force $specDir }
+        tar -xzf $tgz -C $ToolsDir
+        if (-not (Test-Path (Join-Path $specDir "i32.wast"))) { throw "i32.wast not found after extracting $tgz" }
     }
-    if (Test-Path $specDir) { Remove-Item -Recurse -Force $specDir }
-    tar -xzf $tgz -C $ToolsDir
-    if (-not (Test-Path (Join-Path $specDir "i32.wast"))) { throw "i32.wast not found after extracting $tgz" }
+    Write-Host ("testsuite : {0} ({1} .wast files)" -f $SpecCommit, (Get-ChildItem $specDir -Filter *.wast).Count)
 }
-Write-Host ("testsuite : {0} ({1} .wast files)" -f $SpecCommit, (Get-ChildItem $specDir -Filter *.wast).Count)
 
 [pscustomobject]@{
     ToolsDir  = $ToolsDir

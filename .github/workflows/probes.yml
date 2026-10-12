@@ -98,6 +98,24 @@ jobs:
           --fixture-log "$RUNNER_TEMP/probes/fixture-run.log" \
           --require-fixture
 
+    - name: Fetch wabt (fixture-validity oracle)
+      run: |
+        set -euxo pipefail
+        pwsh -NoProfile -File test-scripts/spectest/fetch_spectest_tools.ps1 \
+          -ToolsDir "$RUNNER_TEMP/spectest-tools" -WabtOnly
+
+    - name: Fixture validity gate
+      run: |
+        set -euxo pipefail
+        # Every probe that claims to exercise a feature must be a valid module. The recorded
+        # classification (test-scripts/fixture-validity.json) was produced by wabt + binaryen;
+        # wabt alone enforces it here (binaryen is a 111 MB download, run it locally with
+        # --binaryen for the full two-oracle check).
+        python3 test-scripts/check-fixture-validity.py \
+          --generate \
+          --probes "$RUNNER_TEMP/fixture-probes" \
+          --wabt "$RUNNER_TEMP/spectest-tools/wabt-1.0.42/bin"
+
     - name: Upload probe logs
       if: always()
       uses: actions/upload-artifact@v7
