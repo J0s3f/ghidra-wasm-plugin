@@ -52,6 +52,11 @@ public class SpecModuleReport extends GhidraScript {
 			}
 
 			DecompileResults res = dif.decompileFunction(f, 120, monitor);
+			if (res == null || !res.decompileCompleted() || res.getDecompiledFunction() == null) {
+				// The heaviest spec functions (br_table.0.wasm) can exceed the first budget on a
+				// loaded CI runner; one retry at a much larger budget removes that flake.
+				res = dif.decompileFunction(f, 600, monitor);
+			}
 			boolean ok = res != null && res.decompileCompleted() && res.getDecompiledFunction() != null;
 			if (ok) {
 				decOk++;

@@ -280,6 +280,12 @@ A headless harness for the *official* WebAssembly spec testsuite now exists unde
 `test-scripts/spectest/` (see `REPORT-G.md` and `test-scripts/spectest-BASELINE.md`). It is a
 measurement tool, not a fix; metrics below were reproduced by the integrator.
 
+Both decompile harnesses (`DumpDecomp.java`, `spectest/SpecModuleReport.java`) retry a failed
+decompilation once with a much larger budget (120 s -> 600 s): the heaviest spec functions
+(`br_table.0.wasm`, the ~16k-label function) can exceed the first budget on a loaded CI runner, which
+showed up as a flaky `decompiled 2747 -> 2746` on Linux. The retry removes the flake without
+loosening any expected metric.
+
 * **core subset** (73 `.wast`): 271 valid modules, **271 imported (100 %)**, 33192 instructions,
   2746/2747 functions decompiled, 458 undefined bytes = 428 import-stub bytes + **30 real decode-gap
   bytes**.

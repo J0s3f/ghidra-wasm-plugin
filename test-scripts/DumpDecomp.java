@@ -13,6 +13,19 @@ import ghidra.program.model.address.AddressSetView;
 
 public class DumpDecomp extends GhidraScript {
 
+	/**
+	 * Decompile with one retry at a much larger budget. The heaviest WebAssembly functions
+	 * (e.g. br_table.0.wasm in the spec suite) can exceed the first budget on a loaded CI
+	 * runner; a single retry removes that flake without weakening the check.
+	 */
+	private static DecompileResults decompileWithRetry(DecompInterface dif, Function f, ghidra.util.task.TaskMonitor monitor) {
+		DecompileResults res = dif.decompileFunction(f, 120, monitor);
+		if (res == null || !res.decompileCompleted() || res.getDecompiledFunction() == null) {
+			res = dif.decompileFunction(f, 600, monitor);
+		}
+		return res;
+	}
+
 	@Override
 	public void run() throws Exception {
 		DecompInterface dif = new DecompInterface();
@@ -39,7 +52,7 @@ public class DumpDecomp extends GhidraScript {
 			}
 			undefinedBytes += body.subtract(defined).getNumAddresses();
 
-			DecompileResults res = dif.decompileFunction(f, 120, monitor);
+			DecompileResults res = decompileWithRetry(dif, f, monitor);
 			if (res != null && res.decompileCompleted() && res.getDecompiledFunction() != null) {
 				decompiled++;
 			}
@@ -74,7 +87,7 @@ public class DumpDecomp extends GhidraScript {
 			if (f == null) {
 				continue;
 			}
-			DecompileResults res = dif.decompileFunction(f, 120, monitor);
+			DecompileResults res = decompileWithRetry(dif, f, monitor);
 			println("==================== " + f.getName() + " @ " + f.getEntryPoint() + " ====================");
 			if (res != null && res.decompileCompleted() && res.getDecompiledFunction() != null) {
 				println(res.getDecompiledFunction().getC());
