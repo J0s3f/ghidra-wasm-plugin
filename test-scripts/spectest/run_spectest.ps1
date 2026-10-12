@@ -75,8 +75,16 @@ $proj = Join-Path $OutDir "project"
 Remove-Item -Recurse -Force $proj -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $proj | Out-Null
 
-$headless = Join-Path $GhidraDir "support\analyzeHeadless.bat"
-if (-not (Test-Path $headless)) { $headless = Join-Path $GhidraDir "support\analyzeHeadless" }
+$supportDir = Join-Path $GhidraDir "support"
+$isWindowsOS = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
+if ($isWindowsOS) {
+    $headless = Join-Path $supportDir "analyzeHeadless.bat"
+} else {
+    $headless = Join-Path $supportDir "analyzeHeadless"
+}
+if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless.bat" }
+if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
+if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $supportDir" }
 
 # ListProgram/DumpAll (owned by another agent, read-only here) live in test-scripts, but a headless
 # run accepts only ONE -scriptPath directory, so -Detail uses the harness' own SpecDisasm.java.

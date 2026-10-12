@@ -40,9 +40,16 @@ if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 $fixture = Join-Path $testScripts "fixtures\wasm_fixture.wasm"
 
 # Cross-platform headless launcher (forward slashes work on Windows and Linux).
-$headless = Join-Path $GhidraDir "support/analyzeHeadless.bat"
-if (-not (Test-Path $headless)) { $headless = Join-Path $GhidraDir "support/analyzeHeadless" }
-if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $GhidraDir\support" }
+$supportDir = Join-Path $GhidraDir "support"
+$isWindowsOS = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
+if ($isWindowsOS) {
+    $headless = Join-Path $supportDir "analyzeHeadless.bat"
+} else {
+    $headless = Join-Path $supportDir "analyzeHeadless"
+}
+if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless.bat" }
+if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
+if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $supportDir" }
 
 if (-not $SkipBuild) {
     & (Join-Path $testScripts "build-install.ps1") -GhidraDir $GhidraDir -Gradle $Gradle

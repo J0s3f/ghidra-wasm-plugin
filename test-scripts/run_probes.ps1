@@ -36,10 +36,16 @@ $ErrorActionPreference = "Stop"
 
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 $env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
-# Platform-correct lookup: build the path piecewise so the separator is the native one (a literal
-# "support\analyzeHeadless.bat" does not exist on Linux CI runners).
+# Pick the launcher for the host OS: Ghidra ships BOTH "analyzeHeadless.bat" and
+# "analyzeHeadless" on every platform, and PowerShell cannot execute a .bat on Linux.
 $supportDir = Join-Path $GhidraDir "support"
-$headless = Join-Path $supportDir "analyzeHeadless.bat"
+$isWindowsOS = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
+if ($isWindowsOS) {
+    $headless = Join-Path $supportDir "analyzeHeadless.bat"
+} else {
+    $headless = Join-Path $supportDir "analyzeHeadless"
+}
+if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless.bat" }
 if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
 if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $supportDir" }
 
