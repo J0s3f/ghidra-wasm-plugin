@@ -54,3 +54,41 @@ module/fuction examples. `summary.md` is the human-readable version. Per-functio
   combining directories.
 * `analyzeHeadless` can run Java scripts directly. Python scripts (`ghidra_scripts/spectest.py`) need
   the PyGhidra launcher (Ghidra 12 removed Jython).
+
+## 5. Negative tests (rejection behaviour)
+
+The sibling harness for the modules a correct implementation must **reject**
+(`assert_invalid` / `assert_malformed` / `assert_unlinkable`). Measurement only; the existing
+positive scripts are unchanged.
+
+```powershell
+# bounded smoke run
+.\test-scripts\spectest\run_spectest_negative.ps1 -Kinds malformed -MaxPerWastPerKind 1 `
+    -OutDir "$env:TEMP\specneg-smoke"
+# the whole binary negative set (invalid + malformed + unlinkable, ~2.9k modules)
+.\test-scripts\spectest\run_spectest_negative.ps1 -OutDir "$env:TEMP\specneg-all"
+```
+
+| file | role |
+| --- | --- |
+| `prepare_spec_negative.py` | collects the negative commands' modules into `<OutDir>\import` as `<wast>.<n>.<invalid|malformed|unlinkable>.wasm` (+ `modules.json`); `module_type: text` commands are skipped unless `--include-text` |
+| `SpecNegativeReport.java` | one `SPECNEG` line per program the loader **accepted** (funcs / blocks / .module block / data), so a silent acceptance is measurable; never decompiles |
+| `run_spectest_negative.ps1` | chunked `analyzeHeadless` import with a hard timeout; a chunk whose run wedges/dies is split and retried, so one bad module cannot hide the rest |
+| `parse_spec_negative.py` | classifies every module as `rejected` / `accepted` (empty / partial / shape) / `crash` / `hang` and writes `negative.json` / `negative.md` |
+| `select_negative_subset.py` | builds a filtered import dir + manifest from a previous `negative.json` (used for the analysis evidence pass) |
+
+Options: `-Kinds`, `-MaxPerWastPerKind`, `-ChunkSize`, `-TimeoutSec`, `-WithAnalysis` (evidence pass:
+adds `instrs`/`undefined_bytes` and lets the analysers see the accepted modules), `-SkipPrepare`,
+`-ImportDir` + `-ModulesJson`.
+
+Findings and the reduced probes: `test-scripts/spectest-NEGATIVE.md`, `REPORT-NS.md`,
+`test-scripts/probes_negative.py`.
+
+### Negative harness environment notes
+
+* `analyzeHeadless.bat` ends with `pause`; the runner redirects `< nul` so a headless **abort**
+  (e.g. `OutOfMemoryError` while analysing a nonsense program) exits with a non-zero code instead of
+  wedging the batch forever.
+* Without `-noanalysis` the loader-created functions have no instructions, so `-noanalysis` is the
+  default for the bulk classification run; `-WithAnalysis` is for the (bounded) evidence pass.
+
