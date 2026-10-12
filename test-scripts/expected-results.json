@@ -726,6 +726,62 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "SF01_select_after_terminator.wasm": {
+      "funcs": 5,
+      "instrs": 44,
+      "undefined_bytes": 0,
+      "decompiled": 5,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_f32_load.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_i64_load8_s.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_i64_store.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_i64_store16.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF02_stackvar_local_set.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SF03_large_br_table.wasm": {
+      "funcs": 1,
+      "instrs": 4007,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "bare_component_header.wasm": {
       "funcs": null,
       "instrs": null,
@@ -751,7 +807,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 93,
+  "probe_count": 100,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
