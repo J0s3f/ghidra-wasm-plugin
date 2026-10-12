@@ -36,9 +36,12 @@ $ErrorActionPreference = "Stop"
 
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 $env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
-$headless = Join-Path $GhidraDir "support\analyzeHeadless.bat"
-if (-not (Test-Path $headless)) { $headless = Join-Path $GhidraDir "support\analyzeHeadless" }
-if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $GhidraDir\support" }
+# Platform-correct lookup: build the path piecewise so the separator is the native one (a literal
+# "support\analyzeHeadless.bat" does not exist on Linux CI runners).
+$supportDir = Join-Path $GhidraDir "support"
+$headless = Join-Path $supportDir "analyzeHeadless.bat"
+if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
+if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $supportDir" }
 
 if (-not $Generators) {
     $Generators = @(Get-ChildItem -Path $ScriptDir -Filter "gen_*.py" | ForEach-Object { $_.Name }) +
