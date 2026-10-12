@@ -69,6 +69,18 @@ try {
         $stamp = if (Test-Path $jar) { (Get-Item $jar).LastWriteTime } else { "(no jar)" }
         Write-Host ("installed: {0}  jar: {1}" -f $_.Name, $stamp)
     }
+
+    # Record which checkout this install now holds, so a later measurement can prove the extension
+    # under test is the one that was built here (see the freshness guard in run_probes.ps1).
+    $stampFile = Join-Path $GhidraDir "ghidra-wasm-install-stamp.json"
+    $stamp = [pscustomobject]@{
+        worktree  = $repo
+        zip       = $zip.Name
+        sha256    = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash
+        installed = (Get-Date).ToString("o")
+    }
+    $stamp | ConvertTo-Json | Set-Content -Path $stampFile -Encoding UTF8
+    Write-Host "stamp: $stampFile"
 }
 finally {
     Pop-Location

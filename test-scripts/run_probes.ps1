@@ -52,6 +52,28 @@ if (Test-Path $pinFile) {
 }
 if (-not $GhidraDir) { $GhidraDir = $env:GHIDRA_INSTALL_DIR }
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
+
+# --- freshness guard -------------------------------------------------------------------------
+# An install holds exactly one extension. Measuring a build other than this checkout's is the
+# silent failure mode that once recorded ten wrong baseline entries: the run looks fine, but the
+# extension under test is not the code being changed. build-install.ps1 leaves a stamp; verify it.
+$repo = Split-Path -Parent $PSScriptRoot
+$stampPath = Join-Path $GhidraDir "ghidra-wasm-install-stamp.json"
+if (Test-Path $stampPath) {
+    $stamp = Get-Content $stampPath -Raw | ConvertFrom-Json
+    $newestZip = Get-ChildItem (Join-Path $repo "dist\*.zip") -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $zipHash = if ($newestZip) { (Get-FileHash $newestZip.FullName -Algorithm SHA256).Hash } else { "" }
+    $sameWorktree = ($stamp.worktree -eq $repo)
+    if ((-not $sameWorktree -or $zipHash -ne $stamp.sha256) -and -not $Force) {
+        $why = if (-not $sameWorktree) { "it holds a build from '$($stamp.worktree)'" }
+               else { "it holds '$($stamp.zip)' but this checkout's newest build is '$($newestZip.Name)'" }
+        throw "STALE INSTALL: $GhidraDir - $why. Run build-install.ps1 in this checkout first, or pass -Force to measure anyway."
+    }
+}
+elseif (-not $Force) {
+    Write-Warning "no build stamp in $GhidraDir - results may come from a different build; run build-install.ps1 first (or pass -Force)."
+}
 $env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
 # Pick the launcher for the host OS: Ghidra ships BOTH "analyzeHeadless.bat" and
 # "analyzeHeadless" on every platform, and PowerShell cannot execute a .bat on Linux.
