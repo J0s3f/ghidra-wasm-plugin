@@ -520,8 +520,8 @@
     },
     "B18_valtype_ref_null_result.wasm": {
       "funcs": 2,
-      "instrs": 5,
-      "undefined_bytes": 3,
+      "instrs": 7,
+      "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
       "import_ok": true
@@ -600,8 +600,8 @@
     },
     "B28_valtype_func_gc_struct.wasm": {
       "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 3,
+      "instrs": 3,
+      "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
@@ -609,78 +609,6 @@
     "B29_valtype_mixed.wasm": {
       "funcs": 1,
       "instrs": 14,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B3_01_memidx9_load.wasm": {
-      "funcs": 1,
-      "instrs": 4,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B3_02_memidx127_store.wasm": {
-      "funcs": 1,
-      "instrs": 5,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B3_03_memidx128_load.wasm": {
-      "funcs": 1,
-      "instrs": 4,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B3_04_memidx1000_load_store.wasm": {
-      "funcs": 1,
-      "instrs": 8,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B8_01_table64_elem.wasm": {
-      "funcs": 1,
-      "instrs": 3,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B8_02_table64_huge_skipped.wasm": {
-      "funcs": 1,
-      "instrs": 3,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B8_03_table64_then_table32.wasm": {
-      "funcs": 1,
-      "instrs": 3,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B8_04_mem64_over4g.wasm": {
-      "funcs": 1,
-      "instrs": 4,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "B8_05_mem64_just_over4g.wasm": {
-      "funcs": 1,
-      "instrs": 4,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -784,7 +712,7 @@
     },
     "E15_gc_br_on_cast.wasm": {
       "funcs": 1,
-      "instrs": 15,
+      "instrs": 17,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -1086,38 +1014,6 @@
       "decompile_failed": null,
       "import_ok": false
     },
-    "J06_func_section_without_code.wasm": {
-      "funcs": 0,
-      "instrs": 0,
-      "undefined_bytes": 0,
-      "decompiled": 0,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "L01_name_labels.wasm": {
-      "funcs": 1,
-      "instrs": 15,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "L02_name_labels_bad_index.wasm": {
-      "funcs": 1,
-      "instrs": 15,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "L03_name_labels_malformed.wasm": {
-      "funcs": 1,
-      "instrs": 15,
-      "undefined_bytes": 0,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
     "M01_multivalue_i32_i32.wasm": {
       "funcs": 2,
       "instrs": 9,
@@ -1302,6 +1198,38 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "R01_ref_typing_struct_block.wasm": {
+      "funcs": 2,
+      "instrs": 10,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "R02_ref_typing_funcref_mix.wasm": {
+      "funcs": 2,
+      "instrs": 10,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "R03_ref_typing_anyref_where_eqref.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 7,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "R04_ref_typing_subtype_accept.wasm": {
+      "funcs": 2,
+      "instrs": 12,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "S01_str_const_concat_eq.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1463,7 +1391,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 182,
+  "probe_count": 173,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

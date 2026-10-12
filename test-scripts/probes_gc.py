@@ -223,27 +223,26 @@ write("E14_gc_ref_test_cast.wasm", module(
         i32_const(0) + END]),
 ))
 
-# E15: br_on_cast / br_on_cast_fail around a block. NOTE: this module is *not*
-#      spec-valid: the conformant form needs a reference-typed block signature, and the
-#      loader's type model maps every `(ref null ht)` to externref (WasmEnums.ValType.
-#      readFromReader) while ref.null pushes anyref, so it cannot validate one yet.
-#      Recorded as a deliberate exception in test-scripts/fixture-validity.json; the
-#      plugin-side fix is queued (precise reference typing + subtype-aware validation).
+# E15: br_on_cast / br_on_cast_fail around a block whose signature is the multi-byte valtype
+#      (ref null struct) (0x63 0x6B). br_on_cast flags=0x01 (ht1 nullable), label 0,
+#      ht1 = struct (0x6B), ht2 = type 0 (the struct type). Each block body leaves a
+#      (ref null struct) (`ref.null struct`); the results are dropped and the function returns i32.
 write("E15_gc_br_on_cast.wasm", module(
     type_section(struct_type([(I32, True)]), functype([], [I32])),
     func_section([1]),
     export_section([("f", 0, 0)]),
     code_section([
-        block(I32,
+        block(ref_null(HT_STRUCT),
               b"\xD0" + bytes([HT_STRUCT]) +
-              gc_op(0x18) + b"\x00" + uleb(0) + uleb(0) + uleb(0) +  # br_on_cast castop=0 l=0 ht1=0 ht2=0
-              drop() + i32_const(1)) +
+              gc_op(0x18) + b"\x01" + uleb(0) + bytes([HT_STRUCT]) + sleb(0) +  # br_on_cast
+              drop() + b"\xD0" + bytes([HT_STRUCT])) +
         drop() +
-        block(I32,
+        block(ref_null(HT_STRUCT),
               b"\xD0" + bytes([HT_STRUCT]) +
-              gc_op(0x19) + b"\x00" + uleb(0) + uleb(0) + uleb(0) +  # br_on_cast_fail
-              drop() + i32_const(2)) +
-        END]),
+              gc_op(0x19) + b"\x01" + uleb(0) + bytes([HT_STRUCT]) + sleb(0) +  # br_on_cast_fail
+              drop() + b"\xD0" + bytes([HT_STRUCT])) +
+        drop() +
+        i32_const(0) + END]),
 ))
 
 # E16: any.convert_extern / extern.convert_any

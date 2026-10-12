@@ -102,6 +102,16 @@ public class WasmEnums {
 		public static final DataType Undefined16 = Undefined.getUndefinedDataType(16);
 		public final int typeByte;
 
+		/**
+		 * The single ValType used for a reference whose *concrete* heap type is not modelled
+		 * (i.e. every {@code (ref null $t)} / {@code (ref $t)} / {@code ref.null $t} whose
+		 * heap type is a non-negative type index). Mapping all of them onto one value keeps a
+		 * signature and the value that satisfies it consistent, which is what the coarse
+		 * value-stack model needs. Kept as {@code externref} - the previous catch-all result -
+		 * so existing probes do not change.
+		 */
+		public static final ValType GENERIC_REF = externref;
+
 		static {
 			for (ValType t : ValType.values()) {
 				BY_BYTE.put(t.typeByte, t);
@@ -202,9 +212,31 @@ public class WasmEnums {
 		}
 
 		/**
+		 * Map an s33 heap type to the ValType this plugin uses for it.
+		 *
+		 * <p>Abstract heap types are encoded as the single bytes 0x69..0x74, i.e. the
+		 * negative s33 values -0x17 (exn) .. -0x0c (noexn): func -0x10, extern -0x11,
+		 * any -0x12, eq -0x13, i31 -0x14, struct -0x15, array -0x16, exn -0x17,
+		 * none -0x0f, noextern -0x0e, nofunc -0x0d, noexn -0x0c. The byte table is reused so
+		 * the mapping is byte-identical to the (ref ht) valtype encoding.
+		 *
+		 * <p>A non-negative heap type is a concrete type index whose referenced type is not
+		 * modelled; every such reference maps to {@link #GENERIC_REF}.
+		 */
+		public static ValType forHeapType(long heaptype) {
+			if (heaptype >= 0) {
+				return GENERIC_REF;
+			}
+			ValType t = BY_BYTE.get((int) heaptype + 0x80);
+			return (t != null && t.isReferenceType()) ? t : GENERIC_REF;
+		}
+
+		/**
 		 * Read a value type from a BinaryReader, handling multi-byte encodings.
 		 * Returns a ValType and consumes the appropriate number of bytes.
-		 * For multi-byte types (0x63, 0x64), consumes the s33 heaptype operand.
+		 * For multi-byte types (0x63, 0x64), consumes the s33 heaptype operand and maps it
+		 * to the matching abstract heap type (e.g. (ref null struct) -&gt; structref); a
+		 * concrete type index maps to {@link #GENERIC_REF}.
 		 * Never returns null.
 		 */
 		public static ValType readFromReader(BinaryReader reader) throws IOException {
@@ -212,15 +244,99 @@ public class WasmEnums {
 			
 			// Check for multi-byte reference types
 			if (b == 0x63 || b == 0x64) {
-				// (ref null <heaptype>) or (ref <heaptype>)
-				// Consume the s33 heaptype operand
-				reader.readNext(LEB128Info::signed);
-				// Return a placeholder ValType based on the heaptype if known
-				// For now, return externref as a 4-byte placeholder
-				return externref;
+				// (ref null <heaptype>) or (ref <heaptype>): consume the s33 heaptype operand
+				return forHeapType(reader.readNext(LEB128Info::signed).asLong());
 			}
 			
 			return fromByte(b);
+		}
+
+		/**
+		 * Read a bare s33 heap-type immediate (as used by {@code ref.null}), consuming its bytes.
+		 * Unlike {@link #readFromReader} this does not expect the 0x63/0x64 reftype prefix: the
+		 * heap type is already the immediate.
+		 */
+		public static ValType readHeapType(BinaryReader reader) throws IOException {
+			return forHeapType(reader.readNext(LEB128Info::signed).asLong());
+		}
+
+		/**
+		 * Read a block type immediate (the operand of block/loop/if/try/try_table). It is either
+		 * the empty type 0x40, a single value type byte, a multi-byte {@code (ref null ht)} /
+		 * {@code (ref ht)} value type, or a non-negative s33 type index. The whole immediate is
+		 * consumed. A type index is resolved by the caller, so {@code typeIndex} is set to the
+		 * index (&gt;= 0) and {@code type} is null in that case; the empty type has both null.
+		 */
+		public static final class BlockTypeInfo {
+			public final ValType type;
+			public final long typeIndex;
+
+			private BlockTypeInfo(ValType type, long typeIndex) {
+				this.type = type;
+				this.typeIndex = typeIndex;
+			}
+		}
+
+		public static BlockTypeInfo readBlockType(BinaryReader reader) throws IOException {
+			int b = reader.readNextUnsignedByte();
+			if (b == 0x63 || b == 0x64) {
+				return new BlockTypeInfo(forHeapType(reader.readNext(LEB128Info::signed).asLong()), -1);
+			}
+			/* Re-encode the first byte and decode the whole immediate as a signed LEB, so a
+			   multi-byte type index is consumed correctly. */
+			long value = decodeSignedLeb128(b, reader);
+			if (value == -0x40) {
+				return new BlockTypeInfo(null, -1); /* empty block type */
+			}
+			if (value < 0) {
+				return new BlockTypeInfo(fromByte((int) value + 0x80), -1);
+			}
+			return new BlockTypeInfo(null, value);
+		}
+
+		/** Decode the rest of a signed LEB128 whose first byte has already been read. */
+		private static long decodeSignedLeb128(int firstByte, BinaryReader reader) throws IOException {
+			long result = firstByte & 0x7f;
+			int shift = 7;
+			int b = firstByte;
+			while ((b & 0x80) != 0) {
+				b = reader.readNextUnsignedByte();
+				result |= (long) (b & 0x7f) << shift;
+				shift += 7;
+			}
+			if (shift < 64 && (b & 0x40) != 0) {
+				result |= -1L << shift;
+			}
+			return result;
+		}
+
+		/**
+		 * True if a value of this type may be used where {@code expected} is required (this is
+		 * a subtype of {@code expected}, reflexively). Only the reference subtyping relevant to
+		 * the plugin's coarse model is represented:
+		 * anyref &gt;= eqref &gt;= {i31ref, structref, arrayref}, funcref &gt;= nofuncref,
+		 * externref &gt;= noexternref, exnref &gt;= noexnref, with {@code none} as the bottom of
+		 * the internal (any) hierarchy. Numeric and vector types only match themselves.
+		 */
+		public boolean isSubtypeOf(ValType expected) {
+			if (this == expected) {
+				return true;
+			}
+			switch (expected) {
+			case anyref:
+				return this == eqref || this == i31ref || this == structref || this == arrayref
+						|| this == none;
+			case eqref:
+				return this == i31ref || this == structref || this == arrayref || this == none;
+			case funcref:
+				return this == nofuncref;
+			case externref:
+				return this == noexternref;
+			case exnref:
+				return this == noexnref;
+			default:
+				return false;
+			}
 		}
 
 		public static ValType[] fromBytes(byte[] types) {

@@ -409,14 +409,14 @@ A probe that is not recorded, or whose verdict changes, fails the gate; `--updat
 both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
 silently.
 
-Classification of the 136 probes at the time of writing:
+Classification of the 173 probes after the reference-typing fix (`REPORT-H7.md`):
 
 | class | count | meaning |
 | --- | --- | --- |
-| `valid` | 89 | accepted by both oracles |
-| `wabt-gap` | 33 | wabt 1.0.42 is behind the final GC / typed-reference encodings; binaryen accepts |
-| `unsupported` | 7 | neither oracle implements the feature (components, stack switching, string builtins, `memory.discard`) |
-| `invalid` | 7 | deliberately invalid probes: 6 negative fixtures plus `E15` (see the gap below) |
+| `valid` | 96 | accepted by both oracles |
+| `wabt-gap` | 41 | wabt 1.0.42 is behind the final GC / typed-reference encodings; binaryen accepts |
+| `unsupported` | 26 | neither oracle implements the feature (components, stack switching, string builtins, `memory.discard`) |
+| `invalid` | 10 | deliberately invalid negative probes (malformed / overflowing bodies) |
 
 Fixtures fixed to reach this state: section-order canonicalisation in `wasm_probe_lib.module()`
 (36 probes), the multivalue export kind (8), plus 15 individual bugs - `M06` (out-of-range i64
@@ -424,20 +424,21 @@ constant), `SF02` x4 (memory instructions without a memory), `A09` (missing oper
 (limits flags / missing table index), `B14`/`B15`/`B25` (`ref.null` immediate and a duplicate `END`
 in the global initialiser), `B16`/`B17`/`B18`/`B29`/`12_call_ref` (missing `call_ref` arguments,
 reftype used where the `ref.null` instruction belongs), `E03` (a final type used as a supertype),
-`F06` (typed table + expression element segment). `E15`'s typing bug was fixed, but the conformant
-form is blocked by the reference-typing gap below, so the probe keeps a decodable, declared-invalid
-form for now. Only fixture bytes changed; the recorded probe metrics for those modules were
+`F06` (typed table + expression element segment). `E15`'s typing bug was fixed at the time, but the
+conformant reference-typed block signature it needs was blocked by the reference-typing gap below;
+that gap is now closed (`REPORT-H7.md`), so `E15` uses its conformant form again and is classified
+`wabt-gap`. Only fixture bytes changed; the recorded probe metrics for those modules were
 regenerated with `check-local.ps1 -Update`.
 
-**Gap exposed while fixing the fixtures (open, queued workstream):** the pre-analyzer's reference
-type model is too coarse to validate conformant reference-typed signatures. `ValType.readFromReader`
-maps *every* multi-byte `(ref null <ht>)` / `(ref <ht>)` to `externref` (a documented placeholder),
-while `ref.null` pushes `anyref`, so a module with a reference-typed block or function result fails
-validation with `pop type mismatch: got anyref, expected externref` and its body is left undecoded
-(`E15_gc_br_on_cast` in conformant form: `instrs 1, undefined_bytes 27`; with the non-conformant
-form used today: `instrs 15, undefined_bytes 0`). The fix is precise reference typing (map each
-abstract heap type to its `ValType`, concrete indices to a generic reference) plus subtype-aware
-validation; `E15` then flips from the declared `invalid` class to `wabt-gap`.
+**Reference-typing gap (resolved in `REPORT-H7.md`):** the pre-analyzer's reference type model was
+too coarse to validate conformant reference-typed signatures. `ValType.readFromReader` mapped
+*every* multi-byte `(ref null <ht>)` / `(ref <ht>)` to `externref` (a documented placeholder) while
+`ref.null` produced a different type, so a module with a reference-typed block or function result
+failed validation with `pop type mismatch` and its body was left undecoded (`E15_gc_br_on_cast` in
+conformant form: `instrs 1, undefined_bytes 27`). `REPORT-H7.md` maps each abstract heap type to its
+`ValType` (concrete indices keep one generic placeholder), types `ref.null` precisely, makes
+`popValue`/`popValues`/`popBlock` subtype-aware, and decodes multi-byte block signatures and the
+`ref.null` s33 immediate in SLEIGH; `E15` now decodes with `instrs 17, undefined_bytes 0`.
 
 ## 7. References
 

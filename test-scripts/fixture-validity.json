@@ -329,8 +329,8 @@
       "why": "0000025: error: expected valid ref.null type (got -0x15)"
     },
     "E15_gc_br_on_cast.wasm": {
-      "class": "invalid",
-      "why": "deliberate: the conformant form needs a reference-typed block signature, and the loader's type model cannot validate one yet (every (ref null ht) maps to externref; see MODERN_WASM_GAPS.md 6.5). Kept in this form for br_on_cast decode coverage."
+      "class": "wabt-gap",
+      "why": "0000026: error: Reference type is limited to func and extern: block signature type"
     },
     "E16_gc_convert.wasm": {
       "class": "wabt-gap",
@@ -551,6 +551,22 @@
     "N03_malformed_name_subsection.wasm": {
       "class": "invalid",
       "why": "error: expected function name count (3) <= function count (1)"
+    },
+    "R01_ref_typing_struct_block.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: Reference type is limited to func and extern: function param type"
+    },
+    "R02_ref_typing_funcref_mix.wasm": {
+      "class": "wabt-gap",
+      "why": "0000038: error: expected valid ref.null type (got -0xd)"
+    },
+    "R03_ref_typing_anyref_where_eqref.wasm": {
+      "class": "wabt-gap",
+      "why": "0000020: error: expected valid block signature type"
+    },
+    "R04_ref_typing_subtype_accept.wasm": {
+      "class": "wabt-gap",
+      "why": "0000028: error: expected valid block signature type"
     },
     "S01_str_const_concat_eq.wasm": {
       "class": "unsupported",
