@@ -8,3 +8,5 @@ build/*
 dist/*
 !/.gitignore
 !/.github
+__pycache__/
+*.pyc

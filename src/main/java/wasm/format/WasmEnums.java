@@ -15,8 +15,11 @@
  */
 package wasm.format;
 
+import java.io.IOException;
 import java.util.HashMap;
 
+import ghidra.app.util.bin.BinaryReader;
+import ghidra.app.util.bin.LEB128Info;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DoubleDataType;
 import ghidra.program.model.data.FloatDataType;
@@ -36,15 +39,48 @@ public class WasmEnums {
 		EXT_TAG		// exception handling: import/export kind 4
 	}
 
+	/**
+	 * WebAssembly value types, including GC/reference types.
+	 * 
+	 * Single-byte types (MVP + reference-types):
+	 *   0x7F i32, 0x7E i64, 0x7D f32, 0x7C f64, 0x7B v128,
+	 *   0x70 funcref, 0x6F externref
+	 * 
+	 * Multi-byte types (function references / GC):
+	 *   0x63 (ref null <heaptype>) - nullable reference
+	 *   0x64 (ref <heaptype>)      - non-nullable reference
+	 *   Heaptype is encoded as s33 (signed LEB128).
+	 *   Abstract heap types (negative s33):
+	 *     0x69 exnref, 0x6A array, 0x6B struct, 0x6C i31, 0x6D eq,
+	 *     0x6E any, 0x6F extern, 0x70 func, 0x71 none, 0x72 noextern,
+	 *     0x73 nofunc, 0x74 noexn
+	 */
 	public enum ValType {
+		// Basic value types (MVP)
 		i32(0x7f),
 		i64(0x7e),
 		f32(0x7d),
 		f64(0x7c),
 		v128(0x7b),
 
+		// Reference types (reference-types proposal)
 		funcref(0x70),
-		externref(0x6f);
+		externref(0x6f),
+
+		// GC reference types (abstract heap types, encoded as negative s33)
+		// These are represented as distinct ValType entries for easier handling
+		exnref(0x69),
+		arrayref(0x6a),
+		structref(0x6b),
+		i31ref(0x6c),
+		eqref(0x6d),
+		anyref(0x6e),
+
+		// Bottom types
+		none(0x71),
+		noexternref(0x72),
+		nofuncref(0x73),
+		noexnref(0x74);
 
 		private static final HashMap<Integer, ValType> BY_BYTE = new HashMap<>();
 		public static final DataType Undefined16 = Undefined.getUndefinedDataType(16);
@@ -73,11 +109,22 @@ public class WasmEnums {
 			case v128:
 				return Undefined16;
 			case funcref:
+			case nofuncref:
 				return PointerDataType.dataType;
 			case externref:
+			case exnref:
+			case arrayref:
+			case structref:
+			case i31ref:
+			case eqref:
+			case anyref:
+			case noexternref:
+			case noexnref:
+			case none:
+				// All reference types are 4 bytes on wasm32 (pointer-sized)
 				return Undefined4DataType.dataType;
 			}
-			return null;
+			return Undefined4DataType.dataType; // Should not reach, but safe fallback
 		}
 
 		/**
@@ -105,6 +152,16 @@ public class WasmEnums {
 			case f32:
 			case funcref:
 			case externref:
+			case exnref:
+			case arrayref:
+			case structref:
+			case i31ref:
+			case eqref:
+			case anyref:
+			case noexternref:
+			case nofuncref:
+			case noexnref:
+			case none:
 				return 4;
 			case i64:
 			case f64:
@@ -116,7 +173,34 @@ public class WasmEnums {
 		}
 
 		public static ValType fromByte(int b) {
-			return BY_BYTE.get(b);
+			ValType t = BY_BYTE.get(b);
+			if (t != null) {
+				return t;
+			}
+			// Unknown byte - return a placeholder that won't crash
+			return i32; // Default to i32 (4 bytes) for unknown
+		}
+
+		/**
+		 * Read a value type from a BinaryReader, handling multi-byte encodings.
+		 * Returns a ValType and consumes the appropriate number of bytes.
+		 * For multi-byte types (0x63, 0x64), consumes the s33 heaptype operand.
+		 * Never returns null.
+		 */
+		public static ValType readFromReader(BinaryReader reader) throws IOException {
+			int b = reader.readNextUnsignedByte();
+			
+			// Check for multi-byte reference types
+			if (b == 0x63 || b == 0x64) {
+				// (ref null <heaptype>) or (ref <heaptype>)
+				// Consume the s33 heaptype operand
+				reader.readNext(LEB128Info::signed);
+				// Return a placeholder ValType based on the heaptype if known
+				// For now, return externref as a 4-byte placeholder
+				return externref;
+			}
+			
+			return fromByte(b);
 		}
 
 		public static ValType[] fromBytes(byte[] types) {
@@ -125,6 +209,19 @@ public class WasmEnums {
 				res[i] = fromByte(types[i]);
 			}
 			return res;
+		}
+		
+		/** Returns true if this is a reference type (4 bytes on wasm32). */
+		public boolean isReferenceType() {
+			return this == funcref || this == externref || this == exnref || 
+			       this == arrayref || this == structref || this == i31ref ||
+			       this == eqref || this == anyref || this == noexternref ||
+			       this == nofuncref || this == noexnref || this == none;
+		}
+		
+		/** Returns true if this is a multi-byte valtype (ref null/ref with heaptype). */
+		public static boolean isMultiBytePrefix(int b) {
+			return b == 0x63 || b == 0x64;
 		}
 	}
 }

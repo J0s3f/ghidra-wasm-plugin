@@ -30,7 +30,7 @@ public class WasmTableType implements StructConverter {
 	private WasmResizableLimits limits;
 
 	public WasmTableType(BinaryReader reader) throws IOException {
-		elemType = ValType.fromByte(reader.readNextUnsignedByte());
+		elemType = ValType.readFromReader(reader);
 		limits = new WasmResizableLimits(reader);
 	}
 
