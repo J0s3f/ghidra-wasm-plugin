@@ -166,7 +166,8 @@ def main():
     per_wast = {}
     for m in summary_mods:
         w = per_wast.setdefault(m["wast"], {"modules": 0, "imported": 0, "funcs": 0, "instrs": 0,
-                                            "undefined_bytes": 0, "decompile_failed": 0})
+                                            "undefined_bytes": 0, "decode_gap_bytes": 0,
+                                            "decompile_failed": 0, "decode_gap_funcs": 0})
         w["modules"] += 1
         w["imported"] += 1 if m["imported"] else 0
         w["funcs"] += m.get("funcs", 0) or 0
@@ -182,6 +183,21 @@ def main():
 
     funcs_undef = [f for f in funcs if int(f.get("undef", 0) or 0) > 0]
     funcs_decfail = [f for f in funcs if f.get("decompile") == "FAIL"]
+
+    # An "external stub" is a function the loader placed in its external/import block (0x7f000000):
+    # it has no body, so its undefined bytes are a modelling artifact, not a decode gap.
+    def is_external(f):
+        return str(f.get("entry", "")).startswith("ram:7f")
+
+    ext_funcs = [f for f in funcs_undef if is_external(f)]
+    gap_funcs = [f for f in funcs_undef if not is_external(f)]
+    ext_bytes = sum(int(f.get("undef", 0) or 0) for f in ext_funcs)
+    gap_bytes = sum(int(f.get("undef", 0) or 0) for f in gap_funcs)
+    for f in gap_funcs:
+        w = f["module"].rsplit(".", 1)[0]
+        if w in per_wast:
+            per_wast[w]["decode_gap_bytes"] += int(f.get("undef", 0) or 0)
+            per_wast[w]["decode_gap_funcs"] += 1
     crash_kinds = tally([c["kind"] for m in summary_mods for c in (m.get("crashes") or [])] +
                         [p["kind"] for p in syntax_errors])
     stackvar_by_op = tally([s["op"] for s in stackvar_fails])
@@ -197,12 +213,18 @@ def main():
             "decompiled": total_decok,
             "decompile_failed": total_decfail,
             "funcs_with_undef": len(funcs_undef),
+            "external_stub_funcs": len(ext_funcs),
+            "external_stub_bytes": ext_bytes,
+            "decode_gap_funcs": len(gap_funcs),
+            "decode_gap_bytes": gap_bytes,
             "funcs_with_decompile_failure": len(funcs_decfail),
             "log_failure_lines": len(syntax_errors),
             "stackvar_failures": len(stackvar_fails),
         },
         "crash_kinds": crash_kinds,
         "stackvar_by_op": stackvar_by_op,
+        "external_stub_funcs": ext_funcs[:50],
+        "decode_gap_funcs": gap_funcs[:100],
         "import_failures": import_failures[:50],
         "not_imported": [{"id": m["id"], "wast": m["wast"], "wasm": m["wasm"]} for m in not_imported],
         "log_patterns": syntax_errors[:200],
@@ -226,12 +248,13 @@ def main():
     for k, v in t.items():
         md.append("| %s | %s |" % (k, v))
     md.append("\n## Per-wast\n")
-    md.append("| wast | modules | imported | funcs | instrs | undefined_bytes | decompile_failed |")
-    md.append("| --- | --- | --- | --- | --- | --- | --- |")
-    for w in sorted(per_wast, key=lambda k: (-per_wast[k]["undefined_bytes"], -per_wast[k]["decompile_failed"])):
+    md.append("| wast | modules | imported | funcs | instrs | undefined_bytes | decode_gap_bytes | decompile_failed |")
+    md.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+    for w in sorted(per_wast, key=lambda k: (-per_wast[k]["decode_gap_bytes"], -per_wast[k]["decompile_failed"])):
         d = per_wast[w]
-        md.append("| %s | %d | %d | %d | %d | %d | %d |" % (
-            w, d["modules"], d["imported"], d["funcs"], d["instrs"], d["undefined_bytes"], d["decompile_failed"]))
+        md.append("| %s | %d | %d | %d | %d | %d | %d | %d |" % (
+            w, d["modules"], d["imported"], d["funcs"], d["instrs"], d["undefined_bytes"],
+            d["decode_gap_bytes"], d["decompile_failed"]))
     md.append("\n## Modules not imported (%d)\n" % len(not_imported))
     for m in not_imported[:60]:
         md.append("- %s (%s)" % (m["wasm"], m["wast"]))
@@ -247,10 +270,15 @@ def main():
     md.append("\n## WasmStackVariableAnalyzer failures by opcode\n")
     for k, v in list(stackvar_by_op.items())[:30]:
         md.append("- %s: %d" % (k, v))
-    md.append("\n## Functions with undefined bytes (first 100)\n")
-    for f in funcs_undef[:100]:
-        md.append("- %s %s @ %s size=%s undef=%s decompile=%s" % (
-            f["module"], f.get("fn"), f.get("entry"), f.get("size"), f.get("undef"), f.get("decompile")))
+    md.append("\n## Functions with undefined bytes (decode gaps only, first 100)\n")
+    for f in gap_funcs[:100]:
+        md.append("- %s %s @ %s size=%s undef=%s at=%s decompile=%s" % (
+            f["module"], f.get("fn"), f.get("entry"), f.get("size"), f.get("undef"),
+            f.get("undef_at"), f.get("decompile")))
+    md.append("\n## External/import stubs with undefined bytes (%d funcs, %d bytes)\n" %
+              (len(ext_funcs), ext_bytes))
+    seen_stub_mod = sorted({f["module"] for f in ext_funcs})
+    md.append("- modules: " + (", ".join(seen_stub_mod[:40]) or "(none)"))
     md.append("\n## Decompile failures (first 100)\n")
     for f in funcs_decfail[:100]:
         md.append("- %s %s @ %s err=%s" % (f["module"], f.get("fn"), f.get("entry"), f.get("err")))
