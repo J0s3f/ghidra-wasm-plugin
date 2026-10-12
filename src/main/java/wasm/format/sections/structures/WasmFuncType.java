@@ -42,6 +42,13 @@ public class WasmFuncType implements StructConverter {
 		returnTypes = ValType.fromBytes(reader.readNextByteArray((int) returnCount.asLong()));
 	}
 
+	// @@GC: used by WasmGCType (a structural GC type entry) so that GC composite
+	// types can live in WasmTypeSection's WasmFuncType list without changing its
+	// public contract. WasmGCType overrides getParamTypes/getReturnTypes/toString/
+	// toDataType, so the fields below are never touched for a GC entry.
+	protected WasmFuncType() {
+	}
+
 	public ValType[] getParamTypes() {
 		return paramTypes;
 	}

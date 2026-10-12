@@ -44,7 +44,27 @@ public class WasmEnums {
 		v128(0x7b),
 
 		funcref(0x70),
-		externref(0x6f);
+		externref(0x6f),
+
+		// @@GC ---------------------------------------------------------------------
+		// WebAssembly GC / function-references value types (proposal: garbage
+		// collection). The single-byte abstract heap types can appear directly as a
+		// value type; refnull/ref are markers for the multi-byte (ref null ht)/(ref ht)
+		// encodings, which are parsed structurally by WasmGCType/ConstantExpression.
+		// All of these are modelled as 32-bit opaque reference values.
+		exnref(0x69),
+		arrayref(0x6a),
+		structref(0x6b),
+		i31ref(0x6c),
+		eqref(0x6d),
+		anyref(0x6e),
+		nullref(0x71),
+		nullexternref(0x72),
+		nullfuncref(0x73),
+		nullexnref(0x74),
+		refnull(0x63),
+		ref(0x64);
+		// @@GC ---------------------------------------------------------------------
 
 		private static final HashMap<Integer, ValType> BY_BYTE = new HashMap<>();
 		public static final DataType Undefined16 = Undefined.getUndefinedDataType(16);
@@ -76,7 +96,22 @@ public class WasmEnums {
 				return PointerDataType.dataType;
 			case externref:
 				return Undefined4DataType.dataType;
+			// @@GC: GC / function-references value types are opaque 4-byte references.
+			case exnref:
+			case arrayref:
+			case structref:
+			case i31ref:
+			case eqref:
+			case anyref:
+			case nullref:
+			case nullexternref:
+			case nullfuncref:
+			case nullexnref:
+			case refnull:
+			case ref:
+				return Undefined4DataType.dataType;
 			}
+			// @@GC ---------------------------------------------------------------------
 			return null;
 		}
 
@@ -106,6 +141,21 @@ public class WasmEnums {
 			case funcref:
 			case externref:
 				return 4;
+			// @@GC: GC / function-references value types are 4-byte references.
+			case exnref:
+			case arrayref:
+			case structref:
+			case i31ref:
+			case eqref:
+			case anyref:
+			case nullref:
+			case nullexternref:
+			case nullfuncref:
+			case nullexnref:
+			case refnull:
+			case ref:
+				return 4;
+			// @@GC ---------------------------------------------------------------------
 			case i64:
 			case f64:
 				return 8;

@@ -20,6 +20,7 @@ import java.io.IOException;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.LEB128;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
 import wasm.format.WasmEnums.ValType;
@@ -30,8 +31,19 @@ public class WasmGlobalType implements StructConverter {
 	private int mutability;
 
 	public WasmGlobalType(BinaryReader reader) throws IOException {
-		type = ValType.fromByte(reader.readNextUnsignedByte());
+		type = readValType(reader);
 		mutability = reader.readNextUnsignedByte();
+	}
+
+	// @@GC: a value type is not always a single byte. The GC encodings (ref null ht) = 0x63 and
+	// (ref ht) = 0x64 are followed by a heap type (s33); consuming it keeps the global's
+	// initializer aligned. (A plain heap-type shorthand, e.g. anyref = 0x6e, is still one byte.)
+	private static ValType readValType(BinaryReader reader) throws IOException {
+		int typeByte = reader.readNextUnsignedByte();
+		if (typeByte == 0x63 || typeByte == 0x64) {
+			reader.readNext(LEB128::signed); /* heaptype (s33) */
+		}
+		return ValType.fromByte(typeByte);
 	}
 
 	public ValType getType() {

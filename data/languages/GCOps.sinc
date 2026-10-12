@@ -1,0 +1,232 @@
+# @@GC -- WebAssembly garbage-collection instructions (proposal: GC), added for wasm-ghidra.
+#
+# All instructions here use the 0xFB prefix, followed by a LEB128 u32 opcode (reusing the shared
+# opc2_N sub-constructors from Leb128_opc2.sinc). References are modelled as 32-bit opaque values on
+# the virtual stack; no real GC heap semantics are attempted. Where a value's width depends on the
+# field/element type (struct.get/set, array.get/set/fill/new) the pre-analyzer sets ctx_operand_size
+# to the value's size (4/8/16) and there is one constructor per width -- the same mechanism used by
+# local.get/global.get/select.
+#
+# See spec binary/instructions.html, "Reference Instructions" and "Aggregate Instructions".
+
+# ---------------------------------------------------------------- pcodeops
+define pcodeop struct_new;
+define pcodeop struct_new_default;
+define pcodeop struct_get;
+define pcodeop struct_set;
+define pcodeop array_new;
+define pcodeop array_new_default;
+define pcodeop array_new_fixed;
+define pcodeop array_new_data;
+define pcodeop array_new_elem;
+define pcodeop array_get;
+define pcodeop array_set;
+define pcodeop array_len;
+define pcodeop array_fill;
+define pcodeop array_copy;
+define pcodeop array_init_data;
+define pcodeop array_init_elem;
+define pcodeop ref_test;
+define pcodeop ref_cast;
+define pcodeop ref_eq;
+define pcodeop wasm_br_on_cast;
+define pcodeop any_convert_extern;
+define pcodeop extern_convert_any;
+define pcodeop ref_i31;
+define pcodeop i31_get_s;
+define pcodeop i31_get_u;
+
+# ---------------------------------------------------------------- operands
+# Heap type: a concrete type index (>= 0) or an abstract heap type encoded as a negative s33.
+# It is displayed as its raw signed value (e.g. -18 = anyref, -16 = funcref); see REPORT-E.md.
+heaptype: SLeb128 is SLeb128 {
+	export SLeb128;
+}
+
+heaptype2: SLeb128 is SLeb128 {
+	export SLeb128;
+}
+
+fieldidx: ULeb128 is ULeb128 {
+	export ULeb128;
+}
+
+# second array type index of array.copy
+typeidx2: ULeb128 is ULeb128 {
+	export ULeb128;
+}
+
+# castop flags byte of br_on_cast / br_on_cast_fail
+gccastop: "cast="^ULeb128 is ULeb128 {
+	export ULeb128;
+}
+
+# ---------------------------------------------------------------- struct
+:struct.new "type="^typeidx is opc=0xFB; opc2_0; typeidx; sp1_32; ctx_is_directive=0 {
+	sp1_32 = struct_new(typeidx:4, sp1_32);
+}
+
+:struct.new_default "type="^typeidx is opc=0xFB; opc2_1; typeidx; sp0_32; ctx_is_directive=0 {
+	sp0_32 = struct_new_default(typeidx:4);
+}
+
+:struct.get "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_2; typeidx; fieldidx; sp1_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+}
+:struct.get "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_2; typeidx; fieldidx; sp1_32; sp1_64; ctx_is_directive=0; ctx_operand_size=8 {
+	sp1_64 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+}
+:struct.get "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_2; typeidx; fieldidx; sp1_32; sp1_128; ctx_is_directive=0; ctx_operand_size=16 {
+	sp1_128 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+}
+
+:struct.get_s "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_3; typeidx; fieldidx; sp1_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+}
+:struct.get_u "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_4; typeidx; fieldidx; sp1_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+}
+
+:struct.set "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_5; typeidx; fieldidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
+	struct_set(typeidx:4, fieldidx:4, sp1_32, sp2_32);
+}
+:struct.set "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_5; typeidx; fieldidx; sp1_64; sp2_32; ctx_is_directive=0; ctx_operand_size=8 {
+	struct_set(typeidx:4, fieldidx:4, sp1_64, sp2_32);
+}
+:struct.set "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_5; typeidx; fieldidx; sp1_128; sp2_32; ctx_is_directive=0; ctx_operand_size=16 {
+	struct_set(typeidx:4, fieldidx:4, sp1_128, sp2_32);
+}
+
+# ---------------------------------------------------------------- array
+:array.new "type="^typeidx is opc=0xFB; opc2_6; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp2_32 = array_new(typeidx:4, sp1_32, sp2_32);
+}
+:array.new "type="^typeidx is opc=0xFB; opc2_6; typeidx; sp1_32; sp2_64; sp2_32; ctx_is_directive=0; ctx_operand_size=8 {
+	sp2_64 = array_new(typeidx:4, sp1_32, sp2_32);
+}
+:array.new "type="^typeidx is opc=0xFB; opc2_6; typeidx; sp1_32; sp2_128; sp2_32; ctx_is_directive=0; ctx_operand_size=16 {
+	sp2_128 = array_new(typeidx:4, sp1_32, sp2_32);
+}
+
+:array.new_default "type="^typeidx is opc=0xFB; opc2_7; typeidx; sp1_32; ctx_is_directive=0 {
+	sp1_32 = array_new_default(typeidx:4, sp1_32);
+}
+
+:array.new_fixed "type="^typeidx "n="^count is opc=0xFB; opc2_8; typeidx; count; sp1_32; ctx_is_directive=0 {
+	sp1_32 = array_new_fixed(typeidx:4, count:4, sp1_32);
+}
+
+:array.new_data "type="^typeidx "data="^dataidx is opc=0xFB; opc2_9; typeidx; dataidx; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = array_new_data(typeidx:4, dataidx:4, sp1_32, sp2_32);
+}
+
+:array.new_elem "type="^typeidx "elem="^elemidx is opc=0xFB; opc2_10; typeidx; elemidx; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = array_new_elem(typeidx:4, elemidx:4, sp1_32, sp2_32);
+}
+
+:array.get "type="^typeidx is opc=0xFB; opc2_11; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32);
+}
+:array.get "type="^typeidx is opc=0xFB; opc2_11; typeidx; sp1_32; sp2_32; sp2_64; ctx_is_directive=0; ctx_operand_size=8 {
+	sp2_64 = array_get(typeidx:4, sp1_32, sp2_32);
+}
+:array.get "type="^typeidx is opc=0xFB; opc2_11; typeidx; sp1_32; sp2_32; sp2_128; ctx_is_directive=0; ctx_operand_size=16 {
+	sp2_128 = array_get(typeidx:4, sp1_32, sp2_32);
+}
+
+:array.get_s "type="^typeidx is opc=0xFB; opc2_12; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32);
+}
+:array.get_u "type="^typeidx is opc=0xFB; opc2_13; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
+	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32);
+}
+
+:array.set "type="^typeidx is opc=0xFB; opc2_14; typeidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0; ctx_operand_size=4 {
+	array_set(typeidx:4, sp1_32, sp2_32, sp3_32);
+}
+:array.set "type="^typeidx is opc=0xFB; opc2_14; typeidx; sp1_64; sp2_32; sp3_32; ctx_is_directive=0; ctx_operand_size=8 {
+	array_set(typeidx:4, sp1_64, sp2_32, sp3_32);
+}
+:array.set "type="^typeidx is opc=0xFB; opc2_14; typeidx; sp1_128; sp2_32; sp3_32; ctx_is_directive=0; ctx_operand_size=16 {
+	array_set(typeidx:4, sp1_128, sp2_32, sp3_32);
+}
+
+:array.len is opc=0xFB; opc2_15; sp1_32; ctx_is_directive=0 {
+	sp1_32 = array_len(sp1_32);
+}
+
+:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0; ctx_operand_size=4 {
+	array_fill(typeidx:4, sp1_32, sp2_32, sp3_32);
+}
+:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_64; sp3_32; ctx_is_directive=0; ctx_operand_size=8 {
+	array_fill(typeidx:4, sp1_32, sp2_64, sp3_32);
+}
+:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_128; sp3_32; ctx_is_directive=0; ctx_operand_size=16 {
+	array_fill(typeidx:4, sp1_32, sp2_128, sp3_32);
+}
+
+:array.copy "dst="^typeidx "src="^typeidx2 is opc=0xFB; opc2_17; typeidx; typeidx2; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	array_copy(typeidx:4, typeidx2:4, sp1_32, sp2_32, sp3_32);
+}
+
+:array.init_data "type="^typeidx "data="^dataidx is opc=0xFB; opc2_18; typeidx; dataidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	array_init_data(typeidx:4, dataidx:4, sp1_32, sp2_32, sp3_32);
+}
+
+:array.init_elem "type="^typeidx "elem="^elemidx is opc=0xFB; opc2_19; typeidx; elemidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	array_init_elem(typeidx:4, elemidx:4, sp1_32, sp2_32, sp3_32);
+}
+
+# ---------------------------------------------------------------- references
+:ref.test "ht="^heaptype is opc=0xFB; opc2_20; heaptype; sp1_32; ctx_is_directive=0 {
+	sp1_32 = ref_test(heaptype:4, sp1_32);
+}
+:ref.test "ht="^heaptype is opc=0xFB; opc2_21; heaptype; sp1_32; ctx_is_directive=0 {
+	sp1_32 = ref_test(heaptype:4, sp1_32);
+}
+
+:ref.cast "ht="^heaptype is opc=0xFB; opc2_22; heaptype; sp1_32; ctx_is_directive=0 {
+	sp1_32 = ref_cast(heaptype:4, sp1_32);
+}
+:ref.cast "ht="^heaptype is opc=0xFB; opc2_23; heaptype; sp1_32; ctx_is_directive=0 {
+	sp1_32 = ref_cast(heaptype:4, sp1_32);
+}
+
+:br_on_cast "ht1="^heaptype "ht2="^heaptype2 br_target is opc=0xFB; opc2_24; gccastop; ULeb128; br_target; heaptype; heaptype2; sp1_32; ctx_is_directive=0 {
+	nop();
+	castok:1 = wasm_br_on_cast(heaptype:4, heaptype2:4, sp1_32);
+	if (castok == 0) goto inst_next;
+	doBranch(br_target);
+}
+
+:br_on_cast_fail "ht1="^heaptype "ht2="^heaptype2 br_target is opc=0xFB; opc2_25; gccastop; ULeb128; br_target; heaptype; heaptype2; sp1_32; ctx_is_directive=0 {
+	nop();
+	castok:1 = wasm_br_on_cast(heaptype:4, heaptype2:4, sp1_32);
+	if (castok != 0) goto inst_next;
+	doBranch(br_target);
+}
+
+:any.convert_extern is opc=0xFB; opc2_26; sp1_32; ctx_is_directive=0 {
+	sp1_32 = any_convert_extern(sp1_32);
+}
+
+:extern.convert_any is opc=0xFB; opc2_27; sp1_32; ctx_is_directive=0 {
+	sp1_32 = extern_convert_any(sp1_32);
+}
+
+:ref.i31 is opc=0xFB; opc2_28; sp1_32; ctx_is_directive=0 {
+	sp1_32 = ref_i31(sp1_32);
+}
+
+:i31.get_s is opc=0xFB; opc2_29; sp1_32; ctx_is_directive=0 {
+	sp1_32 = i31_get_s(sp1_32);
+}
+
+:i31.get_u is opc=0xFB; opc2_30; sp1_32; ctx_is_directive=0 {
+	sp1_32 = i31_get_u(sp1_32);
+}
+
+# ---------------------------------------------------------------- unprefixed reference op
+:ref.eq is opc=0xD3; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = ref_eq(sp1_32, sp2_32);
+}
