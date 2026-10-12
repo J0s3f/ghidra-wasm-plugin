@@ -440,6 +440,37 @@ public class WasmFunctionAnalysis {
 		}
 		return popped;
 	}
+
+	/**
+	 * @@FR: pop one value, or return null if the stack is already at the current
+	 * block's floor (instead of throwing). Used by the typed function-reference call
+	 * instructions: the concrete referenced type $t is not modelled, so a callsite
+	 * whose stack does not actually supply the reference's arguments (an under-typed
+	 * body such as the frozen 12_call_ref probe) degrades a phantom argument to null
+	 * rather than voiding the whole function.
+	 */
+	private ValType popValueTolerant(Address instAddress) {
+		ControlFrame curBlock = getBlock(instAddress, 0);
+		if (valueStack.size() <= curBlock.initialStack.size()) {
+			return null;
+		}
+		return valueStack.remove(valueStack.size() - 1);
+	}
+
+	/**
+	 * @@FR: pop the function reference (top of the operand stack) followed by the
+	 * referenced type's arguments. Returns true only if every value was present, i.e.
+	 * the recorded stack effect is trustworthy.
+	 */
+	private boolean popReferenceAndArgs(Address instAddress, ValType[] params) {
+		boolean complete = popValueTolerant(instAddress) != null;
+		for (int i = params.length - 1; i >= 0; i--) {
+			if (popValueTolerant(instAddress) == null) {
+				complete = false;
+			}
+		}
+		return complete;
+	}
 	// #endregion
 
 	// #region Control stack manipulation
@@ -998,6 +1029,44 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 
+		/*
+		 * @@FR: typed function references (proposal: function-references). call_ref /
+		 * return_call_ref pop the function reference (the top operand-stack value, like
+		 * the table index of call_indirect) and then the arguments described by the type
+		 * index, and push that type's results.
+		 *
+		 * The reference is read directly from the stack by the SLEIGH `sp1_32` operand,
+		 * so only the arguments are recorded in the stack effect (they are what
+		 * InjectPayloadWasmPop moves into the input registers). The concrete referenced
+		 * type $t is not represented (ValType folds all (ref [null] $t) onto a 4-byte
+		 * reference placeholder), so the popped reference is accepted as any type.
+		 *
+		 * No branch target is recorded: call_ref's callee is a runtime value. When that
+		 * value is a resolved function address (ref.func / table.get) the decompiler still
+		 * shows a real call through it.
+		 */
+		case 0x14: /* call_ref x */ {
+			long typeidx = readLeb128(reader);
+			WasmFuncType type = analysis.getType((int) typeidx);
+			ValType[] params = type.getParamTypes();
+			ValType[] returns = type.getReturnTypes();
+			if (popReferenceAndArgs(instAddress, params)) {
+				setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), returns);
+			}
+			pushValues(instAddress, returns);
+			break;
+		}
+		case 0x15: /* return_call_ref x (tail calls through a typed reference) */ {
+			long typeidx = readLeb128(reader);
+			WasmFuncType type = analysis.getType((int) typeidx);
+			ValType[] params = type.getParamTypes();
+			if (popReferenceAndArgs(instAddress, params)) {
+				setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), type.getReturnTypes());
+			}
+			markUnreachable(instAddress);
+			break;
+		}
+
 		case 0x1A: /* drop */ {
 			popValue(instAddress);
 			break;
@@ -1370,6 +1439,34 @@ public class WasmFunctionAnalysis {
 			popValue(instAddress);
 			pushValue(instAddress, ValType.i32);
 			break;
+
+		// @@FR: function-references reference instructions (no prefix).
+		case 0xD4: { /* ref.as_non_null: [(ref null ht)] -> [(ref ht)] */
+			/*
+			 * Same 4-byte reference, only non-nullable. ValType does not carry
+			 * nullability, so the value stack type is unchanged.
+			 */
+			ValType ref = popValue(instAddress);
+			pushValue(instAddress, (ref != null) ? ref : ValType.externref);
+			break;
+		}
+		case 0xD5: /* br_on_null l: [t* (ref null ht)] -> [t* (ref ht)]; branch takes [t*] */ {
+			long labelidx = readLeb128(reader);
+			ValType ref = popValue(instAddress);
+			ControlFrame block = getBlock(instAddress, labelidx);
+			block.addBranch(instAddress);
+			/* fall-through keeps the (now non-null) reference */
+			pushValue(instAddress, (ref != null) ? ref : ValType.externref);
+			break;
+		}
+		case 0xD6: /* br_on_non_null l: [t* (ref null ht)] -> [t*]; branch takes [t* (ref ht)] */ {
+			long labelidx = readLeb128(reader);
+			popValue(instAddress);
+			ControlFrame block = getBlock(instAddress, labelidx);
+			block.addBranch(instAddress);
+			/* fall-through consumes the (null) reference */
+			break;
+		}
 
 		// @@UNIMP: stack-switching opcodes (0xE0-0xE6) that this walker only skips over.
 		// 0xE3/0xE4/0xE5 (resume/resume_throw/resume_throw_ref) have a trailing handler
