@@ -42,10 +42,13 @@ public class PcodeInjectLibraryWasm extends PcodeInjectLibrary {
 				return new InjectPayloadWasmEntry(sourceName);
 			case "popCallOther":
 			case "callEpilogueCallOther":
-			case "callPrologueCallOther":
 				return new InjectPayloadWasmPop(sourceName);
+			case "callPrologueCallOther":
+				return new InjectPayloadWasmCallPrologue(sourceName);
 			case "pushCallOther":
 				return new InjectPayloadWasmPush(sourceName);
+			case "memory_copy":
+				return new InjectPayloadWasmMemoryCopy(sourceName);
 			}
 		}
 		return super.allocateInject(sourceName, name, tp);

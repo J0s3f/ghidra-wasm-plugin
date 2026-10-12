@@ -24,6 +24,7 @@ import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.Undefined;
 import ghidra.program.model.data.VoidDataType;
 import ghidra.program.model.lang.Processor;
 import ghidra.program.model.listing.Function;
@@ -71,18 +72,28 @@ public class WasmSignatureAnalyzer extends AbstractAnalyzer {
 		DataType returnType;
 		if (sig.getReturns().length > 0) {
 			/* TODO handle multiple returns */
-			returnType = sig.getReturns()[0].asDataType();
+			returnType = sig.getReturns()[0].asSignatureDataType();
 		} else {
 			returnType = VoidDataType.dataType;
 		}
 
 		function.setCallingConvention("__wasm");
 
-		if (returnType.getLength() != function.getReturnType().getLength()) {
-			/* function return type is wrong: reset it */
+		DataType curReturn = function.getReturnType();
+		if (returnType.getLength() != curReturn.getLength() || Undefined.isUndefined(curReturn)) {
+			/* function return type is wrong or still undefined: set it */
 			function.setReturnType(returnType, SourceType.IMPORTED);
 		}
 
+		/*
+		 * Parameters: keep the width-correct but signedness/pointer-agnostic
+		 * Undefined types (asDataType) rather than committing concrete ints
+		 * (asSignatureDataType). Committing int forces the decompiler to insert
+		 * (int) casts wherever a pointer is passed to the parameter, which adds
+		 * far more noise than the "undefined4 param" it removes. Returns are
+		 * safe to commit (they don't get cast at call sites) and are handled
+		 * above.
+		 */
 		List<Parameter> params = new ArrayList<>();
 		ValType[] rawParams = sig.getParams();
 		for (int i = 0; i < rawParams.length; i++) {

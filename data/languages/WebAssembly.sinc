@@ -77,6 +77,7 @@ define pcodeop wasm_rethrow;
 define pcodeop memory_atomic_notify;
 define pcodeop memory_atomic_wait32;
 define pcodeop memory_atomic_wait64;
+define pcodeop memcpy;
 
 @include "Leb128.sinc"
 

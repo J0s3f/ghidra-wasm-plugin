@@ -300,7 +300,16 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		try {
 			MemoryBlock block = program.getMemory().createInitializedBlock(".table" + tableidx, dataStart, byteSize, (byte) 0x00, monitor, false);
 			block.setRead(true);
-			block.setWrite(true);
+			/*
+			 * Mark the table read-only: for compiled C/C++ modules the function
+			 * table is fixed at instantiation (element segments), and read-only
+			 * lets the decompiler treat entries as constants — a call_indirect
+			 * with a statically-known index then resolves to a direct call to
+			 * the actual function. (table.set/table.grow at runtime would be
+			 * misrepresented, but such modules are rare and were previously
+			 * unreadable anyway.)
+			 */
+			block.setWrite(false);
 			block.setExecute(false);
 			DataType tableDataType = new ArrayDataType(elementDataType, (int) numElements, elementDataType.getLength());
 			createData(program, program.getListing(), dataStart, tableDataType);
@@ -318,7 +327,20 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		try {
 			MemoryBlock block = program.getMemory().createInitializedBlock(".memory" + memidx, dataStart, length, (byte) 0x00, monitor, false);
 			block.setRead(true);
-			block.setWrite(true);
+			/*
+			 * Mark linear memory read-only so the decompiler (which respects
+			 * read-only flags by default) constant-folds reads of compile-time
+			 * constant addresses: string/array/const-data references then render
+			 * as inline literals (printf("Hello") instead of
+			 * printf(s_Hello_ram_...)) and array initializers are recovered.
+			 * This is safe for genuinely mutable globals: the decompiler only
+			 * folds addresses that have NO store references, so a global written
+			 * anywhere Ghidra can see stays a memory read. Stack/heap accesses go
+			 * through registers/runtime pointers (not constant addresses) and are
+			 * never folded. Data segments are written into this block during
+			 * loading via the low-level Memory API, which bypasses this flag.
+			 */
+			block.setWrite(false);
 			block.setExecute(false);
 			block.setSourceName("Wasm Memory");
 		} catch (Exception e) {
@@ -637,7 +659,17 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 	private MemoryBlock createCustomSectionBlock(Program program, FileBytes fileBytes, WasmUnknownCustomSection customSection, Address address)
 			throws Exception {
-		MemoryBlock block = program.getMemory().createInitializedBlock(customSection.getName(), address, fileBytes, customSection.getContentOffset(), customSection.getCustomSize(), false);
+		/*
+		 * DWARF sections (.debug_info, .debug_abbrev, ...) must keep their exact
+		 * names: Ghidra's DWARFSectionProviderFactory locates them by memory-block
+		 * name, and the ".custom." prefix used for other sections (to avoid
+		 * DataType name conflicts) makes them invisible, silently disabling all
+		 * DWARF type/signature import.
+		 */
+		String blockName = customSection.getCustomName().startsWith(".debug_")
+				? customSection.getCustomName()
+				: customSection.getName();
+		MemoryBlock block = program.getMemory().createInitializedBlock(blockName, address, fileBytes, customSection.getContentOffset(), customSection.getCustomSize(), false);
 		block.setRead(true);
 		block.setWrite(false);
 		block.setExecute(false);

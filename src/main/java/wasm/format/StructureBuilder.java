@@ -19,19 +19,68 @@ import java.io.IOException;
 
 import ghidra.app.util.bin.LEB128Info;
 import ghidra.app.util.bin.StructConverter;
+import ghidra.program.model.data.Array;
 import ghidra.program.model.data.ArrayDataType;
 import ghidra.program.model.data.CategoryPath;
+import ghidra.program.model.data.Composite;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeComponent;
 import ghidra.program.model.data.DataTypeComponentImpl;
+import ghidra.program.model.data.Pointer;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.StructureDataType;
+import ghidra.program.model.data.TypeDef;
 import ghidra.util.exception.DuplicateNameException;
 
 public class StructureBuilder {
 	private class SBStructure extends StructureDataType {
 		public SBStructure(CategoryPath path, String name, int length) {
 			super(path, name, length);
+		}
+
+		/**
+		 * Check that adding <code>dataType</code> to this structure would not create a
+		 * circular dependency. Ghidra used to provide
+		 * <code>CompositeDataTypeImpl.checkAncestry</code> for this purpose, but that
+		 * method has been removed from newer Ghidra releases, so the equivalent logic is
+		 * implemented here using only stable public API.
+		 */
+		private void checkAncestry(DataType dataType) {
+			if (this.equals(dataType)) {
+				throw new IllegalArgumentException("Data type " + getDisplayName() + " can't contain itself.");
+			}
+			if (containsDataType(dataType, this)) {
+				throw new IllegalArgumentException(
+					"Data type " + dataType.getDisplayName() + " has " + getDisplayName() + " within it.");
+			}
+		}
+
+		/**
+		 * Determine if <code>target</code> appears anywhere within the definition of
+		 * <code>container</code> (equivalent to the former
+		 * <code>DataTypeUtilities.isSecondPartOfFirst</code>).
+		 */
+		private boolean containsDataType(DataType container, DataType target) {
+			if (container == null || container instanceof Pointer || target instanceof Pointer) {
+				return false;
+			}
+			if (container.equals(target)) {
+				return true;
+			}
+			if (container instanceof Array) {
+				return containsDataType(((Array) container).getDataType(), target);
+			}
+			if (container instanceof TypeDef) {
+				return containsDataType(((TypeDef) container).getDataType(), target);
+			}
+			if (container instanceof Composite) {
+				for (DataTypeComponent component : ((Composite) container).getDefinedComponents()) {
+					if (containsDataType(component.getDataType(), target)) {
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		/**
