@@ -123,11 +123,21 @@ public class WasmElementSegment implements StructConverter {
 		return tableidx.asLong();
 	}
 
+	/**
+	 * The static offset of an active element segment, or {@code null} when the segment is passive/
+	 * declarative or its offset is not a constant.
+	 *
+	 * <p>@@T64: this accepts an {@code i64.const} offset as well as an {@code i32.const} one. An
+	 * active segment that targets a 64-bit table must use an i64-typed offset, so reading only
+	 * {@link ConstantExpression#asI32()} (the previous behaviour) returned null and the loader
+	 * silently dropped the whole segment. A non-constant offset (e.g. {@code global.get}) is still
+	 * null and is still skipped.
+	 */
 	public Long getOffset() {
 		if (offset == null) {
 			return null;
 		}
-		return offset.asI32();
+		return offset.asConstValue();
 	}
 
 	public ValType getElementType() {

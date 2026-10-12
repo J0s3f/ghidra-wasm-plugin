@@ -348,7 +348,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		}
 	}
 
-	private static void createTableBlock(Program program, DataType elementDataType, long numElements, int tableidx, TaskMonitor monitor) {
+	private static void createTableBlock(Program program, DataType elementDataType, long numElements, int tableidx, boolean is64Bit, TaskMonitor monitor) {
 		if (numElements == 0) {
 			return;
 		}
@@ -357,11 +357,17 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		 * be up to 0xffffffff; the previous code multiplied that by the element size and handed the
 		 * result to Ghidra, which refused the block and left the accepted program silently without a
 		 * table. Anything beyond the modelled limit is now skipped with an explicit diagnostic.
+		 *
+		 * @@T64: a 64-bit table (table64, limits flag 0x04) can declare up to 2^64-1 elements, so its
+		 * `initial` does not even fit the u32 the 32-bit form is limited to. Such a table is not
+		 * materialised - the loader only models the small fixed tables real modules use - and the
+		 * diagnostic names the 64-bit index type so the reason is unambiguous.
 		 */
 		long elementSize = elementDataType.getLength();
 		if (numElements < 0 || numElements > Integer.MAX_VALUE
 				|| (elementSize > 0 && numElements > MAX_TABLE_BLOCK_BYTES / elementSize)) {
-			Msg.error(WasmLoader.class, "Table " + tableidx + " declares " + Long.toUnsignedString(numElements)
+			Msg.error(WasmLoader.class, "Table " + tableidx + (is64Bit ? " (i64 index)" : "")
+					+ " declares " + Long.toUnsignedString(numElements)
 					+ " element(s); this exceeds the loader's table limit of " + MAX_TABLE_BLOCK_BYTES
 					+ " byte(s), so the table is not materialised (see REPORT-HARD.md)");
 			return;
@@ -382,6 +388,14 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			 */
 			block.setWrite(false);
 			block.setExecute(false);
+			if (is64Bit) {
+				/*
+				 * @@T64: unlike memory64 there is no truncation here - the `table` address space is 8
+				 * bytes wide - so a 64-bit table is fully modelled; make its index type visible.
+				 */
+				block.setComment("64-bit (table64) table: the index type is i64; entries are mapped "
+						+ "into the 64-bit `table` address space");
+			}
 			DataType tableDataType = new ArrayDataType(elementDataType, (int) numElements, elementDataType.getLength());
 			createData(program, program.getListing(), dataStart, tableDataType);
 			createLabel(program, dataStart, "table" + tableidx, program.getGlobalNamespace(), SourceType.IMPORTED);
@@ -598,7 +612,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			}
 
 			validateTableLimits(tableidx, table);
-			createTableBlock(program, table.getElementDataType(), table.getLimits().getInitial(), tableidx, monitor);
+			createTableBlock(program, table.getElementDataType(), table.getLimits().getInitial(), tableidx, table.is64Bit(), monitor);
 		}
 	}
 
@@ -694,6 +708,16 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			 * @@M64: the size of a 64-bit memory is a u64, so it is computed with saturation and
 			 * then clamped (and logged) like any other memory. `ram` is a 32-bit space, so a
 			 * memory larger than the bound is only partly represented.
+			 *
+			 * @@M64 >4 GiB: a memory64 declaration with an initial size above 4 GiB (e.g. 70000
+			 * pages = 4,587,520,000 bytes) is *valid* per the memory64 proposal and is accepted
+			 * here: the declared byte count is computed as a long (never overflowing), the block is
+			 * capped at MAX_MEMORY_BLOCK_BYTES (256 MiB) and the mismatch is logged - so the import
+			 * is honest and bounded instead of silently truncated or an OOM. The module's code
+			 * section still decodes because nothing in the decode path depends on the memory's
+			 * materialised size. Addresses/offsets at or above 4 GiB cannot be represented in the
+			 * 32-bit `ram` space; getMemoryAddress() clamps them to the top of the space and logs,
+			 * rather than wrapping into a wrong address (see REPORT-N.md).
 			 */
 			long declared = memoryByteSize(mem.getInitial());
 			long length = Math.min(declared, MAX_MEMORY_BLOCK_BYTES);
