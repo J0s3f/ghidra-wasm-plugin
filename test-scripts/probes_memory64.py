@@ -26,6 +26,22 @@ Unlike the frozen generators, these modules are emitted with the sections in the
 core spec requires (type, function, memory, export, data count, code, data), so they can be
 validated independently with `wasmtime.Module(...)`; every module here passes that check.
 
+Recorded metrics (Ghidra 12.1.4, this worktree; also in REPORT-N.md and
+test-scripts/expected-results.json):
+
+    probe                              funcs instrs undefined_bytes decompiled
+    M64_01_baseline_i64_load               1      4        0          1/0
+    M64_02_scalar_loads_stores             1     28        0          1/0
+    M64_03_memory_size_grow                1      6        0          1/0
+    M64_04_bulk_memory                     1     15        0          1/0
+    M64_05_i64_then_i32_memidx             1     13        0          1/0
+    M64_06_i32_then_i64_memidx             1     11        0          1/0
+    M64_07_large_static_offset             1      7        0          1/0
+    M64_08_simd_atomic                     1     17        0          1/0
+
+Every probe also creates its `.memoryN` block(s) (65536 bytes for one page), and each listing
+marks the 64-bit-indexed form with `" (i64 index)"`.
+
 Usage: python probes_memory64.py <output-dir>
 """
 import os
