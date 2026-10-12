@@ -17,3 +17,14 @@ scripts on `main` regenerate every result table:
 The authoritative machine-checked expectations stay on `main` as data, not prose:
 `test-scripts/expected-results.json` (136-probe gate) and `test-scripts/spectest-expected.json`
 (spec-suite gate).
+## Research reports (`reports/research/`)
+
+External-tool reuse analyses produced for the plugin (what could be ported from other WebAssembly
+projects, with licensing and experiments):
+
+* `notdec-reuse-analysis.md` - NotDec (github.com/NotDec/NotDec) + arXiv 2608.03286v1, plus a WABT
+  `wasm-objdump` decode comparison against our listing.
+* `binaryen-reuse-analysis.md` - WebAssembly/binaryen (`wasm-dis` validity oracle, decode rules, test
+  corpus, and what not to port).
+
+The actionable summary lives on `main` in `REUSE_OPPORTUNITIES.md`.
