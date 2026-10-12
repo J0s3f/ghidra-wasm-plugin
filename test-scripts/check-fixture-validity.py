@@ -86,6 +86,11 @@ def generate(script_dir: pathlib.Path, probe_dir: pathlib.Path) -> int:
 
 
 def classify(wabt_ok, bin_ok, recorded: dict) -> str:
+    # A probe recorded as deliberately invalid must stay rejected by wabt; that class is
+    # authoritative whenever wabt rejects (binaryen is lenient about some of them, e.g.
+    # out-of-order sections). A probe that starts being accepted still shows as a mismatch.
+    if not wabt_ok and recorded.get("class") == "invalid":
+        return "invalid"
     if bin_ok is None:
         if wabt_ok:
             return "valid"

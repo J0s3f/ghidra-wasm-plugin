@@ -96,7 +96,7 @@
     },
     "12_call_ref.wasm": {
       "funcs": 1,
-      "instrs": 4,
+      "instrs": 5,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -368,7 +368,7 @@
     },
     "A09_unimp_mul_wide_u.wasm": {
       "funcs": 1,
-      "instrs": 5,
+      "instrs": 9,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -424,8 +424,8 @@
     },
     "B06_limits_two_tables.wasm": {
       "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 3,
+      "instrs": 4,
+      "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
@@ -488,23 +488,23 @@
     },
     "B14_const_unknown_gc.wasm": {
       "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 3,
+      "instrs": 3,
+      "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
     },
     "B15_const_ref_null_typeidx.wasm": {
       "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 3,
+      "instrs": 3,
+      "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
     },
     "B16_valtype_ref_null_param.wasm": {
       "funcs": 2,
-      "instrs": 6,
+      "instrs": 7,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -512,7 +512,7 @@
     },
     "B17_valtype_ref_param.wasm": {
       "funcs": 2,
-      "instrs": 6,
+      "instrs": 7,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -608,8 +608,8 @@
     },
     "B29_valtype_mixed.wasm": {
       "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 16,
+      "instrs": 14,
+      "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
@@ -801,6 +801,86 @@
     "F07_funcref_mixed.wasm": {
       "funcs": 2,
       "instrs": 20,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H01_ss_cont_new.wasm": {
+      "funcs": 2,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H02_ss_cont_bind.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H03_ss_suspend.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H04_ss_resume.wasm": {
+      "funcs": 2,
+      "instrs": 8,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H05_ss_resume_handlers.wasm": {
+      "funcs": 2,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H06_ss_resume_throw.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H07_ss_resume_throw_ref.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H08_ss_switch.wasm": {
+      "funcs": 2,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H09_ss_mixed.wasm": {
+      "funcs": 3,
+      "instrs": 28,
+      "undefined_bytes": 0,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "H10_ss_resume_result.wasm": {
+      "funcs": 2,
+      "instrs": 9,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -1118,6 +1198,86 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "S01_str_const_concat_eq.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S02_str_new_measure_encode.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S03_str_view_wtf8.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S04_str_view_wtf16.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S05_str_view_iter.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S06_str_arrays.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S07_wide_memdiscard.wasm": {
+      "funcs": 1,
+      "instrs": 29,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "S08_strings_mixed.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "S09_str_reserved.wasm": {
+      "funcs": 1,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "S10_str_encode_units.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
     "SF01_select_after_terminator.wasm": {
       "funcs": 5,
       "instrs": 44,
@@ -1199,7 +1359,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 149,
+  "probe_count": 169,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

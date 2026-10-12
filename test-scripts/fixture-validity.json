@@ -346,6 +346,91 @@
     "F07_funcref_mixed.wasm": {
       "class": "valid"
     },
+    "H01_ss_cont_new.wasm": {
+      "class": "unsupported",
+      "why": "0000025: error: unexpected opcode: 0xe0"
+    },
+    "H02_ss_cont_bind.wasm": {
+      "class": "unsupported",
+      "why": "000002b: error: unexpected opcode: 0xe0"
+    },
+    "H03_ss_suspend.wasm": {
+      "class": "wabt-gap",
+      "why": "000002b: error: unexpected opcode: 0xe2"
+    },
+    "H04_ss_resume.wasm": {
+      "class": "unsupported",
+      "why": "000002a: error: unexpected opcode: 0xe0"
+    },
+    "H05_ss_resume_handlers.wasm": {
+      "class": "unsupported",
+      "why": "0000030: error: unexpected opcode: 0xe0"
+    },
+    "H06_ss_resume_throw.wasm": {
+      "class": "unsupported",
+      "why": "0000030: error: unexpected opcode: 0xe0"
+    },
+    "H07_ss_resume_throw_ref.wasm": {
+      "class": "unsupported",
+      "why": "000002c: error: unexpected opcode: 0xe0"
+    },
+    "H08_ss_switch.wasm": {
+      "class": "unsupported",
+      "why": "000002a: error: unexpected opcode: 0xe0"
+    },
+    "H09_ss_mixed.wasm": {
+      "class": "unsupported",
+      "why": "000003f: error: unexpected opcode: 0xe0"
+    },
+    "H10_ss_resume_result.wasm": {
+      "class": "unsupported",
+      "why": "0000035: error: unexpected opcode: 0xe0"
+    },
+    "H1_01_control_valid.wasm": {
+      "class": "valid"
+    },
+    "H1_02_unknown_section_id.wasm": {
+      "class": "invalid",
+      "why": "000000a: error: invalid section code: 42"
+    },
+    "H1_03_duplicate_type_section.wasm": {
+      "class": "invalid",
+      "why": "0000010: error: multiple Type sections"
+    },
+    "H1_04_duplicate_code_section.wasm": {
+      "class": "invalid",
+      "why": "000001d: error: multiple Code sections"
+    },
+    "H1_05_out_of_order_sections.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: section Type out of order"
+    },
+    "H1_06_i64_const_offset.wasm": {
+      "class": "valid"
+    },
+    "H1_07_i64_const_offset_4k.wasm": {
+      "class": "valid"
+    },
+    "H1_08_i64_global_offset.wasm": {
+      "class": "wabt-gap",
+      "why": "C:/Users/micro/AppData/Local/Temp/merged-validity-probes/H1_08_i64_global_offset.wasm:000003a: error: initializer expression can only reference an imported global"
+    },
+    "H1_09_unresolved_global_offset.wasm": {
+      "class": "valid"
+    },
+    "H1_10_mem1_i64_offset.wasm": {
+      "class": "valid"
+    },
+    "H1_11_i32_control.wasm": {
+      "class": "valid"
+    },
+    "H1_12_i64_offset_above_4gib.wasm": {
+      "class": "valid"
+    },
+    "H1_13_duplicate_datacount.wasm": {
+      "class": "invalid",
+      "why": "000000d: error: multiple DataCount sections"
+    },
     "J03_locals_count_neg.wasm": {
       "class": "invalid",
       "why": "error: function local count exceeds maximum value"
@@ -426,6 +511,46 @@
     "N03_malformed_name_subsection.wasm": {
       "class": "invalid",
       "why": "error: expected function name count (3) <= function count (1)"
+    },
+    "S01_str_const_concat_eq.wasm": {
+      "class": "unsupported",
+      "why": "000001f: error: unexpected opcode: 0xfb"
+    },
+    "S02_str_new_measure_encode.wasm": {
+      "class": "unsupported",
+      "why": "0000028: error: unexpected opcode: 0xfb"
+    },
+    "S03_str_view_wtf8.wasm": {
+      "class": "unsupported",
+      "why": "0000024: error: unexpected opcode: 0xfb"
+    },
+    "S04_str_view_wtf16.wasm": {
+      "class": "unsupported",
+      "why": "0000024: error: unexpected opcode: 0xfb"
+    },
+    "S05_str_view_iter.wasm": {
+      "class": "unsupported",
+      "why": "000001f: error: unexpected opcode: 0xfb"
+    },
+    "S06_str_arrays.wasm": {
+      "class": "unsupported",
+      "why": "0000020: error: expected valid ref.null type (got -0x16)"
+    },
+    "S07_wide_memdiscard.wasm": {
+      "class": "unsupported",
+      "why": "0000051: error: unexpected opcode: 0xfc 0x12"
+    },
+    "S08_strings_mixed.wasm": {
+      "class": "unsupported",
+      "why": "000002f: error: unexpected opcode: 0xfb"
+    },
+    "S09_str_reserved.wasm": {
+      "class": "unsupported",
+      "why": "0000022: error: unexpected opcode: 0xfb"
+    },
+    "S10_str_encode_units.wasm": {
+      "class": "unsupported",
+      "why": "0000025: error: unexpected opcode: 0xfb"
     },
     "SF01_select_after_terminator.wasm": {
       "class": "valid"
