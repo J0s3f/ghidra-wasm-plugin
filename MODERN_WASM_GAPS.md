@@ -1,9 +1,20 @@
 # Modern WebAssembly support: inventory, gaps and roadmap
 
-Status of this document: **inventory complete, work not started**. It was produced from
-`merged-upstream-prs` (commit `430cbe2`, plugin built against Ghidra 12.1.4) and is intended as the
-working base for extending the plugin's coverage toward current WebAssembly (Wasm 3.0 + active
-proposals).
+Status of this document: **inventory complete; implementation in progress**. See the status table
+below. The inventory was produced from `merged-upstream-prs` (commit `430cbe2`, plugin built against
+Ghidra 12.1.4) and is intended as the working base for extending the plugin's coverage toward current
+WebAssembly (Wasm 3.0 + active proposals).
+
+| Roadmap item | State |
+| --- | --- |
+| R1.2 limits flags · R1.3 constant expressions · R1.5 unknown value types | **merged** (`REPORT-B.md`; plus an integrator rewrite of the expression scanner - see §2.5) |
+| 5. new exception handling (`try_table`, `throw_ref`, `exnref`) | **merged** (`REPORT-F.md`) |
+| 6. garbage collection (type section, `0xFB` instructions, GC initializers) | **merged** (`REPORT-E.md`) |
+| 0/1/2 multi-memory + unknown-opcode degradation · 8 memory64 | in flight (decoder/loader workstream) |
+| 9. `.name` extras + application | in flight |
+| 7. multi-value returns | in flight |
+| 10. component model loader | in flight |
+| 4. spec-test harness · real-world corpus · CI probe gate · robustness sweep · DWARF line info | queued |
 
 ## 1. How this inventory was produced
 
@@ -99,21 +110,21 @@ bytes change.
 | 01 | `baseline_i32` | 1 | 3 | 0 | 1/0 | ok |
 | 02 | `externref_param` | 1 | 3 | 0 | 1/0 | ok |
 | 03 | `externref_table` | 1 | 4 | 0 | 1/0 | ok (`.table0` created) |
-| 04 | `shared_memory_atomic` | 1 | 4 | 0 | 1/0 | instructions ok; `shared`/`maximum` dropped from the parsed limits |
+| 04 | `shared_memory_atomic` | 1 | 4 | 0 | 1/0 | **fixed (R1.2)**: limits flags decode fully (`shared`/`maximum`/64-bit/page-size preserved) |
 | 05 | `memory64` | 1 | **1** | **6** | 1/0 | analysis aborts (`i64`/`i32` mismatch), body undefined |
 | 06 | `multi_memory` | 1 | 7 | 0 | 1/0 | **wrong**: `i32.load align=0x42 offset=0x1` + spurious `unreachable` |
 | 07 | `data_count_bulk_memory` | 1 | 7 | 0 | 1/0 | ok |
-| 08 | `gc_struct_type` | 1 | 2 | 0 | 1/0 | loads, but the `struct` type is parsed as a function type |
+| 08 | `gc_struct_type` | 1 | 2 | 0 | 1/0 | **fixed (GC)**: `type_0` is now a real `gc_struct_type` with named fields |
 | 09 | `gc_struct_new` | 1 | 5 | **1** | 1/0 | `0xFB` undefined, desync (`unreachable` ×2) |
 | 10 | `eh_legacy_try_catch` | 1 | 6 | 0 | 1/0 | ok |
-| 11 | `eh_try_table` | 1 | **1** | **5** | 1/0 | validation error, body undefined |
-| 12 | `call_ref` | 1 | 4 | 2 | **0/1** | NPE in signature analyzer **and** decompiler: decompilation fails |
+| 11 | `eh_try_table` | 1 | **4** | **0** | 1/0 | **fixed (new EH)**: real `try_table` with clause handling |
+| 12 | `call_ref` | 1 | 4 | 1 | **1/0** | **mostly fixed (R1.5)**: `(ref null $t)` parses, no NPEs, decompiles; the `call_ref` *instruction* (0x14) is still undecoded (function-references workstream) |
 | 13 | `tail_call` | 2 | 5 | 0 | 2/0 | ok |
 | 14 | `relaxed_simd` | 1 | 6 | 0 | 1/0 | ok |
 | 15 | `simd` | 1 | 6 | 0 | 1/0 | ok |
 | 16 | `multivalue_return` | 2 | 9 | 0 | 2/0 | decodes, but only the first result appears in the prototype |
 | 17 | `multivalue_block` | 1 | 7 | 0 | 1/0 | ok |
-| 18 | `shared_then_plain_memory` | 1 | 3 | 0 | 1/0 | **only `.memory0`** (loader skips `memidx != 0`) |
+| 18 | `shared_then_plain_memory` | 1 | 3 | 0 | 1/0 | limits **fixed (R1.2)**; the loader still skips `memidx != 0` (multi-memory workstream) |
 | 19 | `extended_const_global` | – | – | – | – | **import failed** (`Missing end byte`) |
 | 20 | `gc_global_init` (`(global (ref 0) (struct.new 0))`) | – | – | – | – | **import failed** (`Invalid instruction opcode 0 in constant expression` — the 2-byte `(ref 0)` valtype is unhandled, so the initializer parse is misaligned) |
 | 21 | `component_model` | – | – | – | – | **import failed** (`No load spec found`) |
@@ -259,3 +270,17 @@ Remember that SIMD/relaxed-SIMD opcodes (0xFD) and prefixes are **LEB128-encoded
   function references, stack switching, custom page sizes, wide arithmetic):
   <https://github.com/WebAssembly/proposals>
 * Extended name section: <https://github.com/WebAssembly/extended-name-section>
+
+### 2.5 Constant-expression scanner regressions (probes 22-27)
+
+Added after the constant-expression scanner was rewritten to *decode* instructions instead of scanning
+bytes (a byte scan misreads immediates as opcodes/`end` bytes). All six must stay green.
+
+| # | Probe | funcs | instrs | u | d | Expected |
+| --- | --- | --- | --- | --- | --- | --- |
+| 22 | `extconst_two_ops` (`i32.const 1; i32.const 2; i32.add`) | 1 | 2 | 0 | 1/0 | imports; global folds to `03000000` |
+| 23 | `const_f32_imm_0b` (immediate byte `0x0B`) | 1 | 2 | 0 | 1/0 | imports; global = `0b000000` |
+| 24 | `const_f64_imm_0b` | 1 | 2 | 0 | 1/0 | imports; global = `0b00000000000000` |
+| 25 | `const_v128_imm_0b` (16 x `0x0B`) | 1 | 2 | 0 | 1/0 | imports; global = 16 x `0b` |
+| 26 | `refnull_typeidx` (`ref.null $t`) | 1 | 2 | 0 | 1/0 | imports |
+| 27 | `extconst_data_offset` (folded segment offset) | 1 | 2 | 0 | 1/0 | imports; data segment lands at offset 3 |
