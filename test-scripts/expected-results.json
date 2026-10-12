@@ -1,0 +1,657 @@
+{
+  "real_module": {
+    "wasm": "rasterbator_rs_bg.wasm",
+    "summary": "functions=437 decompiled=437 failed=0 instructions=61658",
+    "undefined_bytes": 156,
+    "note": "external payload, not committed to the repo; verified only when a DumpDecomp log is supplied via --real-module-log"
+  },
+  "probes": {
+    "01_baseline_i32.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "02_externref_param.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "03_externref_table.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "04_shared_memory_atomic.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "05_memory64.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 6,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "06_multi_memory.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "07_data_count_bulk_memory.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "08_gc_struct_type.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "09_gc_struct_new.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "10_eh_legacy_try_catch.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "11_eh_try_table.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "12_call_ref.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 1,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "13_tail_call.wasm": {
+      "funcs": 2,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "14_relaxed_simd.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "15_simd.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "16_multivalue_return.wasm": {
+      "funcs": 2,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "17_multivalue_block.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "18_shared_then_plain_memory.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "19_extended_const_global.wasm": {
+      "funcs": 0,
+      "instrs": 0,
+      "undefined_bytes": 0,
+      "decompiled": 0,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "20_gc_global_init.wasm": {
+      "funcs": 0,
+      "instrs": 0,
+      "undefined_bytes": 0,
+      "decompiled": 0,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "21_component_model.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "22_extconst_two_ops.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "23_const_f32_imm_0b.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "24_const_f64_imm_0b.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "25_const_v128_imm_0b.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "26_refnull_typeidx.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "27_extconst_data_offset.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "30_eh2_try_table_empty.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "31_eh2_try_table_catch.wasm": {
+      "funcs": 1,
+      "instrs": 10,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "32_eh2_try_table_catch_ref.wasm": {
+      "funcs": 1,
+      "instrs": 13,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "33_eh2_try_table_catch_all.wasm": {
+      "funcs": 1,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "34_eh2_try_table_catch_all_ref.wasm": {
+      "funcs": 1,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "35_eh2_throw_ref_param.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "36_eh2_nested_try_table.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "37_eh2_mixed_legacy_new.wasm": {
+      "funcs": 2,
+      "instrs": 12,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "38_eh2_exnref_global.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "39_eh2_try_table_multi_clause.wasm": {
+      "funcs": 1,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B01_limits_shared_max.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B02_limits_memory64_max.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B03_limits_custom_page_size.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B04_limits_shared_memory64.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B05_limits_two_memories.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B06_limits_two_tables.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 3,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B07_const_i32_add.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B08_const_i64_add.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B09_const_i32_mul.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B10_const_v128.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B11_const_ref_func.wasm": {
+      "funcs": 2,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B12_const_ref_null_extern.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B13_const_ref_null_func.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B14_const_unknown_gc.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 3,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B15_const_ref_null_typeidx.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 3,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B16_valtype_ref_null_param.wasm": {
+      "funcs": 2,
+      "instrs": 6,
+      "undefined_bytes": 1,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B17_valtype_ref_param.wasm": {
+      "funcs": 2,
+      "instrs": 6,
+      "undefined_bytes": 1,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B18_valtype_ref_null_result.wasm": {
+      "funcs": 2,
+      "instrs": 5,
+      "undefined_bytes": 3,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B19_valtype_exnref.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B20_valtype_anyref.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B21_valtype_eqref.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B22_valtype_i31ref.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B23_valtype_structref.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B24_valtype_arrayref.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B25_valtype_exnref_global.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B26_valtype_table_ref_null.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B27_valtype_table_ref.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B28_valtype_func_gc_struct.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 3,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B29_valtype_mixed.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 16,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E01_gc_struct_type.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E02_gc_array_type.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E03_gc_rec_subtype.wasm": {
+      "funcs": 2,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E04_gc_abstract_heaptypes.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E10_gc_struct_new_get_set.wasm": {
+      "funcs": 1,
+      "instrs": 13,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E11_gc_array_new_get_len.wasm": {
+      "funcs": 1,
+      "instrs": 18,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E12_gc_array_set_fill_copy.wasm": {
+      "funcs": 1,
+      "instrs": 26,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E13_gc_array_packed.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E14_gc_ref_test_cast.wasm": {
+      "funcs": 1,
+      "instrs": 27,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E15_gc_br_on_cast.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E16_gc_convert.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E17_gc_array_data_elem.wasm": {
+      "funcs": 1,
+      "instrs": 25,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E18_gc_struct_get_su.wasm": {
+      "funcs": 1,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "E20_gc_mixed.wasm": {
+      "funcs": 2,
+      "instrs": 16,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    }
+  },
+  "probe_count": 80,
+  "fixture": {
+    "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
+    "summary": "functions=4 decompiled=4 failed=0 instructions=24",
+    "undefined_bytes": 0
+  },
+  "comment": "Probe baseline enforced by .github/workflows/probes.yml. Regenerate - never hand-edit - with: python test-scripts/check-results.py --update --log <probe-run.log> --fixture-log <fixture-run.log>"
+}
