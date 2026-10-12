@@ -25,6 +25,7 @@ import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.bin.BinaryReader;
+import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.MemoryByteProvider;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.options.Options;
@@ -37,6 +38,8 @@ import ghidra.program.model.data.LEB128;
 import ghidra.program.model.lang.Processor;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.HelpLocation;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
@@ -80,7 +83,23 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 	}
 
 	private int guessCStackGlobalForFunction(Program program, Address funcAddress) throws IOException {
-		BinaryReader codeReader = new BinaryReader(new MemoryByteProvider(program.getMemory(), funcAddress), true);
+		/*
+		 * @@MM: bound the read to the module image block, exactly as WasmAnalysis.getState() does
+		 * (see the B3 fix there). MemoryByteProvider(mem, start) sizes itself from the *maximum
+		 * address of the whole `ram` address space*, not from the end of the block containing
+		 * `start`, so once a linear-memory block is mapped above the module image the provider
+		 * reaches past the module. A function body at the very end of the module could then read
+		 * its trailing `local.get`/`global.get` bytes from unrelated memory instead of failing.
+		 * Every function address is inside the single module image block, so its end is the
+		 * correct bound. This is defensive: the guess is unchanged for the fixture and the real
+		 * module (both measured).
+		 */
+		Memory mem = program.getMemory();
+		MemoryBlock funcBlock = mem.getBlock(funcAddress);
+		ByteProvider provider = (funcBlock != null)
+				? new MemoryByteProvider(mem, funcAddress, funcBlock.getEnd())
+				: new MemoryByteProvider(mem, funcAddress);
+		BinaryReader codeReader = new BinaryReader(provider, true);
 		int localsCount = codeReader.readNextVarInt(LEB128::signed);
 		for (int i = 0; i < localsCount; i++) {
 			codeReader.readNextVarInt(LEB128::signed); /* count */
