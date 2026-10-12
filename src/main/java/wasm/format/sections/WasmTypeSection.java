@@ -36,9 +36,10 @@ public class WasmTypeSection extends WasmSection {
 		count = reader.readNext(LEB128Info::unsigned);
 		for (int i = 0; i < count.asLong(); ++i) {
 			// @@GC: a type entry is a rec group (0x4E), a subtype (0x50/0x4F), a plain
-			// function type (0x60) or a GC composite type (0x5F struct / 0x5E array).
-			// A 0x60 entry still goes through WasmFuncType exactly as before; anything
-			// else is parsed structurally by WasmGCType (one list entry per type index).
+			// function type (0x60), a GC composite type (0x5F struct / 0x5E array) or a
+			// continuation type (0x5D cont, stack-switching). A 0x60 entry still goes through
+			// WasmFuncType exactly as before; anything else is parsed structurally by WasmGCType
+			// (one list entry per type index).
 			long pos = reader.getPointerIndex();
 			int form = reader.readNextUnsignedByte();
 			reader.setPointerIndex(pos);
@@ -46,6 +47,27 @@ public class WasmTypeSection extends WasmSection {
 				types.add(new WasmFuncType(reader));
 			} else {
 				types.addAll(WasmGCType.parseTypeEntry(reader));
+			}
+		}
+		resolveContinuationTypes();
+	}
+
+	/**
+	 * @@GC/@@SS: bind each `cont` composite type (0x5D) to the function type it references. The
+	 * reference may be a forward reference, so this can only run once the whole type section is
+	 * parsed. A missing or out-of-range index is left unresolved: the continuation type then
+	 * reports an empty parameter/return tuple rather than crashing the loader.
+	 */
+	private void resolveContinuationTypes() {
+		for (WasmFuncType type : types) {
+			if (type instanceof WasmGCType) {
+				WasmGCType gcType = (WasmGCType) type;
+				if (gcType.getKind() == WasmGCType.Kind.CONT) {
+					long idx = gcType.getContTypeIndex();
+					if (idx >= 0 && idx < types.size()) {
+						gcType.resolveContType(types.get((int) idx));
+					}
+				}
 			}
 		}
 	}
