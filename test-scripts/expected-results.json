@@ -1470,6 +1470,38 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "ST01_call_chain_struct.wasm": {
+      "funcs": 3,
+      "instrs": 26,
+      "undefined_bytes": 0,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "ST02_two_independent_structs.wasm": {
+      "funcs": 3,
+      "instrs": 22,
+      "undefined_bytes": 0,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "ST03_global_address_no_struct.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "ST04_const_offset_add.wasm": {
+      "funcs": 1,
+      "instrs": 11,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "bare_component_header.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1495,7 +1527,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 186,
+  "probe_count": 190,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

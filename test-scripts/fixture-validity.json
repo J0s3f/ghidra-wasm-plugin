@@ -629,6 +629,18 @@
     "SF03_large_br_table.wasm": {
       "class": "valid"
     },
+    "ST01_call_chain_struct.wasm": {
+      "class": "valid"
+    },
+    "ST02_two_independent_structs.wasm": {
+      "class": "valid"
+    },
+    "ST03_global_address_no_struct.wasm": {
+      "class": "valid"
+    },
+    "ST04_const_offset_add.wasm": {
+      "class": "valid"
+    },
     "bare_component_header.wasm": {
       "class": "invalid",
       "why": "0000008: error: wasm components are not yet supported in this tool"
