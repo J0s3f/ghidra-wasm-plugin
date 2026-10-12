@@ -1047,5 +1047,48 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		loadMemories(program, fileBytes, module, monitor);
 		loadDataSegments(program, fileBytes, module, monitor);
 		loadGlobals(program, fileBytes, module, monitor);
+
+		warnIfNothingLoaded(program, module);
+	}
+
+	/**
+	 * B9: the loader deliberately accepts modules it does not validate, so a malformed module can
+	 * import "successfully" while producing a program with nothing in it. Say so explicitly instead
+	 * of returning a silently empty program - the negative-test harness' "accepted as bare bytes"
+	 * class (see MODERN_WASM_GAPS.md 2.3 and 6.4). The module is still accepted.
+	 */
+	private void warnIfNothingLoaded(Program program, WasmModule module) {
+		if (program.getFunctionManager().getFunctionCount() > 0) {
+			return;
+		}
+		for (MemoryBlock block : program.getMemory().getBlocks()) {
+			String name = block.getName();
+			if (name.startsWith(".memory") || name.startsWith(".table") || name.startsWith(".global")) {
+				return;
+			}
+		}
+		boolean declaredContent = module.getFunctionCount() > 0
+				|| !module.getNonImportedMemories().isEmpty()
+				|| !module.getNonImportedTables().isEmpty()
+				|| !module.getNonImportedGlobals().isEmpty();
+		if (!declaredContent) {
+			return; // header-only, custom-section-only or import-only modules are legitimate
+		}
+		int codeEntries = module.getNonImportedFunctions().size();
+		StringBuilder detail = new StringBuilder("Declared: ")
+				.append(module.getFunctionCount()).append(" function(s), ")
+				.append(codeEntries).append(" code entries, ")
+				.append(module.getNonImportedMemories().size()).append(" memory(ies), ")
+				.append(module.getNonImportedTables().size()).append(" table(s), ")
+				.append(module.getNonImportedGlobals().size()).append(" global(s).");
+		if (module.getFunctionCount() > 0 && codeEntries == 0) {
+			detail.append(" The module declares functions but has no usable code entries")
+					.append(" (a function section without a matching code section?).");
+		}
+		Msg.warn(this, "Module accepted but nothing was decoded: the program contains only the raw"
+				+ " module bytes. " + detail
+				+ " The loader deliberately accepts spec-invalid modules (it is not a validator; B9 in"
+				+ " MODERN_WASM_GAPS.md), so a malformed section can leave nothing to analyse - the"
+				+ " section markup and any warnings above may show which part could not be used.");
 	}
 }

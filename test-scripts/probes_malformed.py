@@ -15,9 +15,12 @@ Measured outcomes (Ghidra 12.1.4, GHIDRA_HEADLESS_MAXMEM=1500M, analysis ON; see
     J04  table initial = 0xFFFFFFFF elems   -> import_ok: Ghidra 16 GiB guard throws (caught), no table
     J05  func-type param count = 0xFFFFFFFF -> import_failed: NegativeArraySizeException caught at
                                     section-parse time (good behaviour - guards against it becoming Error)
+    J06  function section without code      -> import_ok but empty: pins the B9 warning
+                                    ("Module accepted but nothing was decoded", funcs=0)
 
 Every one of these is invalid WebAssembly. A robust loader should reject each with a bounded
-"Import failed" message and a bounded amount of work.
+"Import failed" message and a bounded amount of work; where it deliberately keeps accepting (J03,
+J04, J06 - see B9 in MODERN_WASM_GAPS.md), it must say what it could not use.
 
 Usage: python probes_malformed.py <output-dir>
 """
@@ -61,5 +64,15 @@ write("J04_table_initial_4G_elems.wasm", module(table_section([(FUNCREF, 0x00, 0
 # ---------------------------------------------------------------------------------------------
 write("J05_functype_param_overflow.wasm", module(
     section(1, vec([b"\x60" + b"\xff\xff\xff\xff\x0f" + vec([])]))))
+
+# ---------------------------------------------------------------------------------------------
+# J06 - a function section without a matching code section. The loader accepts the module (it is
+# not a validator) and produces an empty program; since B9 it must say so explicitly with the
+# "Module accepted but nothing was decoded" warning instead of returning silently bare bytes.
+# ---------------------------------------------------------------------------------------------
+write("J06_func_section_without_code.wasm", module(
+    type_section(functype([], [])),
+    func_section([0]),
+))
 
 print("done")

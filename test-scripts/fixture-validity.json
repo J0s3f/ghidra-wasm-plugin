@@ -469,6 +469,10 @@
       "class": "invalid",
       "why": "0000011: error: invalid function param count 4294967295, only 1 bytes left in section"
     },
+    "J06_func_section_without_code.wasm": {
+      "class": "invalid",
+      "why": "0000012: error: function signature count != function body count"
+    },
     "L01_name_labels.wasm": {
       "class": "valid"
     },

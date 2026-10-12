@@ -1086,6 +1086,14 @@
       "decompile_failed": null,
       "import_ok": false
     },
+    "J06_func_section_without_code.wasm": {
+      "funcs": 0,
+      "instrs": 0,
+      "undefined_bytes": 0,
+      "decompiled": 0,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "L01_name_labels.wasm": {
       "funcs": 1,
       "instrs": 15,
@@ -1455,7 +1463,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 181,
+  "probe_count": 182,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
