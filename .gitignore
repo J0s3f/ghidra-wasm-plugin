@@ -10,3 +10,6 @@ dist/*
 !/.github
 __pycache__/
 *.pyc
+META-INF/
+output.txt
+zipcontents.txt
