@@ -255,6 +255,33 @@
       "class": "wabt-gap",
       "why": "0000010: error: expected valid param type (got -0x12)"
     },
+    "B3_01_memidx9_load.wasm": {
+      "class": "valid"
+    },
+    "B3_02_memidx127_store.wasm": {
+      "class": "valid"
+    },
+    "B3_03_memidx128_load.wasm": {
+      "class": "valid"
+    },
+    "B3_04_memidx1000_load_store.wasm": {
+      "class": "valid"
+    },
+    "B8_01_table64_elem.wasm": {
+      "class": "valid"
+    },
+    "B8_02_table64_huge_skipped.wasm": {
+      "class": "valid"
+    },
+    "B8_03_table64_then_table32.wasm": {
+      "class": "valid"
+    },
+    "B8_04_mem64_over4g.wasm": {
+      "class": "valid"
+    },
+    "B8_05_mem64_just_over4g.wasm": {
+      "class": "valid"
+    },
     "C01_import_thunk.wasm": {
       "class": "valid"
     },
