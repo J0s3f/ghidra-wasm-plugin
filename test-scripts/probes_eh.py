@@ -213,3 +213,21 @@ write("38_eh2_exnref_global.wasm", module(
     export_section([("f", 0, 0)]),
     code_section([global_get(1) + throw_ref() + END]),
 ))
+
+
+# ---------------------------------------------------------------- extra: multi-clause vector lengths
+
+# 39. Two clauses of different kinds (3-byte catch + 2-byte catch_all), so the clause vector's bytes
+#     have to be consumed exactly; the second clause's label skips the block the first clause uses.
+write("39_eh2_try_table_multi_clause.wasm", module(
+    type_section(functype([], []), functype([], [])),  # 0 = tag ()->(), 1 = f ()->()
+    tag_section([(0x00, 0)]),
+    func_section([1]),
+    export_section([("f", 0, 0)]),
+    code_section([b"\x02\x40"                                             # L0 -- catch_all label 1
+                  + b"\x02\x40"                                           # L1 -- catch label 0
+                  + try_table(0x40, [catch_clause(0, 0), catch_all_clause(1)], throw_(0))
+                  + END                                                   # end L1
+                  + END                                                   # end L0
+                  + END]),                                                # end function
+))

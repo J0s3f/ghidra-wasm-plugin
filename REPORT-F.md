@@ -9,7 +9,7 @@ Branch `feat/new-eh`, worktree `D:\code\ghidra-wt-f`, base commit `58a4742`.
 | --- | --- | --- |
 | probe `11_eh_try_table` (frozen baseline) | 1 instr, **5 undefined bytes**, body blanked (`ValidationException: pop from empty stack`) | 4 instrs, **0 undefined bytes**, `try_table blocktype=0x40 catches=0x0`, decompiles |
 | `try_table` / `throw_ref` / `exnref` | unsupported (0x1F falls into the `default:` "Illegal opcode" arm; 0x0A likewise; 0x69 is an unknown valtype) | decoded, disassembled, stack-checked, decompiled |
-| new probe file `probes_eh.py` | - | 9 probes (30-38), **all `undefined_bytes=0`, all decompile** |
+| new probe file `probes_eh.py` | - | 10 probes (30-39), **all `undefined_bytes=0`, all decompile** |
 | legacy EH (`throw`/`catch`/`catch_all`/`rethrow`/`delegate`, probe 10) | 1 / 6 / 0 / 1-0 | **unchanged**: 1 / 6 / 0 / 1-0, byte-identical listing and identical decompiled C |
 | everything else (probes 01-09, 12-21) | §2.4 | **unchanged**, row for row |
 | real-module regression (`rasterbator_rs_bg.wasm`) | `functions=437 decompiled=437 failed=0 instructions=61658` | **`functions=437 decompiled=437 failed=0 instructions=61658`** |
@@ -127,7 +127,7 @@ The SLEIGH `attach names valtype` table gained `exnref` at 0x69 so `ref.null exn
 | `data/languages/EH2Ops.sinc` | **new**. `@define DIRECTIVE_EH_CLAUSE 4`, `pcodeop wasm_throw_ref`, `eh_tag`/`eh_label`, the 4 `:try_table` variants, the 4 clause directives, `:throw_ref`. |
 | `data/languages/WebAssembly.sinc` | exactly two hunks: `exnref` added at slot 0x69 of `attach names valtype` (end-of-line `# @@EH` marker; the only edit inside the table), and one `@include "EH2Ops.sinc"` line next to the other includes (`# @@EH`). |
 | `src/main/java/wasm/format/WasmEnums.java` | **two** `// @@EH` hunks, both required for the one feature: `exnref(0x69)` as the last enum constant (so it is in `BY_BYTE`), and a `case exnref: return Undefined4DataType.dataType;` in `asDataType()` (without it, `exnref` would be `null` and reproduce the probe-12 NPE class). `getSize()` needed no case (its default is 4). |
-| `test-scripts/probes_eh.py` | **new** probe file (9 probes). `test-scripts/gen_feature_probes.py`, `wasm_probe_lib.py`, `run_probes.ps1`, the report/dump scripts and the other `probes_*.py` were **not** touched. |
+| `test-scripts/probes_eh.py` | **new** probe file (10 probes, 30-39). `test-scripts/gen_feature_probes.py`, `wasm_probe_lib.py`, `run_probes.ps1`, the report/dump scripts and the other `probes_*.py` were **not** touched. |
 | `REPORT-F.md` | this file. |
 
 Everything except the two required valtype hunks is additive; `EH2Ops.sinc` is a new file, and
@@ -153,6 +153,7 @@ block).
 | 36 | `eh2_nested_try_table` | 1 | - | - | - | 15 | 0 | 1/0 |
 | 37 | `eh2_mixed_legacy_new` | 2 | - | - | - | 12 | 0 | 2/0 |
 | 38 | `eh2_exnref_global` | 1 | - | - | - | 4 | 0 | 1/0 |
+| 39 | `eh2_try_table_multi_clause` | 1 | - | - | - | 11 | 0 | 1/0 |
 
 All other frozen probes (`01`-`09`, `12`-`21`) are unchanged, row for row, against §2.4 - including
 `12_call_ref` still failing to decompile (its NPE is owned by another workstream) and `19`/`20`/`21`
@@ -208,6 +209,23 @@ ram:8000003f  end
 ram:80000040  i32.const 0x3
 ram:80000042  end
 ram:80000043  end
+```
+
+Probe 39 - two clauses of different kinds (a 3-byte `catch` followed by a 2-byte `catch_all`): the
+body starts at 0x32, i.e. every clause consumed exactly its own bytes, and the second clause's
+`label=0x1` resolves past the inner block to the outer one:
+
+```
+ram:80000026  block blocktype=0x40
+ram:80000028  block blocktype=0x40
+ram:8000002a  try_table blocktype=0x40 0x80000035
+ram:8000002d  .catch tag=0x0 label=0x0
+ram:80000030  .catch_all label=0x1
+ram:80000032  throw tag=0x0
+ram:80000034  end
+ram:80000035  end
+ram:80000036  end
+ram:80000037  end
 ```
 
 Probe 37 - function `legacy` (unchanged bytes, unchanged listing) and function `new` side by side:
@@ -348,7 +366,7 @@ probe 35 - `wasm_throw_ref(param1); trap`.
 # build + clean install
 & D:\code\ghidra-wt-f\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f"
 
-# EH probes (frozen baseline 10/11 + this workstream's 30-38), with listings and decompiled C
+# EH probes (frozen baseline 10/11 + this workstream's 30-39), with listings and decompiled C
 & D:\code\ghidra-wt-f\test-scripts\run_probes.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f" `
     -Generators gen_feature_probes.py,probes_eh.py -Only eh -Detail
 
