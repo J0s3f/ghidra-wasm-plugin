@@ -41,14 +41,28 @@ public abstract class WasmNameSubsection implements StructConverter {
 		NAME_MEMORY,
 		NAME_GLOBAL,
 		NAME_ELEM,
-		NAME_DATA
+		NAME_DATA,
+		/* ext: extended-name-section */
+		NAME_FIELD,
+		NAME_TAG
 	}
 
 	public static WasmNameSubsection createSubsection(BinaryReader reader) throws IOException {
 		long sectionOffset = reader.getPointerIndex();
 		int id = reader.readNextUnsignedByte();
 		LEB128Info contentLength = reader.readNext(LEB128Info::unsigned);
-		reader.setPointerIndex(reader.getPointerIndex() + contentLength.asLong());
+		/*
+		 * @@NAME: bound the skip to the end of the section reader. A malformed (or
+		 * deliberately huge) content length must not move the pointer past the end of
+		 * the buffer: BinaryReader.setPointerIndex would then fail on the next read.
+		 */
+		long afterHeader = reader.getPointerIndex();
+		long declaredEnd = afterHeader + contentLength.asLong();
+		long end = Math.min(declaredEnd, reader.length());
+		if (end < afterHeader) {
+			end = afterHeader;
+		}
+		reader.setPointerIndex(end);
 
 		BinaryReader sectionReader = reader.clone(sectionOffset);
 
@@ -56,30 +70,49 @@ public abstract class WasmNameSubsection implements StructConverter {
 			return new WasmNameUnknownSubsection(sectionReader);
 		}
 
-		switch (WasmNameSubsectionId.values()[id]) {
-		case NAME_MODULE:
-			return new WasmNameModuleSubsection(sectionReader);
-		case NAME_FUNCTION:
-			return new WasmNameMapSubsection("function", sectionReader);
-		case NAME_LOCAL:
-			return new WasmNameLocalSubsection(sectionReader);
-		case NAME_LABELS:
-			// TODO: not supported at the moment
-			return new WasmNameUnknownSubsection(sectionReader);
-		case NAME_TYPE:
-			return new WasmNameMapSubsection("type", sectionReader);
-		case NAME_TABLE:
-			return new WasmNameMapSubsection("table", sectionReader);
-		case NAME_MEMORY:
-			return new WasmNameMapSubsection("memory", sectionReader);
-		case NAME_GLOBAL:
-			return new WasmNameMapSubsection("global", sectionReader);
-		case NAME_ELEM:
-			return new WasmNameMapSubsection("elem", sectionReader);
-		case NAME_DATA:
-			return new WasmNameMapSubsection("data", sectionReader);
-		default:
-			return new WasmNameUnknownSubsection(sectionReader);
+		/*
+		 * @@NAME: a malformed subsection must never fail the import. Any parse error
+		 * (or an out-of-range index) degrades to the "unknown" representation, which
+		 * simply keeps the raw bytes for the listing.
+		 */
+		try {
+			switch (WasmNameSubsectionId.values()[id]) {
+			case NAME_MODULE:
+				return new WasmNameModuleSubsection(sectionReader);
+			case NAME_FUNCTION:
+				return new WasmNameMapSubsection("function", sectionReader);
+			case NAME_LOCAL:
+				return new WasmNameLocalSubsection(sectionReader);
+			case NAME_LABELS:
+				return new WasmNameLabelSubsection(sectionReader);
+			case NAME_TYPE:
+				return new WasmNameMapSubsection("type", sectionReader);
+			case NAME_TABLE:
+				return new WasmNameMapSubsection("table", sectionReader);
+			case NAME_MEMORY:
+				return new WasmNameMapSubsection("memory", sectionReader);
+			case NAME_GLOBAL:
+				return new WasmNameMapSubsection("global", sectionReader);
+			case NAME_ELEM:
+				return new WasmNameMapSubsection("elem", sectionReader);
+			case NAME_DATA:
+				return new WasmNameMapSubsection("data", sectionReader);
+			case NAME_FIELD:
+				return new WasmNameFieldSubsection(sectionReader);
+			case NAME_TAG:
+				return new WasmNameMapSubsection("tag", sectionReader);
+			default:
+				return new WasmNameUnknownSubsection(sectionReader);
+			}
+		}
+		catch (IOException | RuntimeException e) {
+			try {
+				return new WasmNameUnknownSubsection(reader.clone(sectionOffset));
+			}
+			catch (IOException | RuntimeException e2) {
+				/* The subsection is unparseable even as raw bytes: skip it. */
+				return null;
+			}
 		}
 	}
 

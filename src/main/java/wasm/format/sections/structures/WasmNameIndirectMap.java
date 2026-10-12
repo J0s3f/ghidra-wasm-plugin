@@ -33,17 +33,25 @@ public class WasmNameIndirectMap implements StructConverter {
 	private List<WasmIndirectAssoc> entries = new ArrayList<>();
 	private Map<Long, WasmNameMap> map = new HashMap<>();
 
+	/* @@NAME: distinguishes the structure names of label/field/local name maps. */
+	private String structurePrefix;
+
 	private static class WasmIndirectAssoc {
 		LEB128Info idx;
 		WasmNameMap nameMap;
 	}
 
 	public WasmNameIndirectMap(BinaryReader reader) throws IOException {
+		this("namemap_func_", reader);
+	}
+
+	public WasmNameIndirectMap(String structurePrefix, BinaryReader reader) throws IOException {
+		this.structurePrefix = structurePrefix;
 		count = reader.readNext(LEB128Info::unsigned);
 		for (int i = 0; i < count.asLong(); i++) {
 			WasmIndirectAssoc assoc = new WasmIndirectAssoc();
 			assoc.idx = reader.readNext(LEB128Info::unsigned);
-			assoc.nameMap = new WasmNameMap("namemap_func_" + i + "_locals", reader);
+			assoc.nameMap = new WasmNameMap(structurePrefix + i, reader);
 			entries.add(assoc);
 			map.put(assoc.idx.asLong(), assoc.nameMap);
 		}
@@ -62,6 +70,15 @@ public class WasmNameIndirectMap implements StructConverter {
 		if (subMap == null)
 			return null;
 		return subMap.getMap();
+	}
+
+	/** The whole indirect map: outer index -> (inner index -> name). */
+	public Map<Long, Map<Long, String>> getMap() {
+		Map<Long, Map<Long, String>> result = new java.util.HashMap<>();
+		for (Map.Entry<Long, WasmNameMap> entry : map.entrySet()) {
+			result.put(entry.getKey(), entry.getValue().getMap());
+		}
+		return result;
 	}
 
 	@Override
