@@ -111,8 +111,8 @@ loader, the DWARF analyzer and every `*[ram]` expression in ~2000 lines of SLEIG
 learn in the same change. The plugin's value today is that memory 0 is byte-for-byte what it
 was; a half-migrated second space risks silently breaking the 32-bit corpus to gain a case
 (multi-GiB data) that cannot be represented in a Ghidra database anyway without setting a
-`ram`-sized block aside. So: truncation now, documented and visible, and the address space
-widen is left as explicit future work (§8).
+`ram`-sized block aside. So: truncation now, documented and visible, and widening the address
+space is left as explicit future work (§7, item 2).
 
 ### 3.1 What happens for memories larger than 4 GiB, and what the decompiler sees
 
@@ -120,14 +120,17 @@ widen is left as explicit future work (§8).
   and the memarg offset is printed as the full u64 (a static offset of `0x100000000`, i.e.
   4 GiB, prints as `offset=0x100000000` even though the computed address wraps to 0). No
   instruction silently pretends to be 32-bit.
-* **Loader**: a 64-bit memory whose declared size does not fit the 32-bit space (or a memory
-  index that would place its block past `0xffffffff`) is clamped, and the clamp is logged with
-  `Msg.warn` ("declares N byte(s) but is mapped to M byte(s) ... accesses beyond the mapped
-  size are not modelled"). A memory that fits is logged once with `Msg.info` (index type, block
-  base). The 64-bit memory block additionally carries a comment on its memory block saying that
+* **Loader**: a 64-bit memory whose declared size does not fit the 32-bit space, a block base
+  (`memidx * MEMORY_STRIDE`) that would be past `0xffffffff`, or a data segment at such an
+  offset, is clamped and the clamp is logged with `Msg.warn` ("does not fit the 32-bit `ram`
+  address space; clamping to 0xffffffff ..." / "declares N byte(s) but is mapped to M byte(s)
+  ... accesses beyond the mapped size are not modelled"). A 64-bit memory that fits is logged
+  once with `Msg.info` (index type and block base), and its block carries a comment saying that
   only addresses below 4 GiB are represented. Nothing crashes and no address overflows: the
   size computation saturates (`memoryByteSize`) and `getMemoryAddress()` clamps to
   `RAM_MAX_ADDRESS = 0xffffffff` with a warning instead of wrapping into a negative offset.
+  (One offset form is *not* clamped because it never reaches the loader at all — an
+  `i64.const` data-segment offset is dropped earlier, §7 item 8.)
 * **Decompiler**: a 64-bit-indexed access renders as a 64-bit index value (`i64` parameter /
   local / constant) feeding the address computation; the computation is a 64-bit add whose
   result is truncated to 32 bits before the load, exactly the model above. For addresses below
@@ -354,9 +357,7 @@ identical to `MODERN_WASM_GAPS.md` §2.4/§2.5 (e.g. `06 funcs=1 instrs=6 undefi
 `12 funcs=1 instrs=4 undefined_bytes=1`, `13 funcs=2 instrs=5`), `19`/`20` import with no
 functions, `21` still fails to import. The full CI check of §6.3 is the authoritative statement.
 
-### 6.3 CI gate (expected-results.json) and the real-module regression
-
-### 6.3 CI gate (expected-results.json) and the real-module regression
+### 6.3 Real-module regression and the CI gate (expected-results.json)
 
 **Real-module regression** (179 KiB Rust `wasm-bindgen` module, 437 functions):
 
@@ -444,6 +445,65 @@ OK: every probe matches the recorded baseline.
 
 (`98 imported + 3 expected import failures = 101` probes; exit code 0.)
 
+### 6.4 Loader bounds / robustness (throwaway modules, not committed)
+
+Four extra modules (generated into a temp dir, imported with
+`analyzeHeadless … -postScript WasmFeatureReport.java`, all four also accepted by
+`wasmtime.Module` where noted) probe the *loader* claims of §3.1/§4. They are not part of
+`probes_memory64.py`; the generator body is:
+
+```python
+# X1: (memory i64 1) + active data segment at offset 2^32 (4 GiB) + i64.const 0; i32.load
+# X2: (memory 1)(memory i64 4097)          -> 4097 pages = 268500992 B > MEMORY_STRIDE
+# X3: (memory i64 0)                       -> zero pages, no block
+# X4: 17 memories, memory 16 = (memory i64 1)  -> block base 16*MEMORY_STRIDE = 2^32
+#     + an active data segment for memory 16
+```
+
+```
+X1_data_offset_4gib    PROBE funcs=1 instrs=4 undefined_bytes=0 decompiled=1/0
+                       INFO  Memory 0 has a 64-bit (i64) index type; its 65536 byte(s) are mapped
+                             into the 32-bit `ram` space at 0x0 ... (WasmLoader)
+X2_huge_declared_size  PROBE funcs=1 instrs=4 undefined_bytes=0 decompiled=1/0
+                       WARN  Memory 1 (i64 index) declares 268500992 byte(s) but is mapped to
+                             268435456 byte(s) (32-bit `ram` space / MEMORY_STRIDE limit);
+                             accesses beyond the mapped size are not modelled (WasmLoader)
+X3_zero_pages          PROBE funcs=1 instrs=4 undefined_bytes=0 decompiled=1/0
+                       INFO  Memory 0 has a 64-bit (i64) index type; its 0 byte(s) are mapped ...
+X4_memidx_past_ram     WARN  Address memidx=16 offset=0x0 does not fit the 32-bit `ram` address
+                             space; clamping to 0xffffffff (memory64 addresses/data above 4 GiB
+                             are not modelled; see REPORT-N.md)
+                       ERROR Failed to create memory block 16 at ram:ffffffff
+                             (AddressOverflowException: Address Overflow in add: ram:ffffffff 0xffff)
+                       ERROR Failed to initialize memory 16 with data segment 0 at ram:ffffffff
+                             (MemoryAccessException: Address ram:ffffffff does not exist in memory)
+                       ERROR Failed to create memory block 8 at ram:80000000
+                             (MemoryConflictException — the documented index>=8 limit of
+                              REPORT-A-DS.md §3.2, unchanged by this work)
+```
+
+i.e. every out-of-range size/offset is clamped and logged, every failure is caught, and the
+module still imports and analyzes (no crash, no overflow, no negative-size block). X1's data
+segment at 4 GiB is not an error path at all: see §7 item 8 — `ConstantExpression.asI32()` cannot
+represent an `i64.const` offset, so the segment is skipped before the loader sees an offset.
+
+X4's *function body* is undefined (7 bytes) because of a **pre-existing** module re-parse limit
+that has nothing to do with memory64: `WasmAnalysis.getState` re-reads the module image through a
+`MemoryByteProvider` whose length comes from the program's memory map, so once a *memory block
+lies above the module image* (memory index >= 9 with the current layout) the section loop runs
+past the `.module` block and throws `Address ram:… does not exist in memory`. X5/X6 prove it is
+independent of this change — the same 17-memory shape with **only 32-bit memories** fails
+identically:
+
+```
+X5_32bit_17memories         PROBE funcs=1 instrs=1 undefined_bytes=7 decompiled=1/0
+X6_32bit_17memories_nodata  PROBE funcs=1 instrs=1 undefined_bytes=7 decompiled=1/0
+```
+
+Both are spec-valid (`wasmtime` accepts them) and neither contains a single 64-bit memory, so no
+`ctx_mem64` value is ever written for them. Recorded here as a finding for the integrator (§7
+item 9).
+
 ## 7. What is deliberately not implemented
 
 1. **`table64`** (64-bit tables, limits flag bit 2 on a *table*). `WasmTableType` shares
@@ -477,6 +537,29 @@ OK: every probe matches the recorded baseline.
 7. Shared + 64-bit limits are decoded and used (the probe `M64_08` memory is
    `flags=0x07`), but the "shared requires a maximum" rule is not validated (the plugin does not
    validate modules in general).
+8. **Active data segments of a 64-bit memory are not mapped.** `WasmDataSegment.getMemoryOffset()`
+   resolves the segment's offset expression with `ConstantExpression.asI32()`, which returns a
+   value *only* for `I32_CONST`; a memory64 active segment's offset is an `i64.const`
+   (`ConstantExpression.asBytes()` knows it, `asI32()` does not), so `getMemoryOffset()` returns
+   `null` and `WasmLoader.loadDataSegments` skips the segment. Consequence: for a real
+   `wasm64`/Emscripten `MEMORY64` module the constant data is absent from `.memoryN`, so a
+   decompiled reference to it reads as undefined bytes — a silent mis-model of exactly the kind
+   this workstream is meant to remove (X1 in §6.4 shows the import succeeding with the segment
+   silently dropped). Fix (outside this workstream's file set — `ConstantExpression.java` is
+   explicitly off-limits and `WasmDataSegment.java` is not owned): resolve the offset as a 64-bit
+   value (`asBytes(module)` / an `asI64()` helper) and hand it to
+   `WasmLoader.getMemoryAddress()`, which already clamps and logs offsets >= 4 GiB. The
+   *instruction*-level memarg offsets (the in-scope case) are handled, see §3 and `M64_07`.
+9. **Pre-existing:** a memory block above the module image (memory index >= 9 with the current
+   `MEMORY_STRIDE` layout, or a clamped block at `ram:ffffffff`) makes the `WasmAnalysis` module
+   re-parse read past the `.module` block and abort the pre-analyzer
+   (`Address ram:… does not exist in memory`), which leaves the function bodies undefined.
+   Reproduced without any 64-bit memory (X5/X6, §6.4), so it is unrelated to this change; it is a
+   consequence of `MemoryByteProvider` deriving its length from the program memory map rather than
+   from the `.module` block, and it is worth fixing before memories >= 9 or very large memories
+   are used. Not fixed here (different files/behaviour, and it needs its own regression coverage).
+10. `resume`-class stack-switching opcodes, table64, JS string builtins etc. remain as recorded
+    by the other workstreams; this change neither adds nor removes an `unimplemented` path.
 
 ## 8. Files changed
 
