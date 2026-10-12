@@ -17,7 +17,9 @@ WebAssembly (Wasm 3.0 + active proposals).
 | 10. component model loader | **merged** (`REPORT-C2.md`; embedded core modules import as real programs) |
 | 4. spec-test harness | **merged** (`REPORT-G.md`; see §6) |
 | 4. CI probe gate (probes + fixture baseline) | **merged** (`.github/workflows/probes.yml`, `expected-results.json` - 93 probes) |
-| 4. real-world corpus sweep · robustness sweep · DWARF line info | in flight / queued |
+| 4. real-world corpus sweep | **merged** (`REPORT-H.md`; 15/15 modules import, 5591/5591 functions decompile - see §6.1) |
+| 4. robustness sweep (malformed inputs) | **merged** (`REPORT-J.md`; 56-module corpus - see §6.2; two real bugs found and reproduced) |
+| 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
 
 ## 1. How this inventory was produced
 
@@ -93,7 +95,7 @@ not (fully) disassembled at all, which is worse than a wrong mnemonic.
 | Stack switching / JSPI (`cont.new`, `cont.bind`, `suspend`, `resume`, `switch`, contref types) | no mnemonics (Emscripten `-sASYNCIFY=2` emits this) | decode gap |
 | JS string builtins / stringref (`string.new_utf8`, `string.concat`, …) | no mnemonics (0xFB ≥ 0x80) | decode gap |
 | Shared-everything threads (shared tables/globals, `global.atomic.*`) | no mnemonics; also blocked by the limits bug | decode gap |
-| Component model binaries | **Import fails**: `No load spec found` — loader requires core-module version 1 (probe `21`) | loader gap |
+| Component model binaries | **fixed**: components are unpacked and the embedded core module imports as a real program (`REPORT-C2.md`); probe `21` (bare header, no modules) still fails by design | loader gap (resolved) |
 
 Probe expectations for regression testing live in `test-scripts/gen_feature_probes.py`; each roadmap
 item below names the probes that must change when it is finished.
@@ -295,6 +297,49 @@ Ranked findings (bug leads for the next rounds):
    under PyGhidra), so this baseline covers loading, disassembly and decompilation only;
    `assert_invalid`/`assert_malformed` rejection behaviour and the proposal suites (`proposals/`) are
    follow-ups.
+
+### 6.1 Real-world corpus baseline
+
+`test-scripts/corpus/` + `test-scripts/corpus-sweep.ps1` sweep 15 real-world modules (10 pinned npm
+packages incl. `@jsquash/*`, `sql.js`, `web-tree-sitter`; 3 rustc `wasm32-unknown-unknown` builds with
+`debuginfo`/`+simd128`; 2 local Rasterbator modules) with V8 verdicts and hash checks:
+
+* **15/15 imported, 0 import failures; 5591/5591 functions decompiled; 1,465,308 instructions.**
+* `undefined_bytes` = 933 total = 932 import-placeholder bytes (4 x 233 imports) + **1 real byte** -
+  every V8-valid module decodes completely (0 unimplemented instructions).
+* Findings: (1) imported functions are 4-byte empty bodies in an `EXTERNAL` block, inflating the
+  `undefined_bytes` metric and producing decompiler noise; (2) `WasmStackVariableAnalyzer` skips 22
+  instructions across 4 valid modules on partial-overlap / different-width stack slots;
+  (3) a malformed body leaves a bogus `unreachable` at the locals-count byte (containment otherwise
+  good); (4) a core-Ghidra `PngDataType` analyzer error on `.memory0` is noise, not ours.
+* Nothing in the corpus exercises a documented unsupported feature - mainstream wasm-bindgen /
+  Emscripten output is MVP + 2.0 (+ SIMD), which is why it all decodes.
+
+### 6.2 Robustness baseline (malformed inputs)
+
+`test-scripts/gen_malformed_probes.py` (56 modules) + `test-scripts/robustness-sweep.ps1` +
+`test-scripts/robustness-RESULTS.md` classify every case as import_ok / import_failed / process_died /
+hang. Full 56-module run: 27 `import_ok` (one the valid control), 27 `import_failed` (all caught and
+reported - the loader's own error path is sound), **1 `process_died`**, **1 timeout**, 0 hangs.
+Two real bugs (reproduced by the integrator on the v2.6.0 tree):
+
+1. **`B04_locals_1G_alloc` (30 bytes) aborts the analysis process**: a `locals` group count of
+   `0x40000000` reaches an unbounded allocation; the decompiler throws `java.lang.OutOfMemoryError`,
+   which escapes and kills the whole headless run (exit 1). A tiny hostile input can take down an
+   automated pipeline.
+2. **`M03_mem_huge_initial` (17 bytes) materializes a 2 GiB memory block**: `(memory 0xFFFFFFFF)`
+   creates `size=2147483648`; import-only takes ~14 s here and analysis does not finish within the
+   60 s analysis bound.
+
+### 6.3 DWARF line info
+
+`WasmDWARFAnalyzer` re-enables source-line import using the public
+`DWARFProgram.setProgramBaseAddressFixup(CODE_BASE + code-section content start)` (stock Ghidra never
+sets it, so every row landed at `ram:0x0` and was rejected as non-executable) and skips out-of-range
+rows instead of throwing (`0xffffffff` relocations in `wasm-ld` output previously produced 33-bit
+addresses and an `AddressOutOfBoundsException` that aborted the import). Verified with `rustc`-built
+fixtures: e.g. `ram:8000009b -> fixture.rs:12`, plus inlined `core` lines; 27 entries, 3 out-of-range
+skipped; real-module regression unchanged.
 
 ## 7. References
 

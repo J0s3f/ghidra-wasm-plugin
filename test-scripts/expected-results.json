@@ -614,6 +614,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "C01_import_thunk.wasm": {
+      "funcs": 3,
+      "instrs": 3,
+      "undefined_bytes": 8,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "C02_invalid_body.wasm": {
+      "funcs": 2,
+      "instrs": 4,
+      "undefined_bytes": 1,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "C03_import_shared_mem.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "E01_gc_struct_type.wasm": {
       "funcs": 1,
       "instrs": 2,
@@ -726,6 +750,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "J03_locals_count_neg.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 7,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "J04_table_initial_4G_elems.wasm": {
+      "funcs": 0,
+      "instrs": 0,
+      "undefined_bytes": 0,
+      "decompiled": 0,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "J05_functype_param_overflow.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
     "bare_component_header.wasm": {
       "funcs": null,
       "instrs": null,
@@ -751,7 +799,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 93,
+  "probe_count": 99,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

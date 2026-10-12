@@ -29,7 +29,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
-$out  = Join-Path $repo $OutDir
+$out  = $(if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repo $OutDir })
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $src  = Join-Path $out "fixture.rs"
 
