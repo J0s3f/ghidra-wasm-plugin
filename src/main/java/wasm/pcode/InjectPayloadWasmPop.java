@@ -31,11 +31,32 @@ import wasm.format.WasmEnums.ValType;
  * handle branches (popping block arguments to temporary registers), function
  * calls (popping function arguments to input registers), and function return
  * (popping return values to output registers).
+ *
+ * The two callother fixups that share this payload use different register
+ * layouts for the destination:
+ * <ul>
+ * <li>{@code popCallOther} (call arguments, block arguments) and the call
+ * prologue keep one value per REG_SIZE-wide register slot (i0, i1, ... / t0,
+ * t1, ...), matching {@link InjectPayloadWasmEntry} and
+ * {@link InjectPayloadWasmPush}.</li>
+ * <li>{@code callEpilogueCallOther} (the function return) packs the results
+ * contiguously into the output register block (o0, o0+size, ...). The output
+ * pentry of the {@code __wasm} prototype covers that whole block, so a
+ * multi-result function's results form one contiguous region that the
+ * decompiler reads as a single (struct) return value.</li>
+ * </ul>
  */
 public class InjectPayloadWasmPop extends InjectPayloadCallother {
 
+	private final boolean packContiguously;
+
 	public InjectPayloadWasmPop(String sourceName) {
+		this(sourceName, false);
+	}
+
+	public InjectPayloadWasmPop(String sourceName, boolean packContiguously) {
 		super(sourceName);
+		this.packContiguously = packContiguously;
 	}
 
 	@Override
@@ -69,8 +90,42 @@ public class InjectPayloadWasmPop extends InjectPayloadCallother {
 		long stackHeight = stackEffect.getPopHeight();
 		ValType[] todo = stackEffect.getToPop();
 		Address stackAddress = program.getRegister("s0").getAddress().add(stackHeight * WasmLoader.REG_SIZE);
-		for (int i = 0; i < todo.length; i++) {
-			ops.emitCopy(stackAddress.add(i * WasmLoader.REG_SIZE), baseAddress.add(i * WasmLoader.REG_SIZE), todo[i].getSize());
+		if (packContiguously) {
+			/*
+			 * Function return (callEpilogueCallOther): the results are the
+			 * function's return value. Pack them contiguously into the output
+			 * register block starting at the base register (o0) so that a
+			 * multi-result function returns one contiguous region that the
+			 * decompiler models as a single (struct) return value in the
+			 * __wasm output pentry.
+			 */
+			int offset = 0;
+			int maxFieldSize = 1;
+			for (int i = 0; i < todo.length; i++) {
+				ops.emitCopy(stackAddress.add(i * WasmLoader.REG_SIZE),
+						baseAddress.add(offset), todo[i].getSize());
+				offset += todo[i].getSize();
+				maxFieldSize = Math.max(maxFieldSize, todo[i].getSize());
+			}
+			/*
+			 * The decompiler reads the return storage rounded up to the
+			 * struct's alignment (its largest field), so a packed struct
+			 * whose size is not a multiple of that alignment (e.g. an
+			 * (i32, f64) return: 12 bytes, alignment 8) would otherwise
+			 * show the tail padding as undefined (in_register_...). Zero the
+			 * padding so the decompiled return value has no undefined bytes.
+			 */
+			int alignedSize = ((offset + maxFieldSize - 1) / maxFieldSize) * maxFieldSize;
+			if (alignedSize > offset) {
+				Address zero = program.getLanguage().getAddressFactory()
+						.getConstantSpace().getAddress(0);
+				ops.emitCopy(zero, baseAddress.add(offset), alignedSize - offset);
+			}
+		}
+		else {
+			for (int i = 0; i < todo.length; i++) {
+				ops.emitCopy(stackAddress.add(i * WasmLoader.REG_SIZE), baseAddress.add(i * WasmLoader.REG_SIZE), todo[i].getSize());
+			}
 		}
 	}
 }
