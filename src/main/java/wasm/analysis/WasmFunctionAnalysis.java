@@ -63,6 +63,15 @@ public class WasmFunctionAnalysis {
 	private Map<Address, Long> globalGetSets = new HashMap<>();
 	private ContextRegister contextreg = new ContextRegister();
 
+	/*
+	 * @@NAME: the extended-name-section label index space (function-wide, source order). Every
+	 * block/loop/if/try the body introduces gets the next index; labelNameTargets maps that index
+	 * to the address a branch to the label jumps to (the loop's start, otherwise the construct's
+	 * `end`). The name applier analyzer turns these into real Ghidra labels.
+	 */
+	private int labelCounter = 0;
+	private Map<Integer, Address> labelNameTargets = new HashMap<>();
+
 	public WasmFunctionAnalysis(WasmFuncSignature func) {
 		this.func = func;
 	}
@@ -336,6 +345,11 @@ public class WasmFunctionAnalysis {
 		boolean unreachable = false;
 		boolean hasElse = false;
 		boolean hasHandler = false;
+		/**
+		 * @@NAME: the extended-name-section label index of this construct (source order), or -1 for
+		 * the function's own frame and for frames that do not introduce a label.
+		 */
+		int labelNameIndex = -1;
 
 		public ControlFrame(Address address, BlockType blockType) {
 			this.startAddress = address;
@@ -391,6 +405,10 @@ public class WasmFunctionAnalysis {
 				branchTarget = startAddress;
 			} else {
 				branchTarget = address;
+			}
+			if (labelNameIndex >= 0) {
+				/* @@NAME: record where a branch to this label lands, for the name applier. */
+				labelNameTargets.put(labelNameIndex, branchTarget);
 			}
 			for (Address branch : branchAddresses) {
 				contextreg.setBranchTarget(branch, branchTarget);
@@ -459,6 +477,17 @@ public class WasmFunctionAnalysis {
 		return stackEffects.get(address);
 	}
 	// #endregion
+
+	/**
+	 * @@NAME: the address every label of the function's body branches to, keyed by the label's
+	 * index in the extended name section (labels are numbered in the order the block/loop/if/try
+	 * constructs appear in the body). A loop's label branches to the loop's start; every other
+	 * construct's label branches to its {@code end}. Read by
+	 * {@link WasmNameApplyAnalyzer} to turn label names into real Ghidra labels.
+	 */
+	public Map<Integer, Address> getLabelTargets() {
+		return java.util.Collections.unmodifiableMap(labelNameTargets);
+	}
 
 	// #region BinaryReader utilities
 	private static long readLeb128(BinaryReader reader) throws IOException {
@@ -548,6 +577,10 @@ public class WasmFunctionAnalysis {
 
 	// #region Control stack manipulation
 	private void pushBlock(Address instAddress, ControlFrame block) {
+		if (block.blockKind != BlockKind.FUNCTION && block.labelNameIndex < 0) {
+			/* @@NAME: this construct introduces the next label of the function-wide index space. */
+			block.labelNameIndex = labelCounter++;
+		}
 		controlStack.add(block);
 		pushValues(instAddress, block.blockType.params);
 	}
