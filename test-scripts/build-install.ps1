@@ -17,12 +17,31 @@
     .\test-scripts\build-install.ps1
 #>
 param(
-    [string]$GhidraDir = $env:GHIDRA_INSTALL_DIR,
+    [string]$GhidraDir = "",
     [string]$Gradle = "C:\Tools\gradle-9.2.1\bin\gradle.bat",
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$Force   # ignore the worktree's pinned install (see .ghidra-install)
 )
 
 $ErrorActionPreference = "Stop"
+
+# --- install pinning -------------------------------------------------------------------------
+# Every worktree/checkout carries `test-scripts/.ghidra-install` naming the ONE Ghidra install it is
+# allowed to use. This prevents two agents (or an agent and the integrator) from building into each
+# other's install, which produces "measurements against a stale/wrong extension" and is invisible in
+# the logs. Pass -Force only when you deliberately want another folder.
+$pinFile = Join-Path $PSScriptRoot ".ghidra-install"
+if (Test-Path $pinFile) {
+    $pinned = (Get-Content $pinFile -Raw).Trim()
+    if (-not $GhidraDir) {
+        $GhidraDir = $pinned
+        Write-Host "== using the pinned Ghidra install: $pinned ==" -ForegroundColor DarkGray
+    }
+    elseif ($GhidraDir -ne $pinned -and (Resolve-Path -LiteralPath $GhidraDir -ErrorAction SilentlyContinue).Path -ne (Resolve-Path -LiteralPath $pinned -ErrorAction SilentlyContinue).Path -and -not $Force) {
+        throw "REFUSED: this checkout is pinned to '$pinned' (test-scripts/.ghidra-install). Pass -Force to override, or use the pinned folder."
+    }
+}
+if (-not $GhidraDir) { $GhidraDir = $env:GHIDRA_INSTALL_DIR }
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 if (-not (Test-Path $GhidraDir)) { throw "Ghidra install not found: $GhidraDir" }
 

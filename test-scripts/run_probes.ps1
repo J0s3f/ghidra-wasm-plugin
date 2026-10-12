@@ -22,18 +22,35 @@
 #>
 param(
     [string]$OutDir = "$env:TEMP\wasm-probes",
-    [string]$GhidraDir = $env:GHIDRA_INSTALL_DIR,
+    [string]$GhidraDir = "",
     [string]$ScriptDir = "$PSScriptRoot",
     [string[]]$Generators,          # default: all gen_*.py + probes_*.py in $ScriptDir
     [string]$Only = "",             # wildcard filter on probe file names
     [switch]$Detail,                # also dump listings + decompiled C
     [switch]$NoAnalysis,            # skip the auto-analysis (faster, for decode-only checks)
     [int]$MaxCpu = 2,               # cap Ghidra analysis threads (many agents may run at once)
-    [string]$MaxMem = "1500M"       # cap the headless JVM heap (GHIDRA_HEADLESS_MAXMEM)
+    [string]$MaxMem = "1500M",      # cap the headless JVM heap (GHIDRA_HEADLESS_MAXMEM)
+    [switch]$Force                  # ignore the checkout's pinned install (see .ghidra-install)
 )
 
 $ErrorActionPreference = "Stop"
 
+# --- install pinning -------------------------------------------------------------------------
+# A checkout may only measure against the Ghidra install named in test-scripts/.ghidra-install.
+# Measuring against another (possibly stale) install is the classic silent failure mode: the run
+# looks fine but the extension under test is a different build.
+$pinFile = Join-Path $PSScriptRoot ".ghidra-install"
+if (Test-Path $pinFile) {
+    $pinned = (Get-Content $pinFile -Raw).Trim()
+    if (-not $GhidraDir) {
+        $GhidraDir = $pinned
+        Write-Host "== using the pinned Ghidra install: $pinned ==" -ForegroundColor DarkGray
+    }
+    elseif ($GhidraDir -ne $pinned -and (Resolve-Path -LiteralPath $GhidraDir -ErrorAction SilentlyContinue).Path -ne (Resolve-Path -LiteralPath $pinned -ErrorAction SilentlyContinue).Path -and -not $Force) {
+        throw "REFUSED: this checkout is pinned to '$pinned' (test-scripts/.ghidra-install). Pass -Force to override, or use the pinned folder."
+    }
+}
+if (-not $GhidraDir) { $GhidraDir = $env:GHIDRA_INSTALL_DIR }
 if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 $env:GHIDRA_HEADLESS_MAXMEM = $MaxMem
 # Pick the launcher for the host OS: Ghidra ships BOTH "analyzeHeadless.bat" and

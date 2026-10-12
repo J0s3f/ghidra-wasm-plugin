@@ -13,3 +13,4 @@ __pycache__/
 META-INF/
 output.txt
 zipcontents.txt
+.ghidra-install
