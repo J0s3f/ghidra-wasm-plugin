@@ -1918,6 +1918,8 @@ define context contextreg
 @define DIRECTIVE_DEFAULT 1
 @define DIRECTIVE_LOCALS 2
 @define DIRECTIVE_LOCAL 3
+# Directive type for a br_table label past the modelled-case cap (see WebAssembly.sinc).
+@define DIRECTIVE_CASE_IGNORED 5
 
 # Include contents of WebAssembly.sinc file
 @include "WebAssembly.sinc"

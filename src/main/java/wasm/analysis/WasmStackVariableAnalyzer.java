@@ -208,6 +208,23 @@ public class WasmStackVariableAnalyzer extends AbstractAnalyzer {
 		return registers;
 	}
 
+	/**
+	 * The first register among an instruction's input objects, or null when there is none.
+	 * <p>
+	 * {@link Instruction#getInputObjects()} can contain non-register objects (for example a
+	 * dynamic Address for an exported register access), and a load/store instruction can have
+	 * no register input object at all. Callers must tolerate a null/empty result instead of
+	 * indexing or casting unconditionally (see REPORT-SF.md, finding 2).
+	 */
+	private Register firstRegister(Object[] collection) {
+		for (Object obj : collection) {
+			if (obj instanceof Register) {
+				return (Register) obj;
+			}
+		}
+		return null;
+	}
+
 	private void createStackPointerVariables(Program program, Function func, TaskMonitor monitor) throws CancelledException {
 		CallDepthChangeInfo info = new CallDepthChangeInfo(func, monitor);
 
@@ -221,9 +238,16 @@ public class WasmStackVariableAnalyzer extends AbstractAnalyzer {
 				if (mnemonic.contains(".load")) {
 					// Note: inputObjects is not sorted in any particular order (it may be derived
 					// from a HashSet)
-					Register base = getRegisters(instr.getInputObjects()).get(0);
+					List<Register> registers = getRegisters(instr.getInputObjects());
+					if (registers.isEmpty()) {
+						continue;
+					}
+					Register base = registers.get(0);
 					// get offset from "align=A offset=O" operand
-					Scalar offset = (Scalar) instr.getOpObjects(0)[1];
+					Scalar offset = getMemoryOffset(instr);
+					if (offset == null) {
+						continue;
+					}
 					int stackOffset = info.getRegDepth(instr.getMinAddress(), base);
 					if (stackOffset == Function.INVALID_STACK_DEPTH_CHANGE) {
 						continue;
@@ -232,17 +256,29 @@ public class WasmStackVariableAnalyzer extends AbstractAnalyzer {
 				} else if (mnemonic.contains(".store")) {
 					// Note: inputObjects is not sorted in any particular order (it may be derived
 					// from a HashSet)
-					Register base = getRegisters(instr.getInputObjects()).get(0);
+					List<Register> registers = getRegisters(instr.getInputObjects());
+					if (registers.isEmpty()) {
+						continue;
+					}
+					Register base = registers.get(0);
 					// get offset from "align=A offset=O" operand
-					Scalar offset = (Scalar) instr.getOpObjects(0)[1];
+					Scalar offset = getMemoryOffset(instr);
+					if (offset == null) {
+						continue;
+					}
 					int stackOffset = info.getRegDepth(instr.getMinAddress(), base);
 					if (stackOffset == Function.INVALID_STACK_DEPTH_CHANGE) {
 						continue;
 					}
 					defineFuncVariable(program, func, instr, 0, (int) (stackOffset + offset.getUnsignedValue()), RefType.WRITE);
 				} else if (mnemonic.equals("local.get") || mnemonic.equals("local.set")) {
-					// These instructions will only have one input
-					Register input = (Register) instr.getInputObjects()[0];
+					// These instructions will only have one input, but the input object may be a
+					// dynamic Address rather than a Register (the local register is exported as
+					// `*[register]`), so pick the register out of the list instead of casting [0].
+					Register input = firstRegister(instr.getInputObjects());
+					if (input == null) {
+						continue;
+					}
 					int stackOffset = info.getRegDepth(instr.getMinAddress(), input);
 					if (stackOffset == Function.INVALID_STACK_DEPTH_CHANGE) {
 						continue;
@@ -260,5 +296,14 @@ public class WasmStackVariableAnalyzer extends AbstractAnalyzer {
 				Msg.warn(this, "Failed to process instruction at " + instr.getMinAddress() + ": " + instr + ": " + e.getMessage());
 			}
 		}
+	}
+
+	/** The `offset=O` operand of a load/store instruction, or null if it is not present. */
+	private static Scalar getMemoryOffset(Instruction instr) {
+		Object[] operands = instr.getOpObjects(0);
+		if (operands.length < 2 || !(operands[1] instanceof Scalar)) {
+			return null;
+		}
+		return (Scalar) operands[1];
 	}
 }
