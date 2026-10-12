@@ -147,6 +147,20 @@ public class WasmFunctionAnalysis {
 			setRegister(address, REG_CASE_INDEX, 1);
 		}
 
+		// @@EH begin: new exception handling (try_table / throw_ref). See EH2Ops.java / EH2Ops.sinc.
+		/** Directive type for one try_table catch clause; must match DIRECTIVE_EH_CLAUSE in EH2Ops.sinc. */
+		private static final int DIRECTIVE_EH_CLAUSE = 4;
+
+		/**
+		 * Disassemble this "instruction" as one catch clause of a try_table (catch/catch_ref/
+		 * catch_all/catch_all_ref), like {@link #setBrTableCase} does for br_table labels.
+		 */
+		public void setEhClause(Address address) {
+			setRegister(address, REG_IS_DIRECTIVE, 1);
+			setRegister(address, REG_DIRECTIVE_TYPE, DIRECTIVE_EH_CLAUSE);
+		}
+		// @@EH end
+
 		/** Mark this global.* instruction as operating on the C stack pointer. */
 		public void setIsGlobalSp(Address address, boolean value) {
 			setRegister(address, REG_IS_GLOBAL_SP, value ? 1 : 0);
@@ -489,6 +503,66 @@ public class WasmFunctionAnalysis {
 		return tagType == null ? new ValType[0] : tagType.getParamTypes();
 	}
 
+	// @@EH begin: new exception handling (try_table / throw_ref) bridge, used by EH2Ops.
+	// Thin wrappers over the control-frame machinery above, kept in one block so that the legacy
+	// exception handling (and everything else) is untouched. See wasm/analysis/EH2Ops.java.
+
+	/** The number of params of a blocktype, without entering the block. */
+	int ehBlockTypeParamCount(WasmAnalysis analysis, long blocktype) {
+		return new BlockType(analysis, blocktype).params.length;
+	}
+
+	/**
+	 * The types a catch clause must push to be valid: the branch arguments of the label it branches
+	 * to. Must be called while the control stack is still the one *outside* the try_table, because
+	 * catch labels are resolved in the enclosing context (see the spec's Catch_ok rule, and
+	 * {@link EH2Ops#analyzeTryTable}).
+	 */
+	ValType[] ehClauseLabelTypes(Address instAddress, long labelidx) {
+		return getBlock(instAddress, labelidx).getBranchArguments();
+	}
+
+	/**
+	 * Enter a try_table block. Like {@code block}, the blocktype's params are consumed and pushed
+	 * back; the body's branches to this label resolve to the block's end.
+	 *
+	 * @param handlerLabel label index (in the enclosing context) of the first catch clause, or -1
+	 *            when the try_table has no clause
+	 * @param handlerValue the single value that first clause pushes at its handler (so the
+	 *            decompiler can show it as the caught exception), or null to push none
+	 */
+	void ehEnterTryTable(Address instAddress, WasmAnalysis analysis, long blocktype, long handlerLabel, ValType handlerValue) {
+		/*
+		 * Model the exception dispatch before pushing the frame, so that handlerLabel is resolved
+		 * against the enclosing control stack (as the spec requires); the try_table instruction
+		 * branches to the label's target when an exception is caught, like legacy try does to its
+		 * first handler.
+		 */
+		if (handlerLabel >= 0) {
+			ControlFrame target = getBlock(instAddress, handlerLabel);
+			target.addBranch(instAddress);
+			contextreg.setTryHandler(instAddress);
+			if (handlerValue != null && handlerValue.getSize() <= 8) {
+				contextreg.setOperandSize(instAddress, handlerValue);
+			}
+		}
+		BlockType type = new BlockType(analysis, blocktype);
+		popValues(instAddress, type.params);
+		pushBlock(instAddress, new ControlFrame(instAddress, BlockKind.BLOCK, type, valueStack));
+	}
+
+	/** Mark the instruction at {@code instAddress} as a try_table catch clause directive. */
+	void ehMarkClause(Address instAddress) {
+		contextreg.setEhClause(instAddress);
+	}
+
+	/** throw_ref: pop an exnref and end the current block, exactly like legacy throw/rethrow. */
+	void ehThrowRef(Address instAddress) {
+		popValue(instAddress, ValType.exnref);
+		markUnreachable(instAddress);
+	}
+	// @@EH end
+
 	/** The value type of an atomic read-modify-write group member: i32, i64, i32 8u, i32 16u, i64 8u, i64 16u, i64 32u. */
 	private static ValType atomicType(int member) {
 		return (member == 0 || member == 2 || member == 3) ? ValType.i32 : ValType.i64;
@@ -590,6 +664,16 @@ public class WasmFunctionAnalysis {
 			}
 			pushValues(instAddress, block.blockType.returns);
 			block.setEnd(instAddress);
+			break;
+		}
+
+		/* @@EH: new exception handling (proposal) is handled by EH2Ops; try_table is a block. */
+		case 0x1F: /* try_table bt catch* */ {
+			EH2Ops.analyzeTryTable(this, analysis, instAddress, reader);
+			break;
+		}
+		case 0x0A: /* throw_ref */ {
+			EH2Ops.analyzeThrowRef(this, instAddress);
 			break;
 		}
 

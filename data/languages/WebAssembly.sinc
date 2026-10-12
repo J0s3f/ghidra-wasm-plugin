@@ -33,7 +33,7 @@ attach names valtype [
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x30
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x40
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x50
-  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ externref # 0x60
+  _ _ _ _ _ _ _ _ _ exnref _ _ _ _ _ externref # 0x60  # @@EH: exnref at 0x69 added
   funcref _ _ _ _ _ _ _ _ _ _ v128 f64 f32 i64 i32 # 0x70
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x80
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x90
@@ -580,3 +580,4 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 @include "VectorOps.sinc"
 @include "AtomicOps.sinc"
 @include "RelaxedSimdOps.sinc"
+@include "EH2Ops.sinc"   # @@EH: new exception handling (try_table, throw_ref)

@@ -188,3 +188,41 @@ write("20_gc_global_init.wasm", module(
 
 # 21. component model binary: magic + version 13 / layer 1 (not a core module)
 write("21_component_model.wasm", raw_module(bytes([0x0D, 0x00, 0x01, 0x00])))
+
+# ---------------------------------------------------------------------------------------------
+# Constant-expression scanner regressions (added after the decode-driven rewrite; a byte-scan
+# implementation of the expression scanner fails all four of these).
+# ---------------------------------------------------------------------------------------------
+
+def _gf_module(global_type, global_expr, extra_globals=()):
+    """module with memory + function + [globals] + export + code (importable, unlike 19)."""
+    globals_ = [(global_type, False, global_expr)] + list(extra_globals)
+    return module(
+        type_section(functype([], [])),
+        func_section([0]),
+        memory_section([(0x00, 1)]),
+        global_section(globals_),
+        export_section([("f", 0, 0), ("g", 3, 0)]),
+        code_section([END]),
+    )
+
+
+# 22. extended-const with two operands: the 0x02 value byte must not be read as the `block` opcode
+write("22_extconst_two_ops.wasm", _gf_module(I32, i32_const(1) + i32_const(2) + b"\x6A"))
+# 23. f32.const whose immediate contains 0x0B (must not terminate the expression early)
+write("23_const_f32_imm_0b.wasm", _gf_module(F32, b"\x43" + b"\x0B\x00\x00\x00"))
+# 24. f64.const whose immediate contains 0x0B
+write("24_const_f64_imm_0b.wasm", _gf_module(F64, b"\x44" + b"\x0B\x00\x00\x00\x00\x00\x00\x00"))
+# 25. v128.const whose 16-byte immediate is all 0x0B
+write("25_const_v128_imm_0b.wasm", _gf_module(V128, v128_const(bytes([0x0B]) * 16)))
+# 26. ref.null with a type-index heap type (multi-byte value type) in a global
+write("26_refnull_typeidx.wasm", _gf_module(ref_null(0), b"\xD0\x00"))
+# 27. extended-const chain in a *data segment offset* (a second consumer of ConstantExpression)
+write("27_extconst_data_offset.wasm", module(
+    type_section(functype([], [])),
+    func_section([0]),
+    memory_section([(0x00, 1)]),
+    export_section([("f", 0, 0)]),
+    code_section([END]),
+    data_section([active_data(i32_const(1) + i32_const(2) + b"\x6A" + END, b"hi")]),
+))

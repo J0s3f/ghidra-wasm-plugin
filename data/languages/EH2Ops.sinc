@@ -1,0 +1,79 @@
+# sleigh include file for the *new* WebAssembly exception handling (the exception-handling
+# proposal as emitted by LLVM >= 19): try_table (0x1f), throw_ref (0x0a) and the exnref value type.
+#
+# This file is independent of the *legacy* EH instruction definitions (try/catch/catch_all/
+# throw/rethrow/delegate in WebAssembly.sinc), which are unchanged.
+#
+# try_table is `blocktype` followed by a vector of catch clauses:
+#   0x00 catch           tagidx labelidx
+#   0x01 catch_ref       tagidx labelidx
+#   0x02 catch_all       labelidx
+#   0x03 catch_all_ref   labelidx
+# The clause vector is decoded as one directive instruction per clause
+# (.catch/.catch_ref/.catch_all/.catch_all_ref), exactly like br_table's .case/.default: the
+# pre-analyzer (wasm/analysis/EH2Ops.java) marks each clause's address with DIRECTIVE_EH_CLAUSE,
+# and each clause consumes only its own bytes, so the try_table body starts immediately after.
+#
+# For the first clause that can push exactly one value, the pre-analyzer also treats the
+# try_table instruction as an exception dispatcher (ctx_case_index=1) whose target
+# (ctx_br_target) is the clause's label; the constructors below then behave like the legacy
+# :try handler constructors (the decompiler sees a branch taken when wasm_exception_caught()).
+
+# Directive type for a try_table catch clause. Must stay in sync with ContextRegister.DIRECTIVE_EH_CLAUSE
+# in wasm/analysis/WasmFunctionAnalysis.java.
+@define DIRECTIVE_EH_CLAUSE 4
+
+# throw_ref: pop an exnref and (re-)throw the exception it references.
+define pcodeop wasm_throw_ref;
+
+# Operands used by the clause directives (they exist only to name/consume the encoded values).
+eh_tag: ULeb128 is ULeb128 {
+	export ULeb128;
+}
+
+eh_label: ULeb128 is ULeb128 {
+	export ULeb128;
+}
+
+:try_table "blocktype="^ULeb128 "catches="^count is opc=0x1f; ULeb128; count; ctx_case_index=0; ctx_is_directive=0 {
+}
+
+:try_table "blocktype="^ULeb128 br_target is opc=0x1f; ULeb128; count; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	goto br_target;
+}
+
+:try_table "blocktype="^ULeb128 br_target is opc=0x1f; ULeb128; count; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	sp0_32 = wasm_exception_payload();
+	goto br_target;
+}
+
+:try_table "blocktype="^ULeb128 br_target is opc=0x1f; ULeb128; count; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	sp0_64 = wasm_exception_payload();
+	goto br_target;
+}
+
+:.catch "tag="^eh_tag "label="^eh_label is opc=0x00; eh_tag; eh_label; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_EH_CLAUSE) {
+}
+
+:.catch_ref "tag="^eh_tag "label="^eh_label is opc=0x01; eh_tag; eh_label; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_EH_CLAUSE) {
+}
+
+:.catch_all "label="^eh_label is opc=0x02; eh_label; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_EH_CLAUSE) {
+}
+
+:.catch_all_ref "label="^eh_label is opc=0x03; eh_label; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_EH_CLAUSE) {
+}
+
+:throw_ref is opc=0x0a; sp1_32; ctx_is_directive=0 {
+	wasm_throw_ref(sp1_32);
+	trap();
+}
