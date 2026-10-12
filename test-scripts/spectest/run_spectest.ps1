@@ -24,7 +24,7 @@ param(
     [string]$OutDir = "$env:TEMP\spectest-run",
     [string]$GhidraDir = $env:GHIDRA_INSTALL_DIR,
     [string]$Subset = "core",
-    [string]$Files = "",
+    [string[]]$Files = @(),
     [int]$MaxPerWast = 10,
     [int]$MaxCpu = 2,
     [string]$MaxMem = "1500M",
@@ -58,7 +58,8 @@ if (-not $NoPrepare) {
     Write-Host "== preparing spec modules ==" -ForegroundColor Cyan
     $prepArgs = @((Join-Path $here "prepare_spec_tests.py"),
                   "--spec", $specDir.FullName, "--wast2json", $wast2json, "--out", $OutDir)
-    if ($Files) { $prepArgs += @("--files", $Files) } else { $prepArgs += @("--subset", $Subset) }
+    if ($Files.Count -gt 0) { $prepArgs += @("--files", ($Files -join ",")) }
+    else { $prepArgs += @("--subset", $Subset) }
     if ($MaxPerWast -gt 0) { $prepArgs += @("--max-per-wast", "$MaxPerWast") }
     & python @prepArgs
     if ($LASTEXITCODE -ne 0) { throw "prepare_spec_tests.py failed ($LASTEXITCODE)" }
