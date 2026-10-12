@@ -14,9 +14,9 @@ WebAssembly (Wasm 3.0 + active proposals).
 | function-references instructions (`call_ref`, `return_call_ref`, `ref.as_non_null`, `br_on_null`, `br_on_non_null`) | **merged** (`REPORT-FR.md`; probe `12` reaches 0 undefined bytes) |
 | 0/1/2 unknown-opcode degradation + multi-memory | **merged** (`REPORT-A-DS.md`; probe 06 decodes `memidx`, probe 18 creates both memory blocks) |
 | 8. memory64 | **merged** (`REPORT-N.md`): index-type propagation, `ctx_mem64` widths, 64-bit address computation truncated into `ram` (exact below 4 GiB, documented), loader bounds; probe `05` decodes, 8 new `M64_*` probes |
-| 9. `.name` extras + application | in flight (re-dispatched; `REPORT-D.md`) |
-| 4. negative spec tests (`assert_invalid`/`assert_malformed`) | in flight (`REPORT-NS.md`) |
-| robustness fixes: `B04` escaping `OutOfMemoryError`, `M03` 2 GiB block (see §6.2) | queued |
+| 9. `.name` extras + application | **merged** (`REPORT-D.md`; subsections 3/10/11 parsed, `WasmNameApplyAnalyzer` applies table/memory/elem/data labels + module/type/field/tag and label-name comments; malformed name sections no longer break imports) |
+| 4. negative spec tests (`assert_invalid`/`assert_malformed`) | **merged** (`REPORT-NS.md` + §6.4) |
+| loader hardening (locals/memory/table bounds, honest failures) | **merged** (`REPORT-HARD.md` + §6.2; B1/B2/B3/B5 fixed, B4 documented) |
 | 7. multi-value returns | **merged** (`REPORT-MV.md`): functions return a packed struct, all results visible, callers consume them (7 multi-result functions in the real module now carry `wasm_ret_i32_i32*` prototypes) |
 | 10. component model loader | **merged** (`REPORT-C2.md`; embedded core modules import as real programs) |
 | 4. spec-test harness | **merged** (`REPORT-G.md`; see §6) |
@@ -319,21 +319,30 @@ packages incl. `@jsquash/*`, `sql.js`, `web-tree-sitter`; 3 rustc `wasm32-unknow
 * Nothing in the corpus exercises a documented unsupported feature - mainstream wasm-bindgen /
   Emscripten output is MVP + 2.0 (+ SIMD), which is why it all decodes.
 
-### 6.2 Robustness baseline (malformed inputs)
+### 6.2 Robustness baseline (malformed inputs) — **partly fixed by `REPORT-HARD.md`**
 
-`test-scripts/gen_malformed_probes.py` (56 modules) + `test-scripts/robustness-sweep.ps1` +
+`test-scripts/make_malformed_corpus.py` (56 modules) + `test-scripts/robustness-sweep.ps1` +
 `test-scripts/robustness-RESULTS.md` classify every case as import_ok / import_failed / process_died /
-hang. Full 56-module run: 27 `import_ok` (one the valid control), 27 `import_failed` (all caught and
-reported - the loader's own error path is sound), **1 `process_died`**, **1 timeout**, 0 hangs.
-Two real bugs (reproduced by the integrator on the v2.6.0 tree):
+hang. Original 56-module run: 27 `import_ok` (one the valid control), 27 `import_failed` (all caught and
+reported), **1 `process_died`**, **1 timeout**, 0 hangs.
 
-1. **`B04_locals_1G_alloc` (30 bytes) aborts the analysis process**: a `locals` group count of
-   `0x40000000` reaches an unbounded allocation; the decompiler throws `java.lang.OutOfMemoryError`,
-   which escapes and kills the whole headless run (exit 1). A tiny hostile input can take down an
-   automated pipeline.
-2. **`M03_mem_huge_initial` (17 bytes) materializes a 2 GiB memory block**: `(memory 0xFFFFFFFF)`
-   creates `size=2147483648`; import-only takes ~14 s here and analysis does not finish within the
-   60 s analysis bound.
+**Integrator-reproduced, then fixed** (hardening workstream, `REPORT-HARD.md`; fixes verified against
+its own pinned install):
+
+1. **`B04`/`J02` (30 bytes) used to abort the analysis process** with an escaping
+   `java.lang.OutOfMemoryError` from an unbounded `locals` count. Now bounded (1,000,000 locals per
+   function, 10,000,000 per module): the module fails with
+   `Import failed: Function declares more than 1000000 locals (the loader's per-function limit)` and the
+   headless run exits 0.
+2. **`M03`/`J01`/`NS12` (17 bytes) used to materialize a 2 GiB memory block** and never finish analysis.
+   Limits are now validated (`initial <= maximum`, 32-bit <= 65536 pages, 64-bit <= 2^48, block capped at
+   256 MiB): `Import failed: initial size N page(s) exceeds the 32-bit limit of 65536 page(s)` in ~10 s.
+   Tables are bounded the same way (B5: `initial <= maximum`, > 64 MiB skipped with a diagnostic).
+
+Aggregate effect (from the hardening report): the 56-module sweep went from
+27 ok / 1 timeout / 27 failed / **1 died** to 24 ok / 0 timeout / 32 failed / **0 died**, and the
+2948-module negative suite from 59 rejected / 2889 accepted / 53 accepted-partial / 0 crash / 0 hang to
+**130 rejected / 2818 accepted / 0 accepted-partial / 0 crash / 0 hang**.
 
 ### 6.3 DWARF line info
 
@@ -354,24 +363,25 @@ negative modules** of the pinned testsuite were classified (import-only): **59 r
 / 0 crash / 0 hang**, plus a hazard pass (analysis on, one JVM per module) on the 9 extreme-metadata
 modules which produced **5 analysis hangs**.
 
-Integrator-reproduced, ranked:
+Integrator-reproduced, ranked (all three from the original run were **fixed** by the hardening
+workstream - see §6.2 - and the fixes were re-verified by the integrator):
 
-1. **B3 - silent truncation (high severity, new class).** `WasmLoader.load()` swallows every exception
-   from `doLoad`, so a malformed custom-section name (bad UTF-8, 53 spec modules) produces
-   `Import succeeded` with **`funcs=0`** - everything after the failing section is lost without a
-   diagnostic (probe `NS11`: a module's only function disappears; removing the 5 offending bytes gives
-   `funcs=1`).
-2. **B1/J02/B04 - absurd `locals` count (high).** `WasmCodeEntry.getLocals()`/`WasmAnalysis.getFunctions()`
-   allocate unbounded: a 30-byte module makes `WasmPreAnalyzer` throw
-   `IllegalArgumentException`/`ArrayIndexOutOfBounds`, and the curated probe kills the whole headless run
-   with an escaping `OutOfMemoryError` (see §6.2).
-3. **B2/J01/M03/NS12 - absurd memory minimum (high).** A malformed/huge memory `min` is clamped to
-   `CODE_BASE` and a **2 GiB** `.memory0` is materialised; with analysis on the run never returns
-   (17-byte probe `NS12`), and `min <= max` is not enforced.
-4. **B4/B5/B6 (medium).** Out-of-range section ids and duplicate sections are dropped invisibly; a table
-   with `min = 0xffffffff` silently loses its table; 219 modules are accepted with nothing but raw bytes.
-5. **B7 (low).** Rejection is incidental (28 "no loader matched" + 31 "no memory blocks were defined"),
-   never a loader diagnostic.
+1. **B3 - silent truncation (high severity, new class). → FIXED.** `WasmLoader.load()` used to swallow
+   every exception from `doLoad`, so a malformed custom-section name (bad UTF-8, 53 spec modules)
+   produced `Import succeeded` with **`funcs=0`** - everything after the failing section was lost
+   without a diagnostic. It now fails honestly:
+   `Import failed: Failed to create markup for section .custom.\uFFFD (id SEC_CUSTOM) at file offset 0x8: Invalid DataType name`.
+2. **B1/J02/B04 - absurd `locals` count (high). → FIXED.** Bounded (1M/function, 10M/module); clean
+   import failure, no escaping `OutOfMemoryError`, no nonsense program.
+3. **B2/J01/M03/NS12 - absurd memory minimum (high). → FIXED.** Limits validated (`initial <= maximum`,
+   32-bit <= 65536 pages, 64-bit <= 2^48) and blocks capped at 256 MiB; ~10 s bounded rejection instead
+   of a 2 GiB block and an analysis wedge.
+4. **B4 (medium) - out-of-range section ids and duplicate sections dropped invisibly: OPEN.** The exact
+   patch is documented in `REPORT-HARD.md` but needs `WasmSection.java`/`WasmModule.java`.
+   **B5 fixed** (table limits validated; oversized tables skipped with a diagnostic);
+   **B6** (219 modules accepted as bare bytes) is by design in a lenient loader.
+5. **B7 (low) - rejections are now deliberate loader diagnostics** for the paths that were fixed
+   (section markup, locals, memory/table limits) instead of "no loader matched" / "no memory blocks".
 
 ## 7. References
 
