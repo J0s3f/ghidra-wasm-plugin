@@ -902,6 +902,14 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "H1_13_duplicate_datacount.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
     "J03_locals_count_neg.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1191,7 +1199,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 148,
+  "probe_count": 149,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
