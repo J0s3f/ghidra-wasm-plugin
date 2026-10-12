@@ -1438,6 +1438,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "SROA01_struct_frame.wasm": {
+      "funcs": 1,
+      "instrs": 28,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SROA02_unaligned_overlap.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SROA03_unreachable_access.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "bare_component_header.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1463,7 +1487,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 182,
+  "probe_count": 185,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
