@@ -442,6 +442,15 @@
       "class": "invalid",
       "why": "0000011: error: invalid function param count 4294967295, only 1 bytes left in section"
     },
+    "L01_name_labels.wasm": {
+      "class": "valid"
+    },
+    "L02_name_labels_bad_index.wasm": {
+      "class": "valid"
+    },
+    "L03_name_labels_malformed.wasm": {
+      "class": "valid"
+    },
     "M01_multivalue_i32_i32.wasm": {
       "class": "valid"
     },
