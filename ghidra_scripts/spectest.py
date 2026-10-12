@@ -27,6 +27,11 @@
 #   --max-commands=N   stop after N top-level commands (useful for a bounded smoke run)
 #   --report=<path>    append one line per command ("RESULT <type> <ok|fail|skip> <detail>")
 #   --decode-only      skip emulation; only load every module and report decode metrics
+#   --max-steps=N      abort a single invoke after N emulated instructions (default 1000000).
+#                      The plugin does not check indirect-call types, so a spec case such as
+#                      call_indirect.wast:530 dispatches to a recursive function of the wrong
+#                      signature and would otherwise emulate forever; the budget turns that into
+#                      a reported EmulationError instead of a hang.
 #
 # Per-module decode metrics are always printed (MODULE-METRICS ...). They mirror
 # test-scripts/spectest/SpecModuleReport.java so the emulation and decode harnesses agree.
@@ -98,6 +103,8 @@ Command schema (https://github.com/WebAssembly/wabt/blob/main/docs/wast2json.md)
 null_val = 0x00000000
 # return address for the top-level function call
 ret_addr = 0x80000000
+# per-invoke emulated-instruction budget (see --max-steps)
+DEFAULT_MAX_STEPS = 1000000
 
 class EmulationError(Exception):
     pass
@@ -141,12 +148,13 @@ def encode_arg(ei):
 class EmulatedProgram(object):
     # NOTE: composition, not inheritance. PyGhidra (JPype) cannot subclass Java classes, so we hold a
     # FlatProgramAPI instead of extending it (the original Jython script subclassed it directly).
-    def __init__(self, program):
+    def __init__(self, program, max_steps=DEFAULT_MAX_STEPS):
         self.currentProgram = program
         self.flat = FlatProgramAPI(program)
         self.emuHelper = EmulatorHelper(program)
         self.wasmHelper = WasmEmulationHelper(self.emuHelper.language)
         self.analysis = WasmAnalysis.getState(program)
+        self.maxSteps = max_steps
 
         ramSpace = self.currentProgram.addressFactory.defaultAddressSpace
         self.retAddr = ramSpace.getAddress(ret_addr)
@@ -180,14 +188,22 @@ class EmulatedProgram(object):
             biArgs = JArray(BigInteger)(biArgs)
         self.wasmHelper.simulateCall(self.emuHelper.emulator, ret_addr, function.entryPoint.offset, biArgs)
 
+        # Step one instruction at a time instead of emuHelper.run(): run() blocks until a
+        # breakpoint, so an unintended infinite loop (e.g. an indirect call to a function of
+        # the wrong signature, which the plugin does not detect) would hang the harness. The
+        # step budget turns that into a reported EmulationError.
+        steps = 0
         while 1:
-            if not self.emuHelper.run(monitor):
+            if not self.emuHelper.step(monitor):
                 err = self.emuHelper.lastError
                 if err.startswith("Unimplemented CALLOTHER pcodeop (halt_trap)"):
                     raise EmulationError("unreachable")
                 elif err in ("Divide by 0", "Remainder by 0"):
                     raise EmulationError("integer divide by zero")
                 raise EmulationError("Emulation stopped: " + err)
+            steps += 1
+            if steps > self.maxSteps:
+                raise EmulationError("step budget exceeded (%d instructions)" % self.maxSteps)
             if self.emuHelper.executionAddress == self.retAddr:
                 break
             elif self.emuHelper.executionAddress == self.nullAddr:
@@ -217,7 +233,7 @@ def program_metrics(prog):
         undefined_bytes += body.subtract(defined).getNumAddresses()
     return funcs, instrs, undefined_bytes
 
-def import_program(dirname, filename):
+def import_program(dirname, filename, max_steps=DEFAULT_MAX_STEPS):
     prog = importFile(File(os.path.join(dirname, filename)))
     if prog is None:
         raise Exception("Failed to import file!")
@@ -234,7 +250,7 @@ def import_program(dirname, filename):
     mgr.waitForAnalysis(None, monitor)
     prog.endTransaction(tx, True)
 
-    prog_api = EmulatedProgram(prog)
+    prog_api = EmulatedProgram(prog, max_steps)
     return prog_api
 
 def execute_action(progs, action):
@@ -373,7 +389,8 @@ def parse_args():
     """
     raw = [str(a) for a in getScriptArgs()]
     json_fn = None
-    opts = {"max_commands": 0, "report": None, "decode_only": False}
+    opts = {"max_commands": 0, "report": None, "decode_only": False,
+            "max_steps": DEFAULT_MAX_STEPS}
     i = 0
     while i < len(raw):
         a = raw[i]
@@ -390,6 +407,11 @@ def parse_args():
                 i += 1
                 val = raw[i]
             opts["report"] = val
+        elif a == "--max-steps":
+            if val is None:
+                i += 1
+                val = raw[i]
+            opts["max_steps"] = int(val)
         elif a == "--decode-only":
             opts["decode_only"] = True
         elif json_fn is None:
@@ -429,7 +451,7 @@ def main():
         ctype = command["type"]
         if ctype == "module":
             try:
-                prog = import_program(testdir, command["filename"])
+                prog = import_program(testdir, command["filename"], opts["max_steps"])
                 progs[None] = prog
                 if "name" in command:
                     progs[command["name"]] = prog
