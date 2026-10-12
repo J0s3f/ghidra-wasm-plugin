@@ -39,6 +39,19 @@ public class WasmLocalEntry implements StructConverter {
 		return (int) count.asLong();
 	}
 
+	/**
+	 * The declared count as an unsigned value, without the lossy narrowing to {@code int}.
+	 *
+	 * <p>Malformed input can declare a count that does not fit (or wraps) a Java {@code int}
+	 * (e.g. {@code 0xFFFFFFFF}); every caller that is about to size an allocation must use this
+	 * method and validate the value first (see {@code WasmCodeEntry}).
+	 *
+	 * @return the declared local count, exactly as read from the LEB128
+	 */
+	public long getCountLong() {
+		return count.asLong();
+	}
+
 	public ValType getType() {
 		return type;
 	}

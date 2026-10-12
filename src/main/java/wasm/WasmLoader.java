@@ -98,6 +98,28 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	public final static long RAM_MAX_ADDRESS = 0xffffffffL;
 	/* The size of one WebAssembly linear-memory page. */
 	public final static long MEMORY_PAGE_SIZE = 65536L;
+	/*
+	 * B2/J01/M03/NS12/NS10: the largest initialized region the loader will materialise for a
+	 * single memory (256 MiB, i.e. MEMORY_STRIDE). A malformed or absurd `initial` used to be
+	 * clamped to CODE_BASE (2 GiB) and a tiny module could force that allocation, wedging
+	 * auto-analysis. Valid modules are unaffected: the largest memory in the 747-module
+	 * regression corpus is 17 pages (1 MiB), and the memory64 / multi-memory probes use 1-7
+	 * pages. Anything larger is clamped (with a warning) rather than rejected, so a spec-valid
+	 * module with a very large declared memory still imports - just with a bounded block.
+	 */
+	public final static long MAX_MEMORY_BLOCK_BYTES = MEMORY_STRIDE;
+	/* Core-spec page limit for a 32-bit-index memory: 65536 pages = 4 GiB. */
+	public final static long MAX_MEMORY32_PAGES = 65536L;
+	/* Implementation page limit for a 64-bit-index memory (memory64); well above any real module. */
+	public final static long MAX_MEMORY64_PAGES = 1L << 48;
+	/*
+	 * B5/J04/NS10: the largest table region the loader will materialise (64 MiB). A table whose
+	 * declared minimum would exceed this is *not* materialised and a clear error is logged, so a
+	 * table with min = 0xffffffff can no longer be lost silently (previously Ghidra's 16 GiB guard
+	 * refused the block and the accepted program simply had no table). The largest table in the
+	 * regression corpus has 1024 entries.
+	 */
+	public final static long MAX_TABLE_BLOCK_BYTES = 64L * 1024 * 1024;
 	/* Size of each register */
 	public final static int REG_SIZE = 16;
 
@@ -329,7 +351,21 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		if (numElements == 0) {
 			return;
 		}
-		long byteSize = elementDataType.getLength() * numElements;
+		/*
+		 * B5/J04: bound the table before sizing an allocation. `numElements` is a u32, so it can
+		 * be up to 0xffffffff; the previous code multiplied that by the element size and handed the
+		 * result to Ghidra, which refused the block and left the accepted program silently without a
+		 * table. Anything beyond the modelled limit is now skipped with an explicit diagnostic.
+		 */
+		long elementSize = elementDataType.getLength();
+		if (numElements < 0 || numElements > Integer.MAX_VALUE
+				|| (elementSize > 0 && numElements > MAX_TABLE_BLOCK_BYTES / elementSize)) {
+			Msg.error(WasmLoader.class, "Table " + tableidx + " declares " + Long.toUnsignedString(numElements)
+					+ " element(s); this exceeds the loader's table limit of " + MAX_TABLE_BLOCK_BYTES
+					+ " byte(s), so the table is not materialised (see REPORT-HARD.md)");
+			return;
+		}
+		long byteSize = elementSize * numElements;
 		Address dataStart = getTableAddress(program.getAddressFactory(), tableidx, 0);
 		try {
 			MemoryBlock block = program.getMemory().createInitializedBlock(".table" + tableidx, dataStart, byteSize, (byte) 0x00, monitor, false);
@@ -403,6 +439,51 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			return Long.MAX_VALUE;
 		}
 		return pages * MEMORY_PAGE_SIZE;
+	}
+
+	/**
+	 * B2/NS10: validate a memory's resizable limits before anything is materialised.
+	 *
+	 * <p>The core spec requires {@code initial <= maximum} for every memory (32- and 64-bit), and
+	 * caps a 32-bit memory at 65536 pages (4 GiB) / a 64-bit memory at 2^48 pages. A malformed
+	 * module can otherwise declare {@code initial = 0xFFFFFFFF} pages (J01/M03/NS12) or a
+	 * {@code min > max} pair (M01), neither of which a real engine would accept.
+	 *
+	 * @throws IOException when the declared limits are out of range; the caller lets this fail the
+	 *         import (a load failure must be visible, see {@link #load})
+	 */
+	private static void validateMemoryLimits(int memidx, WasmResizableLimits memory) throws IOException {
+		long initial = memory.getInitial();
+		long limit = memory.is64Bit() ? MAX_MEMORY64_PAGES : MAX_MEMORY32_PAGES;
+		if (memory.hasMaximum() && initial > memory.getMaximum()) {
+			throw new IOException("Memory " + memidx + " is invalid: initial size " + initial
+					+ " page(s) exceeds the declared maximum " + memory.getMaximum() + " page(s)");
+		}
+		if (initial > limit) {
+			throw new IOException("Memory " + memidx + " is invalid: initial size " + initial
+					+ " page(s) exceeds the " + (memory.is64Bit() ? "64-bit" : "32-bit") + " limit of "
+					+ limit + " page(s)");
+		}
+		if (memory.hasMaximum() && memory.getMaximum() > limit) {
+			throw new IOException("Memory " + memidx + " is invalid: maximum size " + memory.getMaximum()
+					+ " page(s) exceeds the " + (memory.is64Bit() ? "64-bit" : "32-bit") + " limit of "
+					+ limit + " page(s)");
+		}
+	}
+
+	/**
+	 * B5/NS10: validate a table's resizable limits before a block is created. The core spec
+	 * requires {@code initial <= maximum}; the byte-size bound is enforced in
+	 * {@link #createTableBlock}.
+	 *
+	 * @throws IOException when the declared limits are out of range
+	 */
+	private static void validateTableLimits(int tableidx, WasmTableType table) throws IOException {
+		WasmResizableLimits limits = table.getLimits();
+		if (limits.hasMaximum() && limits.getInitial() > limits.getMaximum()) {
+			throw new IOException("Table " + tableidx + " is invalid: initial size " + limits.getInitial()
+					+ " element(s) exceeds the declared maximum " + limits.getMaximum() + " element(s)");
+		}
 	}
 
 	private static void createGlobalBlock(Program program, DataType dataType, byte[] initBytes, int globalidx, int mutability, TaskMonitor monitor) {
@@ -495,7 +576,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		}
 	}
 
-	private void loadTables(Program program, FileBytes fileBytes, WasmModule module, TaskMonitor monitor) {
+	private void loadTables(Program program, FileBytes fileBytes, WasmModule module, TaskMonitor monitor) throws IOException {
 		monitor.setMessage("Loading tables");
 		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_TABLE);
 		List<WasmTableType> tables = module.getNonImportedTables();
@@ -515,6 +596,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 				table = tables.get(tableidx - imports.size());
 			}
 
+			validateTableLimits(tableidx, table);
 			createTableBlock(program, table.getElementDataType(), table.getLimits().getInitial(), tableidx, monitor);
 		}
 	}
@@ -577,7 +659,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		}
 	}
 
-	private void loadMemories(Program program, FileBytes fileBytes, WasmModule module, TaskMonitor monitor) {
+	private void loadMemories(Program program, FileBytes fileBytes, WasmModule module, TaskMonitor monitor) throws IOException {
 		monitor.setMessage("Loading memories");
 		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_MEMORY);
 		List<WasmResizableLimits> memories = module.getNonImportedMemories();
@@ -597,23 +679,29 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 				mem = memories.get(memidx - imports.size());
 			}
 			/*
-			 * @@MM: memory 0 keeps its historical size clamp (CODE_BASE, 2 GiB); memories
-			 * >= 1 are clamped to MEMORY_STRIDE so that one oversized memory cannot run
-			 * into the next memory's region (see getMemoryAddress).
-			 *
-			 * @@M64: the size of a 64-bit memory is a u64, so it is computed with
-			 * saturation and then clamped (and logged) like any other memory. `ram` is a
-			 * 32-bit space, so a memory larger than its clamp is only partly represented.
+			 * B2: reject an invalid limits pair (initial > maximum, or a size beyond the index
+			 * type's limit) before any block is created - see validateMemoryLimits.
 			 */
-			long clamp = (memidx == 0) ? CODE_BASE : MEMORY_STRIDE;
+			validateMemoryLimits(memidx, mem);
+			/*
+			 * @@MM: memory N is mapped into `ram` at N * MEMORY_STRIDE (see getMemoryAddress).
+			 *
+			 * B2: a memory's materialised size is bounded by MAX_MEMORY_BLOCK_BYTES (256 MiB) so a
+			 * tiny module can never force a multi-GiB block (which wedges auto-analysis). Memory 0
+			 * used to keep a 2 GiB clamp of its own; the bound is now uniform across memories.
+			 *
+			 * @@M64: the size of a 64-bit memory is a u64, so it is computed with saturation and
+			 * then clamped (and logged) like any other memory. `ram` is a 32-bit space, so a
+			 * memory larger than the bound is only partly represented.
+			 */
 			long declared = memoryByteSize(mem.getInitial());
-			long length = Math.min(declared, clamp);
+			long length = Math.min(declared, MAX_MEMORY_BLOCK_BYTES);
 			if (length != declared) {
 				Msg.warn(WasmLoader.class, "Memory " + memidx + (mem.is64Bit() ? " (i64 index)" : "")
 						+ " declares " + (declared == Long.MAX_VALUE ? "an unrepresentably large" : "" + declared)
-						+ " byte(s) but is mapped to " + length + " byte(s) (32-bit `ram` space / "
-						+ "MEMORY_STRIDE limit); accesses beyond the mapped size are not modelled "
-						+ "(see REPORT-N.md)");
+						+ " byte(s) but is mapped to " + length + " byte(s) (the loader's "
+						+ MAX_MEMORY_BLOCK_BYTES + "-byte materialisation bound); accesses beyond the "
+						+ "mapped size are not modelled (see REPORT-HARD.md)");
 			} else if (mem.is64Bit()) {
 				Msg.info(WasmLoader.class, "Memory " + memidx + " has a 64-bit (i64) index type; its "
 						+ length + " byte(s) are mapped into the 32-bit `ram` space at 0x"
@@ -779,15 +867,55 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 		try {
 			doLoad(settings.provider(), program, settings.monitor());
-		} catch (Exception e) {
+		} catch (OutOfMemoryError e) {
+			/*
+			 * B1/B2 defence in depth: the loader now bounds every allocation it drives (locals,
+			 * memories, tables), so this should be unreachable - but if it is reached, an
+			 * OutOfMemoryError must not escape to the headless process (it would abort the whole
+			 * run, see J02). Convert it into an ordinary, reported import failure.
+			 */
 			settings.monitor().setMessage("Error");
-			Msg.error(this, "Failed to load Wasm module", e);
+			Msg.error(this, "Failed to load Wasm module (out of memory): " + e.getMessage(), e);
+			throw new IOException("Failed to load Wasm module (out of memory): " + e.getMessage(), e);
+		} catch (Exception e) {
+			/*
+			 * B3/NS09/NS11: do NOT swallow the failure. Previously the module block was already
+			 * created by this point, so Ghidra reported the import as successful while everything
+			 * after the failing section had been silently dropped (a malformed custom-section name
+			 * produced `funcs=0` "success"). Rethrowing makes the load failure visible and honest.
+			 */
+			settings.monitor().setMessage("Error");
+			Msg.error(this, "Failed to load Wasm module: " + e.getMessage(), e);
+			throw new IOException("Failed to load Wasm module: " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * B1: reject a module that declares more total locals than the loader will materialise.
+	 *
+	 * <p>The per-function limit is enforced while the code section is parsed
+	 * ({@link WasmCodeEntry#MAX_FUNCTION_LOCALS}); this bounds the sum across functions, which a
+	 * hostile module could otherwise pad with many small function bodies.
+	 *
+	 * @throws IOException when the module's total declared locals exceed
+	 *         {@link WasmCodeEntry#MAX_MODULE_LOCALS}
+	 */
+	private static void validateLocalsBudget(WasmModule module) throws IOException {
+		long total = 0;
+		for (WasmCodeEntry entry : module.getNonImportedFunctions()) {
+			total += entry.getDeclaredLocalCount();
+			if (total < 0 || total > WasmCodeEntry.MAX_MODULE_LOCALS) {
+				throw new IOException("Module declares more than " + WasmCodeEntry.MAX_MODULE_LOCALS
+						+ " locals in total (the loader's module limit; see REPORT-HARD.md)");
+			}
 		}
 	}
 
 	private void doLoad(ByteProvider provider, Program program, TaskMonitor monitor) throws Exception {
 		BinaryReader reader = new BinaryReader(provider, true);
 		WasmModule module = new WasmModule(reader);
+
+		validateLocalsBudget(module);
 
 		FileBytes fileBytes = MemoryBlockUtils.createFileBytes(program, provider, 0, provider.length(), monitor);
 
@@ -796,7 +924,17 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 		for (WasmSection section : module.getSections()) {
 			monitor.setMessage("Creating section " + section.getName());
-			createData(program, program.getListing(), moduleBlock.getStart().add(section.getSectionOffset()), section.toDataType());
+			try {
+				createData(program, program.getListing(), moduleBlock.getStart().add(section.getSectionOffset()), section.toDataType());
+			} catch (Exception e) {
+				/*
+				 * B3: give the failure enough context to be actionable. The exception is rethrown
+				 * so load() reports the import as failed instead of returning a truncated program.
+				 */
+				throw new IOException("Failed to create markup for section " + section.getName()
+						+ " (id " + section.getId() + ") at file offset 0x"
+						+ Long.toHexString(section.getSectionOffset()) + ": " + e.getMessage(), e);
+			}
 		}
 
 		createCodeLengthData(program, moduleBlock, module);
