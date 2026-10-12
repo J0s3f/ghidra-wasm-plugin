@@ -343,7 +343,8 @@ swap that killed the negative harness (above), a transient `buildExtension UP-TO
 had already compiled the final sources), and a red gate caused by commit `4674bfd` adding
 `module(..., sort=False)` to `H1_05` (a parameter the shared `wasm_probe_lib.module()` does not have).
 That last one was fixed in `3e6bad2` by building `H1_05` from raw section bytes; the gate is green
-again (see §4.2). The final measured state is commit `3e6bad2`.
+again (see §4.2). The measured code/probe state is commit `3e6bad2` (this report is docs-only on top
+of it).
 
 ---
 
