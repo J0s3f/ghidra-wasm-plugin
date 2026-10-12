@@ -4,7 +4,9 @@ Module to load WebAssembly files into Ghidra, supporting disassembly and decompi
 > the useful work found in downstream forks, and is verified to build and run against Ghidra 12.1.x.
 > Prebuilt extensions are attached to the
 > [releases](https://github.com/J0s3f/ghidra-wasm-plugin/releases) of this fork. See
-> [MERGE_NOTES.md](MERGE_NOTES.md) for the list of merged changes and verification results, and
+> [MERGE_NOTES.md](MERGE_NOTES.md) for the list of merged changes and verification results
+> (the detailed per-workstream reports live on the [rchive/reports](../../tree/archive/reports/reports) branch),
+> and
 > [MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) for a feature-by-feature inventory of modern WebAssembly
 > support (with a probe harness and roadmap for extending it).
 

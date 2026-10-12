@@ -31,3 +31,15 @@ else {
 	throw new GradleException("GHIDRA_INSTALL_DIR is not defined!")
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
+
+//---------------------- keep the shipped extension lean -------------------------
+// The extension archive only needs the jar, data/, os/, ghidra_scripts/ and the metadata files. The
+// development harness, the CI configuration and the internal documentation live in the repository but
+// are not part of a release archive.
+tasks.named('buildExtension') {
+	exclude 'test-scripts/**'
+	exclude '.github/**'
+	exclude 'MERGE_NOTES.md'
+	exclude 'MODERN_WASM_GAPS.md'
+	exclude 'RELEASE_NOTES.md'
+}
