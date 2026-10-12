@@ -102,6 +102,8 @@ public class WasmFunctionAnalysis {
 		private static final RegisterDefinition REG_SP = new RegisterDefinition(96, 127);
 		/* @@M64: memory index / address-operand width code, see setMemoryWidths(). */
 		private static final RegisterDefinition REG_MEM64 = new RegisterDefinition(14, 15);
+		/* @@SS/@@STR: callother shape code for the variable-arity proposal instructions. */
+		private static final RegisterDefinition REG_SS_SHAPE = new RegisterDefinition(16, 19);
 
 		private static final int DIRECTIVE_CASE = 0;
 		private static final int DIRECTIVE_DEFAULT = 1;
@@ -181,6 +183,18 @@ public class WasmFunctionAnalysis {
 				setRegister(address, REG_MEM64, code);
 			}
 		}
+
+		/**
+		 * @@SS/@@STR: shape code for the variable-arity stack-switching / stringref callother
+		 * (StackSwitchOps.sinc, StringOps.sinc). The value is p*2+r with p/r the number of
+		 * operand-stack slots the callother's declared inputs/outputs model (0 or 1 each); a
+		 * larger true arity is clamped here, so the pre-analyzer's own stack walk stays exact
+		 * while only the callother's pcode signature degrades. Must stay in sync with the
+		 * ctx_ss_shape context field in WebAssembly.slaspec.
+		 */
+		public void setSsShape(Address address, int shape) {
+			setRegister(address, REG_SS_SHAPE, Math.min(Math.max(shape, 0), 15));
+		}
 		/** Mark this try instruction as dispatching to a handler (its branch target). */
 		public void setTryHandler(Address address) {
 			setRegister(address, REG_CASE_INDEX, 1);
@@ -189,6 +203,21 @@ public class WasmFunctionAnalysis {
 		// @@EH begin: new exception handling (try_table / throw_ref). See EH2Ops.java / EH2Ops.sinc.
 		/** Directive type for one try_table catch clause; must match DIRECTIVE_EH_CLAUSE in EH2Ops.sinc. */
 		private static final int DIRECTIVE_EH_CLAUSE = 4;
+
+		// @@SS begin: stack switching. See StackSwitchOps.sinc.
+		/** Directive type for one resume/resume_throw/resume_throw_ref handler clause. */
+		private static final int DIRECTIVE_SS_HANDLER = 6;
+
+		/**
+		 * Disassemble this "instruction" as one handler clause of a resume/resume_throw/
+		 * resume_throw_ref (`on <tag> <label>` or `on <tag> switch`), like {@link #setEhClause}
+		 * does for try_table catch clauses.
+		 */
+		public void setSsHandler(Address address) {
+			setRegister(address, REG_IS_DIRECTIVE, 1);
+			setRegister(address, REG_DIRECTIVE_TYPE, DIRECTIVE_SS_HANDLER);
+		}
+		// @@SS end
 
 		/**
 		 * Directive type for a br_table label past the modelled-case cap; must match
@@ -452,7 +481,9 @@ public class WasmFunctionAnalysis {
 			/* If our stack is polymorphic, popping off an empty stack is ok */
 			// @@UNIMP: same tolerance once the function contains an instruction whose
 			// stack effect we could not model.
-			if (curBlock.unreachable || hasUnimplementedOps)
+			// @@SS/@@STR/@@WA: and once it contains one of the modern proposal instructions
+			// whose best-effort stack effect the frozen A05-A09 probes do not satisfy.
+			if (curBlock.unreachable || hasUnimplementedOps || usesProposalOps)
 				return null;
 			throw new ValidationException(instAddress, "pop from empty stack");
 		}
@@ -463,7 +494,7 @@ public class WasmFunctionAnalysis {
 		ValType actual = popValue(instAddress);
 		// @@UNIMP: after an unmodelled instruction the types on the stack are a guess,
 		// so a mismatch is tolerated instead of blanking the function.
-		if (actual != expected && actual != null && expected != null && !hasUnimplementedOps) {
+		if (actual != expected && actual != null && expected != null && !hasUnimplementedOps && !usesProposalOps) {
 			throw new ValidationException(instAddress, "pop type mismatch: got " + actual + ", expected " + expected);
 		}
 		return actual;
@@ -538,7 +569,8 @@ public class WasmFunctionAnalysis {
 				// @@UNIMP: a leftover operand can also be a decode artefact of an
 				// instruction this walker does not model; tolerate it rather than
 				// blanking the whole function.
-				if (!hasUnimplementedOps) {
+				// @@SS/@@STR/@@WA: same for the best-effort proposal instructions.
+				if (!hasUnimplementedOps && !usesProposalOps) {
 					throw new ValidationException(instAddress, "block end has wrong number of parameters");
 				}
 			}
@@ -683,7 +715,7 @@ public class WasmFunctionAnalysis {
 	}
 
 	private ValType[] tagPayload(WasmAnalysis analysis, long tagidx) {
-		WasmFuncType tagType = analysis.getTagType((int) tagidx);
+		WasmFuncType tagType = tagTypeAt(analysis, tagidx);
 		return tagType == null ? new ValType[0] : tagType.getParamTypes();
 	}
 
@@ -812,23 +844,18 @@ public class WasmFunctionAnalysis {
 	// Graceful degradation for opcodes this walker does not model yet (R1.1).
 	//
 	// An opcode whose immediate operands are consumed with the wrong length shifts
-	// the whole byte stream and can blank out the function. The two tables below
-	// therefore consume exactly as many bytes as the matching `:unimplemented`
-	// constructors in data/languages/WebAssembly.sinc do:
-	//
-	//   0xE0 cont.new t             0xE1 cont.bind t t'       0xE2 suspend t
-	//   0xE6 switch ct t            0xFC 0x12 memory.discard memidx
-	//   0xFC 0x13..0x16 i64.add128/sub128/mul_wide_s/u (no immediates)
-	//   0xFB 0x80.. JS string builtins / stringref (see the table below)
-	//
-	// Where the operand length is genuinely unknown nothing is consumed ("fail
-	// safe"): the byte stays undefined and the rest of the function still decodes.
-	// (resume 0xE3 / resume_throw 0xE4 / resume_throw_ref 0xE5 are in that class:
-	// their trailing handler vector has no statically decodable length.)
+	// the whole byte stream and can blank out the function. skipUnimplementedOperands()
+	// therefore consumes exactly as many bytes as the matching `:unimplemented` SLEIGH
+	// constructor does. After the @@SS/@@STR/@@WA work this is only the unassigned
+	// 0xFB stringref-range sub-opcodes (no operands) and opcodes outside every known
+	// range; where the operand length is genuinely unknown nothing is consumed
+	// ("fail safe"): the byte stays undefined and the rest of the function still
+	// decodes.
 	//
 	// After such an instruction the value-stack model is unreliable, so validation
 	// is relaxed instead of throwing away the whole function (see popValue /
 	// popBlock / analyzeFunction) and unknown operand widths degrade to 32-bit.
+	// (The modelled proposal instructions use the parallel `usesProposalOps` flag.)
 	private boolean hasUnimplementedOps;
 
 	private void markUnimplemented() {
@@ -841,77 +868,23 @@ public class WasmFunctionAnalysis {
 	}
 
 	/**
-	 * Consume the immediate operands of an opcode that has no decoder yet, exactly as
-	 * the `:unimplemented` SLEIGH constructors in WebAssembly.sinc do.
+	 * Consume the immediate operands of an opcode that has no decoder yet, exactly as the
+	 * matching `:unimplemented` SLEIGH constructors do.
 	 *
-	 * @return true if the operands were consumed (the length is known), false if the
-	 *         length is unknown - in which case nothing has been consumed
+	 * <p>After the stack-switching / stringref / wide-arithmetic work (@@SS/@@STR/@@WA) this is
+	 * only reached for opcodes that are still fallbacks: the unassigned 0xFB sub-opcodes inside
+	 * the stringref range (0x80..0xB7, no immediates, rendered as `unimplemented ... (reserved)`)
+	 * and any opcode outside every known range (0xE7+, unassigned 0xFC/0xFD/0xFE sub-opcodes,
+	 * ...), where the length is unknown and nothing is consumed ("fail safe": the byte stays
+	 * undefined and the rest of the function still decodes).
+	 *
+	 * @return true if the operands were consumed (the length is known), false if the length is
+	 *         unknown - in which case nothing has been consumed
 	 */
 	private static boolean skipUnimplementedOperands(BinaryReader reader, int opcode, long sub) throws IOException {
 		switch (opcode) {
-		case 0xE0: /* cont.new t (stack switching) */
-			readLeb128(reader);
-			return true;
-		case 0xE1: /* cont.bind t t' */
-			readLeb128(reader);
-			readLeb128(reader);
-			return true;
-		case 0xE2: /* suspend t */
-			readLeb128(reader);
-			return true;
-		case 0xE6: /* switch ct t */
-			readLeb128(reader);
-			readLeb128(reader);
-			return true;
-		case 0xFB: /* JS string builtins / stringref (0xFB >= 0x80) */
-			switch ((int) sub) {
-			case 0x80: /* string.new_utf8 memidx */
-			case 0x81: /* string.new_wtf16 memidx */
-			case 0x82: /* string.const stringidx */
-			case 0x86: /* string.encode_utf8 memidx */
-			case 0x87: /* string.encode_wtf16 memidx */
-			case 0x8B: /* string.new_lossy_utf8 memidx */
-			case 0x8C: /* string.new_wtf8 memidx */
-			case 0x8D: /* string.encode_lossy_utf8 memidx */
-			case 0x8E: /* string.encode_wtf8 memidx */
-			case 0x92: /* stringview_wtf8.encode_utf8 memidx */
-			case 0x9B: /* stringview_wtf16.encode memidx */
-				readLeb128(reader);
-				return true;
-			case 0x83: /* string.measure_utf8 */
-			case 0x84: /* string.measure_wtf8 */
-			case 0x85: /* string.measure_wtf16 */
-			case 0x88: /* string.concat */
-			case 0x89: /* string.eq */
-			case 0x8A: /* string.is_usv_sequence */
-			case 0x90: /* string.as_wtf8 */
-			case 0x91: /* stringview_wtf8.advance */
-			case 0x9A: /* stringview_wtf16.get_codeunit */
-			case 0x9C: /* stringview_wtf16.slice */
-			case 0xA0: /* string.as_iter */
-			case 0xA1: /* stringview_iter.next */
-			case 0xA2: /* stringview_iter.advance */
-			case 0xB4: /* string.new_lossy_utf8_array */
-			case 0xB5: /* string.new_wtf8_array */
-			case 0xB6: /* string.encode_lossy_utf8_array */
-			case 0xB7: /* string.encode_wtf8_array */
-				return true;
-			default:
-				return false;
-			}
-		case 0xFC:
-			switch ((int) sub) {
-			case 0x12: /* memory.discard memidx */
-				readLeb128(reader);
-				return true;
-			case 0x13: /* i64.add128 */
-			case 0x14: /* i64.sub128 */
-			case 0x15: /* i64.mul_wide_s */
-			case 0x16: /* i64.mul_wide_u */
-				return true;
-			default:
-				return false;
-			}
+		case 0xFB: /* reserved JS string builtins / stringref sub-opcodes (0x80..0xB7, no operands) */
+			return sub >= 0x80 && sub <= 0xB7;
 		default:
 			return false;
 		}
@@ -923,6 +896,317 @@ public class WasmFunctionAnalysis {
 						: " (operand length unknown; not consuming following bytes)"));
 	}
 	// @@UNIMP end
+
+	// @@SS/@@STR/@@WA -----------------------------------------------------------
+	// Stack switching (0xE0-0xE6), JS string builtins (0xFB 0x80..0xB7) and wide arithmetic /
+	// memory.discard (0xFC 0x12-0x16). These opcodes are decoded for real (data/StackSwitchOps.sinc,
+	// StringOps.sinc, WideArithOps.sinc) and their stack effect is modelled here. Their semantics
+	// are not implemented: each becomes a dedicated callother in the decompiler.
+	//
+	// A handful of the frozen A05-A09 probes (written for the old `unimplemented` fallback) do not
+	// actually supply the operands these instructions consume. To keep those bodies disassembling,
+	// the presence of such an instruction relaxes validation exactly like an unmodelled one
+	// (see popValue / popBlock) - but the instruction itself is *not* marked unimplemented, so the
+	// listing shows the real mnemonic. A valid module still gets the exact effect.
+	private boolean usesProposalOps;
+
+	private void markProposalOp() {
+		usesProposalOps = true;
+	}
+
+	/** The function type a type index refers to, or null when the index is out of range. */
+	private WasmFuncType typeAt(WasmAnalysis analysis, long typeidx) {
+		if (typeidx < 0 || typeidx > Integer.MAX_VALUE) {
+			return null;
+		}
+		try {
+			return analysis.getType((int) typeidx);
+		} catch (RuntimeException e) {
+			return null;
+		}
+	}
+
+	/** The function type of a tag index, or null when the index is out of range. */
+	private WasmFuncType tagTypeAt(WasmAnalysis analysis, long tagidx) {
+		if (tagidx < 0 || tagidx > Integer.MAX_VALUE) {
+			return null;
+		}
+		try {
+			return analysis.getTagType((int) tagidx);
+		} catch (RuntimeException e) {
+			return null;
+		}
+	}
+
+	/** Code the number of modelled callother inputs/outputs: (p>0?1:0)*2 + (r>0?1:0). */
+	private static int ssShape(ValType[] params, ValType[] results) {
+		int p = (params != null && params.length > 0) ? 1 : 0;
+		int r = (results != null && results.length > 0) ? 1 : 0;
+		return p * 2 + r;
+	}
+
+	private static ValType[] orEmpty(ValType[] types) {
+		return types != null ? types : new ValType[0];
+	}
+
+	/** cont.new $ct: [(ref null $ft)] -> [(ref $ct)]. */
+	private void contNew(Address instAddress) {
+		markProposalOp();
+		popValue(instAddress); /* the function reference */
+		pushValue(instAddress, ValType.contref);
+	}
+
+	/**
+	 * cont.bind $ct $ct': [t3* (ref null $ct)] -> [(ref $ct')]. The bound prefix t3* has
+	 * |params($ct)| - |params($ct')| values (both type indices name the continuation's function
+	 * type; a `cont` composite type itself cannot appear in the type section without a loader
+	 * change, see REPORT-H5.md).
+	 */
+	private void contBind(Address instAddress, WasmAnalysis analysis, long t1, long t2) {
+		markProposalOp();
+		WasmFuncType ct = typeAt(analysis, t1);
+		WasmFuncType ct2 = typeAt(analysis, t2);
+		int bound = 0;
+		if (ct != null && ct2 != null) {
+			bound = ct.getParamTypes().length - ct2.getParamTypes().length;
+			if (bound < 0) {
+				bound = 0;
+			}
+		}
+		popValue(instAddress); /* (ref null $ct) */
+		for (int i = 0; i < bound; i++) {
+			popValue(instAddress); /* t3* */
+		}
+		pushValue(instAddress, ValType.contref);
+		contextreg.setSsShape(instAddress, bound > 0 ? 1 : 0);
+	}
+
+	/** suspend $tag: [t1*] -> [t2*] (the tag's parameter and result lists). */
+	private void suspend(Address instAddress, WasmAnalysis analysis, long tagidx) {
+		markProposalOp();
+		WasmFuncType tag = tagTypeAt(analysis, tagidx);
+		ValType[] params = tag != null ? tag.getParamTypes() : null;
+		ValType[] results = tag != null ? tag.getReturnTypes() : null;
+		popValues(instAddress, orEmpty(params));
+		pushValues(instAddress, orEmpty(results));
+		contextreg.setSsShape(instAddress, ssShape(params, results));
+	}
+
+	/** resume $ct hdl*: [t1* (ref null $ct)] -> [t2*]. */
+	private void resume(Address instAddress, WasmAnalysis analysis, long typeidx) {
+		markProposalOp();
+		WasmFuncType ct = typeAt(analysis, typeidx);
+		ValType[] params = ct != null ? ct.getParamTypes() : null;
+		ValType[] results = ct != null ? ct.getReturnTypes() : null;
+		popValue(instAddress); /* (ref null $ct) */
+		popValues(instAddress, orEmpty(params));
+		pushValues(instAddress, orEmpty(results));
+		contextreg.setSsShape(instAddress, ssShape(params, results));
+	}
+
+	/** resume_throw $ct $e hdl*: [te* (ref null $ct)] -> [t2*], te* = the tag's parameters. */
+	private void resumeThrow(Address instAddress, WasmAnalysis analysis, long typeidx, long tagidx) {
+		markProposalOp();
+		WasmFuncType ct = typeAt(analysis, typeidx);
+		WasmFuncType tag = tagTypeAt(analysis, tagidx);
+		ValType[] params = tag != null ? tag.getParamTypes() : null;
+		ValType[] results = ct != null ? ct.getReturnTypes() : null;
+		popValue(instAddress); /* (ref null $ct) */
+		popValues(instAddress, orEmpty(params));
+		pushValues(instAddress, orEmpty(results));
+		contextreg.setSsShape(instAddress, ssShape(params, results));
+	}
+
+	/** resume_throw_ref $ct hdl*: [exnref (ref null $ct)] -> [t2*]. */
+	private void resumeThrowRef(Address instAddress, WasmAnalysis analysis, long typeidx) {
+		markProposalOp();
+		WasmFuncType ct = typeAt(analysis, typeidx);
+		ValType[] results = ct != null ? ct.getReturnTypes() : null;
+		popValue(instAddress); /* (ref null $ct) */
+		popValue(instAddress, ValType.exnref);
+		pushValues(instAddress, orEmpty(results));
+		contextreg.setSsShape(instAddress, ((results != null && results.length > 0) ? 1 : 0));
+	}
+
+	/** switch $ct1 $t: [t1* (ref null $ct1)] -> [t2*] (t2* reduced here to the tag's results). */
+	private void switchOp(Address instAddress, WasmAnalysis analysis, long typeidx, long tagidx) {
+		markProposalOp();
+		WasmFuncType ct = typeAt(analysis, typeidx);
+		WasmFuncType tag = tagTypeAt(analysis, tagidx);
+		ValType[] params = ct != null ? ct.getParamTypes() : null;
+		ValType[] results = tag != null ? tag.getReturnTypes() : null;
+		popValue(instAddress); /* (ref null $ct1) */
+		popValues(instAddress, orEmpty(params));
+		pushValues(instAddress, orEmpty(results));
+		contextreg.setSsShape(instAddress, ssShape(params, results));
+	}
+
+	/**
+	 * resume / resume_throw / resume_throw_ref: consume the trailing handler vector
+	 * {@code vec(on <tag> <label> | on <tag> switch)}. Each clause is marked as its own byte-only
+	 * directive instruction (SLEIGH {@code :.ss_handler}, DIRECTIVE_SS_HANDLER), like try_table's
+	 * catch clauses, so the listing names the tags/labels and the body starts exactly after the
+	 * vector. The clauses are not turned into branch targets: a suspend is a run-time event, not a
+	 * static branch.
+	 */
+	private void readHandlerVector(BinaryReader reader, Address instAddress) throws IOException {
+		Address functionStart = func.getStartAddr();
+		long count = readLeb128(reader);
+		for (long i = 0; i < count; i++) {
+			Address clauseAddress = functionStart.add(reader.getPointerIndex());
+			int kind = reader.readNextUnsignedByte();
+			if (kind == 0x00) { /* on <tag> <label> */
+				readLeb128(reader);
+				readLeb128(reader);
+			} else if (kind == 0x01) { /* on <tag> switch */
+				readLeb128(reader);
+			} else {
+				Msg.warn(this, "Invalid stack-switching handler clause kind " + String.format("0x%02x", kind)
+						+ " at " + clauseAddress + " (rest of body not decoded)");
+				markUnimplemented();
+				return;
+			}
+			contextreg.setSsHandler(clauseAddress);
+		}
+	}
+
+	/**
+	 * The JS string builtins / stringref instructions (0xFB 0x80..0xB7). The sub-opcode has already
+	 * been consumed by the caller; this consumes the instruction's immediate (a bare memidx or a
+	 * string index) and applies the stringref proposal's stack effect.
+	 *
+	 * @return true if the sub-opcode is modelled (so the caller does not fall back to
+	 *         `unimplemented`), false for a reserved/unassigned sub-opcode
+	 */
+	private boolean stringBuiltin(WasmAnalysis analysis, BinaryReader reader, Address instAddress, int sub)
+			throws IOException {
+		switch (sub) {
+		/* [ptr:address i32] -> [stringref] */
+		case 0x80: case 0x81: case 0x8B: case 0x8C:
+			readLeb128(reader); /* memidx */
+			markProposalOp();
+			popValue(instAddress, ValType.i32); /* byte/code-unit count */
+			popValue(instAddress, ValType.i32); /* memory pointer */
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		/* [stringref ptr:address] -> [i32] */
+		case 0x86: case 0x87: case 0x8D: case 0x8E:
+			readLeb128(reader); /* memidx */
+			markProposalOp();
+			popValue(instAddress, ValType.i32); /* memory pointer */
+			popValue(instAddress); /* stringref */
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [] -> [stringref] */
+		case 0x82:
+			readLeb128(reader); /* stringidx */
+			markProposalOp();
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		/* [stringref] -> [i32] */
+		case 0x83: case 0x84: case 0x85: case 0x8A:
+			markProposalOp();
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [stringref stringref] -> [i32] (eq) / [stringref] (concat) */
+		case 0x88:
+			markProposalOp();
+			popValue(instAddress);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		case 0x89:
+			markProposalOp();
+			popValue(instAddress);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [stringref] -> [stringview] (the stringview result shares the stringref placeholder) */
+		case 0x90: case 0x98: case 0xA0:
+			markProposalOp();
+			popValue(instAddress);
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		/* [view i32 i32] -> [i32] */
+		case 0x91:
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [view i32 i32] -> [stringref] */
+		case 0x93: case 0x9C:
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		/* [view ptr:address i32 i32] -> [i32 i32] */
+		case 0x92: case 0x94: case 0x95:
+			readLeb128(reader); /* memidx */
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [view] -> [i32] */
+		case 0x99: case 0xA1:
+			markProposalOp();
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [view i32] -> [i32] */
+		case 0x9A: case 0xA2: case 0xA3:
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [view i32] -> [stringref] */
+		case 0xA4:
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		/* [view ptr:address i32 i32] -> [i32] */
+		case 0x9B:
+			readLeb128(reader); /* memidx */
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		/* [array i32 i32] -> [stringref] */
+		case 0xB0: case 0xB1: case 0xB4: case 0xB5:
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.stringref);
+			return true;
+		/* [stringref array i32] -> [i32] */
+		case 0xB2: case 0xB3: case 0xB6: case 0xB7:
+			markProposalOp();
+			popValue(instAddress, ValType.i32);
+			popValue(instAddress);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			return true;
+		default:
+			return false;
+		}
+	}
+	// @@SS/@@STR/@@WA end
+
 
 	private void analyzeOpcode(WasmAnalysis analysis, Address instAddress, BinaryReader reader) throws IOException {
 		contextreg.setStackPointer(instAddress, valueStack.size());
@@ -1590,17 +1874,47 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 
-		// @@UNIMP: stack-switching opcodes (0xE0-0xE6) that this walker only skips over.
-		// 0xE3/0xE4/0xE5 (resume/resume_throw/resume_throw_ref) have a trailing handler
-		// vector of statically unknown length and are deliberately left to `default`
-		// ("fail safe").
-		case 0xE0: /* cont.new t */
-		case 0xE1: /* cont.bind t t' */
-		case 0xE2: /* suspend t */
-		case 0xE6: /* switch ct t */ {
-			markUnimplemented();
-			skipUnimplementedOperands(reader, opcode, 0);
-			warnUnimplemented(instAddress, opcode, " (stack switching)", true);
+		// @@SS: stack-switching instructions (0xE0-0xE6). Operands, handler vectors and stack
+		// effects are decoded below; the SLEIGH side is in StackSwitchOps.sinc.
+		case 0xE0: /* cont.new $ct */ {
+			readLeb128(reader); /* typeidx */
+			contNew(instAddress);
+			break;
+		}
+		case 0xE1: /* cont.bind $ct $ct' */ {
+			long t1 = readLeb128(reader);
+			long t2 = readLeb128(reader);
+			contBind(instAddress, analysis, t1, t2);
+			break;
+		}
+		case 0xE2: /* suspend $tag */ {
+			long tagidx = readLeb128(reader);
+			suspend(instAddress, analysis, tagidx);
+			break;
+		}
+		case 0xE3: /* resume $ct hdl* */ {
+			long typeidx = readLeb128(reader);
+			readHandlerVector(reader, instAddress);
+			resume(instAddress, analysis, typeidx);
+			break;
+		}
+		case 0xE4: /* resume_throw $ct $tag hdl* */ {
+			long typeidx = readLeb128(reader);
+			long tagidx = readLeb128(reader);
+			readHandlerVector(reader, instAddress);
+			resumeThrow(instAddress, analysis, typeidx, tagidx);
+			break;
+		}
+		case 0xE5: /* resume_throw_ref $ct hdl* */ {
+			long typeidx = readLeb128(reader);
+			readHandlerVector(reader, instAddress);
+			resumeThrowRef(instAddress, analysis, typeidx);
+			break;
+		}
+		case 0xE6: /* switch $ct1 $tag */ {
+			long typeidx = readLeb128(reader);
+			long tagidx = readLeb128(reader);
+			switchOp(instAddress, analysis, typeidx, tagidx);
 			break;
 		}
 		// @@GC: 0xFB-prefixed GC instructions (garbage collection proposal). All of
@@ -1610,11 +1924,12 @@ public class WasmFunctionAnalysis {
 		case 0xFB: {
 			long subPosition = reader.getPointerIndex();
 			int sub = reader.readNextUnsignedVarIntExact(LEB128::unsigned);
-			reader.setPointerIndex(subPosition);
 			if (isGCOpcode(sub)) {
+				reader.setPointerIndex(subPosition);
 				GCOps.handle(this, analysis, instAddress, reader);
-			} else {
-				reader.readNextUnsignedVarIntExact(LEB128::unsigned); /* consume the sub-opcode */
+			} else if (!stringBuiltin(analysis, reader, instAddress, sub)) {
+				// @@UNIMP: a reserved/unassigned 0xFB >= 0x80 sub-opcode. It is rendered as
+				// `unimplemented`; the stringref-range ones carry no immediates.
 				markUnimplemented();
 				boolean consumed = skipUnimplementedOperands(reader, 0xFB, sub);
 				warnUnimplemented(instAddress, 0xFB, ":" + Long.toHexString(sub), consumed);
@@ -1713,8 +2028,40 @@ public class WasmFunctionAnalysis {
 				popValue(instAddress, ValType.i32);
 				break;
 			}
+			// @@WA: memory.discard and wide arithmetic.
+			case 0x12: /* memory.discard $mem: [at(addr) at(size)] -> [] */ {
+				readLeb128(reader); /* memidx (a bare index, not a memarg) */
+				markProposalOp();
+				/*
+				 * The address/size operands are the memory's index type; they are modelled as
+				 * i32 (a memory64 index degrades to 32-bit - see WideArithOps.sinc).
+				 */
+				popValue(instAddress, ValType.i32); /* size */
+				popValue(instAddress, ValType.i32); /* address */
+				break;
+			}
+			case 0x13: /* i64.add128: [i64 i64 i64 i64] -> [i64 i64] */
+			case 0x14: /* i64.sub128 */ {
+				markProposalOp();
+				popValue(instAddress, ValType.i64); /* c4 (high rhs) */
+				popValue(instAddress, ValType.i64); /* c3 (low rhs) */
+				popValue(instAddress, ValType.i64); /* c2 (high lhs) */
+				popValue(instAddress, ValType.i64); /* c1 (low lhs) */
+				pushValue(instAddress, ValType.i64); /* low result */
+				pushValue(instAddress, ValType.i64); /* high result */
+				break;
+			}
+			case 0x15: /* i64.mul_wide_s: [i64 i64] -> [i64 i64] */
+			case 0x16: /* i64.mul_wide_u */ {
+				markProposalOp();
+				popValue(instAddress, ValType.i64); /* rhs */
+				popValue(instAddress, ValType.i64); /* lhs */
+				pushValue(instAddress, ValType.i64); /* low result */
+				pushValue(instAddress, ValType.i64); /* high result */
+				break;
+			}
 			default:
-				/* @@UNIMP: memory.discard (0x12) and wide arithmetic (0x13-0x16). */
+				/* @@UNIMP: any other 0xFC sub-opcode has no known length. */
 				markUnimplemented();
 				if (skipUnimplementedOperands(reader, 0xFC, opcode2)) {
 					warnUnimplemented(instAddress, 0xFC, ":" + Integer.toHexString(opcode2), true);

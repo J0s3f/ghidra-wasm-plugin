@@ -1,0 +1,63 @@
+# @@WA -- WebAssembly wide arithmetic and memory.discard (0xFC prefix), added for wasm-ghidra.
+#
+#   0xFC 0x12  memory.discard $mem      : [at at] -> []            (memory-control proposal)
+#   0xFC 0x13  i64.add128               : [i64 i64 i64 i64] -> [i64 i64]
+#   0xFC 0x14  i64.sub128               : [i64 i64 i64 i64] -> [i64 i64]
+#   0xFC 0x15  i64.mul_wide_s           : [i64 i64] -> [i64 i64]
+#   0xFC 0x16  i64.mul_wide_u           : [i64 i64] -> [i64 i64]
+#
+# The 128-bit operands/results of add128/sub128 are the (low, high) i64 halves, pushed low
+# first: the top four slots are (c4 hi rhs)(c3 lo rhs)(c2 hi lhs)(c1 lo lhs), and the two
+# results are pushed low first. mul_wide_* takes two i64 and returns the 128-bit product as
+# two i64 (low, high).
+#
+# The encoding of memory.discard was re-checked against the reference implementation
+# (wasmparser `visit_0xfc_operator`: `0x12 => read_var_u32()`): the immediate is a BARE memidx,
+# not a memarg. Its two operands are the memory's index type (address, size); this plugin
+# models them as i32 (a memory64 index degrades to 32-bit here - see REPORT-H5.md).
+#
+# Each instruction is one callother whose declared inputs/outputs mirror the stack effect, so
+# the decompiler shows the operation and its result. SLEIGH cannot assign two outputs from one
+# callother, so the two 64-bit halves of a 128-bit result come from one 128-bit (16-byte)
+# callother output that is then split; a 16-byte value is packed the same way for add128.
+
+define pcodeop memory_discard;
+define pcodeop i64_add128;
+define pcodeop i64_sub128;
+define pcodeop i64_mul_wide_s;
+define pcodeop i64_mul_wide_u;
+
+# [at(addr) at(size)] -> []
+:memory.discard memidx_label is opc=0xFC; opc2_18; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	memory_discard(memidx_label:4, sp2_32, sp1_32);
+}
+
+# [c1 c2 c3 c4] (c1 = low lhs, c2 = high lhs, c3 = low rhs, c4 = high rhs) -> [r_lo r_hi]
+:i64.add128 is opc=0xFC; opc2_19; sp1_64; sp2_64; sp3_64; sp4_64; ctx_is_directive=0 {
+	local r:16 = i64_add128(sp4_64, sp3_64, sp2_64, sp1_64);
+	local rhigh:16 = r >> 64;
+	sp4_64 = r:8;
+	sp3_64 = rhigh:8;
+}
+
+:i64.sub128 is opc=0xFC; opc2_20; sp1_64; sp2_64; sp3_64; sp4_64; ctx_is_directive=0 {
+	local r:16 = i64_sub128(sp4_64, sp3_64, sp2_64, sp1_64);
+	local rhigh:16 = r >> 64;
+	sp4_64 = r:8;
+	sp3_64 = rhigh:8;
+}
+
+# [c1 lhs c2 rhs] -> [r_lo r_hi]
+:i64.mul_wide_s is opc=0xFC; opc2_21; sp1_64; sp2_64; ctx_is_directive=0 {
+	local r:16 = i64_mul_wide_s(sp2_64, sp1_64);
+	local rhigh:16 = r >> 64;
+	sp2_64 = r:8;
+	sp1_64 = rhigh:8;
+}
+
+:i64.mul_wide_u is opc=0xFC; opc2_22; sp1_64; sp2_64; ctx_is_directive=0 {
+	local r:16 = i64_mul_wide_u(sp2_64, sp1_64);
+	local rhigh:16 = r >> 64;
+	sp2_64 = r:8;
+	sp1_64 = rhigh:8;
+}

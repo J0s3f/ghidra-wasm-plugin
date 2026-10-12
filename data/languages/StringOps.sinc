@@ -1,0 +1,278 @@
+# @@STR -- WebAssembly JS string builtins / stringref (0xFB 0x80..0xB7), added for wasm-ghidra.
+#
+# All instructions use the 0xFB prefix followed by a two-byte LEB128 sub-opcode (0x80..0xB7).
+# The opcode values and operand shapes are taken from the stringref proposal's "Binary encoding"
+# table. Every assigned sub-opcode in the range decodes; the unassigned ones (0x8F, 0x96, 0x97,
+# 0x9D-0x9F, 0xA5-0xAF) decode as `unimplemented` (reserved) so that literally no byte in the
+# range is left undefined - the pre-analyzer consumes the same two prefix bytes.
+#
+# Stack effects (stringref proposal). `$mem` operands are bare memidx immediates; address-typed
+# operands are modelled as i32 (a memory64 index degrades to 32-bit for these instructions - see
+# REPORT-H5.md). Strings and stringviews are opaque 4-byte references.
+#
+#   string.new_utf8 $mem           [ptr i32]        -> [stringref]
+#   string.new_wtf16 $mem          [ptr i32]        -> [stringref]
+#   string.const $idx              []               -> [stringref]
+#   string.measure_utf8            [stringref]      -> [i32]
+#   string.measure_wtf8            [stringref]      -> [i32]
+#   string.measure_wtf16           [stringref]      -> [i32]
+#   string.encode_utf8 $mem        [stringref ptr]  -> [i32]
+#   string.encode_wtf16 $mem       [stringref ptr]  -> [i32]
+#   string.concat                  [stringref stringref] -> [stringref]
+#   string.eq                      [stringref stringref] -> [i32]
+#   string.is_usv_sequence         [stringref]      -> [i32]
+#   string.new_lossy_utf8 $mem     [ptr i32]        -> [stringref]
+#   string.new_wtf8 $mem           [ptr i32]        -> [stringref]
+#   string.encode_lossy_utf8 $mem  [stringref ptr]  -> [i32]
+#   string.encode_wtf8 $mem        [stringref ptr]  -> [i32]
+#   string.as_wtf8                 [stringref]      -> [stringview_wtf8]
+#   stringview_wtf8.advance        [view i32 i32]   -> [i32]
+#   stringview_wtf8.encode_utf8 $mem      [view ptr i32 i32] -> [i32 i32]
+#   stringview_wtf8.encode_lossy_utf8 $mem [view ptr i32 i32] -> [i32 i32]
+#   stringview_wtf8.encode_wtf8 $mem      [view ptr i32 i32] -> [i32 i32]
+#   stringview_wtf8.slice          [view i32 i32]   -> [stringref]
+#   string.as_wtf16                [stringref]      -> [stringview_wtf16]
+#   stringview_wtf16.length        [view]           -> [i32]
+#   stringview_wtf16.get_codeunit  [view i32]       -> [i32]
+#   stringview_wtf16.encode $mem   [view ptr i32 i32] -> [i32]
+#   stringview_wtf16.slice         [view i32 i32]   -> [stringref]
+#   string.as_iter                 [stringref]      -> [stringview_iter]
+#   stringview_iter.next           [view]           -> [i32]
+#   stringview_iter.advance        [view i32]       -> [i32]
+#   stringview_iter.rewind         [view i32]       -> [i32]
+#   stringview_iter.slice          [view i32]       -> [stringref]
+#   string.new_utf8_array          [array i32 i32]  -> [stringref]
+#   string.new_wtf16_array         [array i32 i32]  -> [stringref]
+#   string.encode_utf8_array       [stringref array i32] -> [i32]
+#   string.encode_wtf16_array      [stringref array i32] -> [i32]
+#   string.new_lossy_utf8_array    [array i32 i32]  -> [stringref]
+#   string.new_wtf8_array          [array i32 i32]  -> [stringref]
+#   string.encode_lossy_utf8_array [stringref array i32] -> [i32]
+#   string.encode_wtf8_array       [stringref array i32] -> [i32]
+#
+# Each instruction is one callother (the decompiler shows the operation and its result). SLEIGH
+# cannot assign two outputs from one callother, so the two i32 results of the
+# stringview_wtf8.encode_* family come from one 8-byte callother output that is then split.
+
+define pcodeop string_new_utf8;
+define pcodeop string_new_wtf16;
+define pcodeop string_const;
+define pcodeop string_measure_utf8;
+define pcodeop string_measure_wtf8;
+define pcodeop string_measure_wtf16;
+define pcodeop string_encode_utf8;
+define pcodeop string_encode_wtf16;
+define pcodeop string_concat;
+define pcodeop string_eq;
+define pcodeop string_is_usv_sequence;
+define pcodeop string_new_lossy_utf8;
+define pcodeop string_new_wtf8;
+define pcodeop string_encode_lossy_utf8;
+define pcodeop string_encode_wtf8;
+define pcodeop string_as_wtf8;
+define pcodeop sv_wtf8_advance;
+define pcodeop sv_wtf8_encode_utf8;
+define pcodeop sv_wtf8_encode_lossy_utf8;
+define pcodeop sv_wtf8_encode_wtf8;
+define pcodeop sv_wtf8_slice;
+define pcodeop string_as_wtf16;
+define pcodeop sv_wtf16_length;
+define pcodeop sv_wtf16_get_codeunit;
+define pcodeop sv_wtf16_encode;
+define pcodeop sv_wtf16_slice;
+define pcodeop string_as_iter;
+define pcodeop sv_iter_next;
+define pcodeop sv_iter_advance;
+define pcodeop sv_iter_rewind;
+define pcodeop sv_iter_slice;
+define pcodeop string_new_utf8_array;
+define pcodeop string_new_wtf16_array;
+define pcodeop string_encode_utf8_array;
+define pcodeop string_encode_wtf16_array;
+define pcodeop string_new_lossy_utf8_array;
+define pcodeop string_new_wtf8_array;
+define pcodeop string_encode_lossy_utf8_array;
+define pcodeop string_encode_wtf8_array;
+
+# ---------------------------------------------------------------- create from memory
+:string.new_utf8 memidx_label is opc=0xFB; opc2_128; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_new_utf8(memidx_label:4, sp2_32, sp1_32);
+}
+:string.new_wtf16 memidx_label is opc=0xFB; opc2_129; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_new_wtf16(memidx_label:4, sp2_32, sp1_32);
+}
+:string.new_lossy_utf8 memidx_label is opc=0xFB; opc2_139; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_new_lossy_utf8(memidx_label:4, sp2_32, sp1_32);
+}
+:string.new_wtf8 memidx_label is opc=0xFB; opc2_140; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_new_wtf8(memidx_label:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- literals
+:string.const stringidx is opc=0xFB; opc2_130; stringidx; sp0_32; ctx_is_directive=0 {
+	sp0_32 = string_const(stringidx:4);
+}
+
+# ---------------------------------------------------------------- measure / predicates
+:string.measure_utf8 is opc=0xFB; opc2_131; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_measure_utf8(sp1_32);
+}
+:string.measure_wtf8 is opc=0xFB; opc2_132; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_measure_wtf8(sp1_32);
+}
+:string.measure_wtf16 is opc=0xFB; opc2_133; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_measure_wtf16(sp1_32);
+}
+:string.is_usv_sequence is opc=0xFB; opc2_138; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_is_usv_sequence(sp1_32);
+}
+
+# ---------------------------------------------------------------- encode to memory
+:string.encode_utf8 memidx_label is opc=0xFB; opc2_134; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_encode_utf8(memidx_label:4, sp2_32, sp1_32);
+}
+:string.encode_wtf16 memidx_label is opc=0xFB; opc2_135; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_encode_wtf16(memidx_label:4, sp2_32, sp1_32);
+}
+:string.encode_lossy_utf8 memidx_label is opc=0xFB; opc2_141; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_encode_lossy_utf8(memidx_label:4, sp2_32, sp1_32);
+}
+:string.encode_wtf8 memidx_label is opc=0xFB; opc2_142; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_encode_wtf8(memidx_label:4, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- concat / compare
+:string.concat is opc=0xFB; opc2_136; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_concat(sp2_32, sp1_32);
+}
+:string.eq is opc=0xFB; opc2_137; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = string_eq(sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- stringview_wtf8
+:string.as_wtf8 is opc=0xFB; opc2_144; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_as_wtf8(sp1_32);
+}
+:stringview_wtf8.advance is opc=0xFB; opc2_145; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = sv_wtf8_advance(sp3_32, sp2_32, sp1_32);
+}
+:stringview_wtf8.slice is opc=0xFB; opc2_147; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = sv_wtf8_slice(sp3_32, sp2_32, sp1_32);
+}
+:stringview_wtf8.encode_utf8 memidx_label is opc=0xFB; opc2_146; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+	local r:8 = sv_wtf8_encode_utf8(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
+	local rhigh:8 = r >> 32;
+	sp4_32 = r:4;
+	sp3_32 = rhigh:4;
+}
+:stringview_wtf8.encode_lossy_utf8 memidx_label is opc=0xFB; opc2_148; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+	local r:8 = sv_wtf8_encode_lossy_utf8(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
+	local rhigh:8 = r >> 32;
+	sp4_32 = r:4;
+	sp3_32 = rhigh:4;
+}
+:stringview_wtf8.encode_wtf8 memidx_label is opc=0xFB; opc2_149; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+	local r:8 = sv_wtf8_encode_wtf8(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
+	local rhigh:8 = r >> 32;
+	sp4_32 = r:4;
+	sp3_32 = rhigh:4;
+}
+
+# ---------------------------------------------------------------- stringview_wtf16
+:string.as_wtf16 is opc=0xFB; opc2_152; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_as_wtf16(sp1_32);
+}
+:stringview_wtf16.length is opc=0xFB; opc2_153; sp1_32; ctx_is_directive=0 {
+	sp1_32 = sv_wtf16_length(sp1_32);
+}
+:stringview_wtf16.get_codeunit is opc=0xFB; opc2_154; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = sv_wtf16_get_codeunit(sp2_32, sp1_32);
+}
+:stringview_wtf16.encode memidx_label is opc=0xFB; opc2_155; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+	sp4_32 = sv_wtf16_encode(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
+}
+:stringview_wtf16.slice is opc=0xFB; opc2_156; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = sv_wtf16_slice(sp3_32, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- stringview_iter
+:string.as_iter is opc=0xFB; opc2_160; sp1_32; ctx_is_directive=0 {
+	sp1_32 = string_as_iter(sp1_32);
+}
+:stringview_iter.next is opc=0xFB; opc2_161; sp1_32; ctx_is_directive=0 {
+	sp1_32 = sv_iter_next(sp1_32);
+}
+:stringview_iter.advance is opc=0xFB; opc2_162; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = sv_iter_advance(sp2_32, sp1_32);
+}
+:stringview_iter.rewind is opc=0xFB; opc2_163; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = sv_iter_rewind(sp2_32, sp1_32);
+}
+:stringview_iter.slice is opc=0xFB; opc2_164; sp1_32; sp2_32; ctx_is_directive=0 {
+	sp2_32 = sv_iter_slice(sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- GC array <-> string
+:string.new_utf8_array is opc=0xFB; opc2_176; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_new_utf8_array(sp3_32, sp2_32, sp1_32);
+}
+:string.new_wtf16_array is opc=0xFB; opc2_177; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_new_wtf16_array(sp3_32, sp2_32, sp1_32);
+}
+:string.new_lossy_utf8_array is opc=0xFB; opc2_180; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_new_lossy_utf8_array(sp3_32, sp2_32, sp1_32);
+}
+:string.new_wtf8_array is opc=0xFB; opc2_181; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_new_wtf8_array(sp3_32, sp2_32, sp1_32);
+}
+:string.encode_utf8_array is opc=0xFB; opc2_178; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_encode_utf8_array(sp3_32, sp2_32, sp1_32);
+}
+:string.encode_wtf16_array is opc=0xFB; opc2_179; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_encode_wtf16_array(sp3_32, sp2_32, sp1_32);
+}
+:string.encode_lossy_utf8_array is opc=0xFB; opc2_182; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_encode_lossy_utf8_array(sp3_32, sp2_32, sp1_32);
+}
+:string.encode_wtf8_array is opc=0xFB; opc2_183; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+	sp3_32 = string_encode_wtf8_array(sp3_32, sp2_32, sp1_32);
+}
+
+# ---------------------------------------------------------------- reserved (0x80..0xB7)
+# Unassigned sub-opcodes in the range: rendered as `unimplemented` (visible, no immediates) so
+# that every byte in the range decodes. Must stay in sync with WasmFunctionAnalysis's
+# stringBuiltin()/skipUnimplementedOperands().
+:unimplemented "0xfb:143 string (reserved)" is opc=0xFB; opc2_143; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:150 string (reserved)" is opc=0xFB; opc2_150; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:151 string (reserved)" is opc=0xFB; opc2_151; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:157 string (reserved)" is opc=0xFB; opc2_157; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:158 string (reserved)" is opc=0xFB; opc2_158; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:159 string (reserved)" is opc=0xFB; opc2_159; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:165 string (reserved)" is opc=0xFB; opc2_165; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:166 string (reserved)" is opc=0xFB; opc2_166; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:167 string (reserved)" is opc=0xFB; opc2_167; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:168 string (reserved)" is opc=0xFB; opc2_168; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:169 string (reserved)" is opc=0xFB; opc2_169; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:170 string (reserved)" is opc=0xFB; opc2_170; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:171 string (reserved)" is opc=0xFB; opc2_171; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:172 string (reserved)" is opc=0xFB; opc2_172; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:173 string (reserved)" is opc=0xFB; opc2_173; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:174 string (reserved)" is opc=0xFB; opc2_174; ctx_is_directive=0 {
+}
+:unimplemented "0xfb:175 string (reserved)" is opc=0xFB; opc2_175; ctx_is_directive=0 {
+}

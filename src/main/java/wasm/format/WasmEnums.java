@@ -83,7 +83,20 @@ public class WasmEnums {
 		none(0x71),
 		noexternref(0x72),
 		nofuncref(0x73),
-		noexnref(0x74);
+		noexnref(0x74),
+
+		// @@SS/@@STR: placeholder reference types for the stack-switching (JSPI) and
+		// stringref proposals. The plugin models their *stack effect* (a 4-byte opaque
+		// reference on wasm32, exactly like the other reference types) but does not
+		// implement their semantics; the decompiler shows the operation via a callother.
+		//
+		// The byte values are internal placeholders, not a claim about the proposals'
+		// binary encodings: the type-section reader never produces them (0x63/0x64 stay
+		// the GC "(ref null ht)/(ref ht)" prefixes, and the stringref draft's 0x64
+		// spelling collides with that prefix, so 0x67 is used here instead). 0x68 is the
+		// abstract `cont` heap type; 0x67 is otherwise unused by this reader.
+		contref(0x68),   // (ref null $ct): continuation reference (stack switching)
+		stringref(0x67); // stringref / stringview_*: JS string builtins reference
 
 		private static final HashMap<Integer, ValType> BY_BYTE = new HashMap<>();
 		public static final DataType Undefined16 = Undefined.getUndefinedDataType(16);
@@ -124,6 +137,8 @@ public class WasmEnums {
 			case noexternref:
 			case noexnref:
 			case none:
+			case contref:
+			case stringref:
 				// All reference types are 4 bytes on wasm32 (pointer-sized)
 				return Undefined4DataType.dataType;
 			}
@@ -165,6 +180,8 @@ public class WasmEnums {
 			case nofuncref:
 			case noexnref:
 			case none:
+			case contref:
+			case stringref:
 				return 4;
 			case i64:
 			case f64:
@@ -219,7 +236,8 @@ public class WasmEnums {
 			return this == funcref || this == externref || this == exnref || 
 			       this == arrayref || this == structref || this == i31ref ||
 			       this == eqref || this == anyref || this == noexternref ||
-			       this == nofuncref || this == noexnref || this == none;
+			       this == nofuncref || this == noexnref || this == none ||
+			       this == contref || this == stringref;
 		}
 		
 		/** Returns true if this is a multi-byte valtype (ref null/ref with heaptype). */
