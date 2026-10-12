@@ -345,6 +345,34 @@ addresses and an `AddressOutOfBoundsException` that aborted the import). Verifie
 fixtures: e.g. `ram:8000009b -> fixture.rs:12`, plus inlined `core` lines; 27 entries, 3 out-of-range
 skipped; real-module regression unchanged.
 
+### 6.4 Negative-test baseline (invalid / malformed modules)
+
+`test-scripts/spectest/` gained an additive negative harness (`prepare_spec_negative.py`,
+`run_spectest_negative.ps1`, `SpecNegativeReport.java`, `parse_spec_negative.py`); the full per-file
+table is `test-scripts/spectest-NEGATIVE.md` and the analysis is `REPORT-NS.md`. All **2948 binary
+negative modules** of the pinned testsuite were classified (import-only): **59 rejected / 2889 accepted
+/ 0 crash / 0 hang**, plus a hazard pass (analysis on, one JVM per module) on the 9 extreme-metadata
+modules which produced **5 analysis hangs**.
+
+Integrator-reproduced, ranked:
+
+1. **B3 - silent truncation (high severity, new class).** `WasmLoader.load()` swallows every exception
+   from `doLoad`, so a malformed custom-section name (bad UTF-8, 53 spec modules) produces
+   `Import succeeded` with **`funcs=0`** - everything after the failing section is lost without a
+   diagnostic (probe `NS11`: a module's only function disappears; removing the 5 offending bytes gives
+   `funcs=1`).
+2. **B1/J02/B04 - absurd `locals` count (high).** `WasmCodeEntry.getLocals()`/`WasmAnalysis.getFunctions()`
+   allocate unbounded: a 30-byte module makes `WasmPreAnalyzer` throw
+   `IllegalArgumentException`/`ArrayIndexOutOfBounds`, and the curated probe kills the whole headless run
+   with an escaping `OutOfMemoryError` (see §6.2).
+3. **B2/J01/M03/NS12 - absurd memory minimum (high).** A malformed/huge memory `min` is clamped to
+   `CODE_BASE` and a **2 GiB** `.memory0` is materialised; with analysis on the run never returns
+   (17-byte probe `NS12`), and `min <= max` is not enforced.
+4. **B4/B5/B6 (medium).** Out-of-range section ids and duplicate sections are dropped invisibly; a table
+   with `min = 0xffffffff` silently loses its table; 219 modules are accepted with nothing but raw bytes.
+5. **B7 (low).** Rejection is incidental (28 "no loader matched" + 31 "no memory blocks were defined"),
+   never a loader diagnostic.
+
 ## 7. References
 
 * WebAssembly 3.0 / core spec: <https://webassembly.github.io/spec/core/>
