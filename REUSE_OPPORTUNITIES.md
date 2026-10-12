@@ -119,16 +119,25 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
      Ghidra extension is a heavy deployment dependency), and a full Java reimplementation of the
      solver is L+ with permanent maintenance cost.
 
-   **Decision procedure (to run when item 5 comes up):** after SROA lands, measure on the real
-   corpus (the 437-function module plus the 13 corpus modules) how many functions end up with
-   struct-typed parameters/locals and how many raw-offset accesses (`field_0x…`/`DAT_…`) remain.
-   If the remaining gap is large, port only the *targeted intra-procedural subset* - constraint
-   generation plus unification over memory accesses with widths/offsets (the `σN@k` part) as an
-   **optional** Java analyzer that writes recovered structs back - and skip the
-   pushdown-system/recursive-type machinery (only needed for self-referential structures). If the
-   gap is small, record the measurement and drop the port. Keeping the existing
-   `retypd-ghidra-plugin` as a documented optional third-party add-on (not vendored) remains an
-   option.
+   **Decision (measured 2026-10-13 on the real module post-SROA): do NOT port Retypd.**
+   `test-scripts/type_recovery_metric.py` over the decompiled C of all 437 functions found **591
+   constant-offset field accesses** (`*(type *)(base + 0xNN)`), dominated by pointer-like
+   parameters: `param2` 232 accesses, `param1` 187 across **38 distinct offsets**, `param3` 23,
+   `param5`/`param6` 15 - i.e. ~77 % of the signal sits on ~5 parameter bases, with ~16 candidate
+   structures (>= 2 offsets) and 10 with >= 3. Retypd's *intra-procedural* subset would type each
+   function's `paramN` independently, producing many partial per-function structs for what is one
+   shared struct per pointer in the source; the inter-procedural agreement that would merge them is
+   the part the paper's own evaluation times out on. Porting a general polymorphic solver (Python
+   engine with a venv inside a Java extension, or an L-sized Java reimplementation) is
+   disproportionate for 591 accesses, and wasm already gives us the type/call-graph structure that
+   Retypd has to infer.
+   **Replacement candidate (wasm-specific, M): call-graph-aware struct synthesis.** Direct calls are
+   static and indirect calls go through typed tables whose element lists the loader already resolves,
+   so pointer identity can be propagated across calls without any solver: cluster the observed
+   `(offset, width)` accesses per pointer class, synthesize one Ghidra struct per class, retype the
+   parameters, and let Ghidra's decompiler use it. `type_recovery_metric.py` measures the result
+   directly (target: struct-typed parameters > 0, candidate structures -> 0). Recorded in
+   `MODERN_WASM_GAPS.md` 2.3 as a candidate, not a commitment.
 
 ## 6. External input: the Decompilation Wiki (read for the type-recovery decision)
 
