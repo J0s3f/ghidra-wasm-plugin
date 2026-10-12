@@ -40,6 +40,11 @@ public class WasmNameMapSubsection extends WasmNameSubsection {
 		return nameMap.getEntry(idx);
 	}
 
+	/** The whole name map (idx -> name), for the applier analyzer. */
+	public java.util.Map<Long, String> getMap() {
+		return nameMap.getMap();
+	}
+
 	@Override
 	public void addToStructure(StructureBuilder builder) throws DuplicateNameException, IOException {
 		builder.add(nameMap, StringEscapeUtils.escapeJava(entityName) + "_names");
