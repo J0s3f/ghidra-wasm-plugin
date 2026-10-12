@@ -93,7 +93,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | New exception handling (`try_table`, `throw_ref`, `exnref`) | fixed (`REPORT-F`): probes `11`, `30`-`39` |
 | Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`): probes `12`, `F01`-`F07`; the *type model* is still coarse (see 2.3) |
 | Extended-const and GC constant expressions | fixed (`REPORT-SF` + `B14`): probes `19`, `20`, `22`-`27`, `B07`-`B15` |
-| Stack switching / JSPI (`cont.new` ... `switch`) | fixed (`REPORT-H5`): probes `H01`-`H10` (continuation *types* still open, see 2.3) |
+| Stack switching / JSPI (`cont.new` ... `switch`) | fixed (`REPORT-H5` + `REPORT-CT`): probes `H01`-`H10` (continuation *types* now parse too, so all ten classify as `wabt-gap`) |
 | JS string builtins / stringref (`0xFB >= 0x80`) | fixed (`REPORT-H5`): probes `S01`-`S10`; unassigned sub-opcodes render as `unimplemented (reserved)` |
 | Wide arithmetic (`0xFC 0x13`-`0x16`), `memory.discard` (`0xFC 0x12`) | fixed (`REPORT-H5`): probes `A07`, `A09`, `S07` |
 | `.name` subsections 3/10/11 | parsed (`REPORT-D`); label names are now **real symbols** at the branch targets (`REPORT-H6`); the remaining subsections are comment-only |
@@ -110,13 +110,13 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **B8 - `table64`, memory64 > 4 GiB** | in flight (h4); below 4 GiB is exact, above truncates into `ram` (documented) |
 | **Reference-typing precision** - every `(ref null ht)` maps to `externref` while `ref.null` pushes `anyref`, so a conformant reference-typed block/function signature fails validation (`pop type mismatch`) and its body stays undecoded | in flight (h7); probe `E15` (conformant form: 1 instr / 27 undefined bytes) |
 | **`ref.null <concrete type index>` in a function body** leaves undefined bytes (`B18`, `B28`: 3 bytes each) - the SLEIGH `:ref.null valtype` entry only matches single-byte valtypes | **fixed (h7)**: precise heap-type mapping + subtype-aware validation; `B18`/`B28` now `undefined_bytes=0`, `E15` conformant with 0 undefined bytes. Cosmetic follow-up: `ref.null` abstract heap types now print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it. Also still open: multi-byte block signatures on `try`/`try_table` (single-s33 form kept) |
-| **`cont` types** - `(cont $ft)` in the type section is rejected by the GC type parser, so continuation type indices resolve as ordinary function types | open (loader/type-section change); h5's `H01`-`H10` probes are declared `unsupported` because of it |
+| **`cont` types** - `(cont $ft)` in the type section is rejected by the GC type parser, so continuation type indices resolve as ordinary function types | **fixed (`REPORT-CT`)**: the GC type parser accepts the `0x5D cont <s33 typeidx>` composite type and resolves it to the referenced function type; h5's `H01`-`H10` probes now classify `wabt-gap`, and `CT01`-`CT05` pin the parse (valid + `cont.new`, a `resume` signature, an out-of-range index that degrades, a truncated index that is rejected, and the multi-byte s33 index) |
 | **Custom page sizes** - the limits flag decodes, but `MEMORY_PAGE_SIZE` is fixed at 64 KiB, so block sizes/addresses are wrong for a module that declares a custom page size | open (semantic, low priority for RE) |
 | **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
 | **Emulation coverage** - 9 recorded spec-`assert_*` gaps (out-of-bounds traps, `call_indirect` type mismatch, wrong trap kind, `memory.grow/size` CALLOTHER in the emulator's pcode, div/rem traps, float-to-int trunc traps, `br_table large` value, mutable-global init, NaN payload) | recorded in `REPORT-H3`; emulator coverage, not decoder gaps |
 | **Memory index >= 8 collides with `CODE_BASE`** - memory 8's block cannot be created (the loader logs it); `MEMORY_STRIDE` places memory *n* at `n << 32`, which runs into the code space | open, pre-existing design limitation (found while fixing B3; a memory index >= 9 needed >= 10 memories, which is how it surfaced) |
-| **`WasmPreAnalyzer.guessCStackGlobalForFunction`** still uses an unbounded `MemoryByteProvider` (the B3 fix bounded the `WasmAnalysis` one only) | open, low risk (left as-is to avoid perturbing the C-stack guess on existing modules) |
+| **`WasmPreAnalyzer.guessCStackGlobalForFunction`** still uses an unbounded `MemoryByteProvider` (the B3 fix bounded the `WasmAnalysis` one only) | **fixed (`REPORT-CT`)**: now bounded to the module image block's end exactly like the B3 fix; the guessed C-stack global is unchanged (fixture + real module measured, probe gate + spec-suite decode gate pass). Defensive - a wrong guess needs a module image adjacent to a mapped block, and memories are 256 MiB apart |
 | **B9** - spec-negative modules accepted as bare bytes (lenient loader) | **resolved (policy: keep accepting, warn)**: `WasmLoader.warnIfNothingLoaded` logs "Module accepted but nothing was decoded" with the declared/loaded counts whenever a module that declares content yields no functions, memories or tables; probe `J06_func_section_without_code` pins it |
 | Unassigned opcode spaces (`0xE7+`, unassigned `0xFB >= 0x80`, unassigned `0xFC`) | deliberately rendered as visible `unimplemented`, with the operand lengths mirrored in the pre-analyzer; genuinely unknown lengths fail safe |
 
@@ -409,14 +409,14 @@ A probe that is not recorded, or whose verdict changes, fails the gate; `--updat
 both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
 silently.
 
-Classification of the 173 probes after the reference-typing fix (`REPORT-H7.md`):
+Classification of the 191 probes after the continuation-type fix (`REPORT-CT.md`):
 
 | class | count | meaning |
 | --- | --- | --- |
-| `valid` | 96 | accepted by both oracles |
-| `wabt-gap` | 41 | wabt 1.0.42 is behind the final GC / typed-reference encodings; binaryen accepts |
-| `unsupported` | 26 | neither oracle implements the feature (components, stack switching, string builtins, `memory.discard`) |
-| `invalid` | 10 | deliberately invalid negative probes (malformed / overflowing bodies) |
+| `valid` | 108 | accepted by both oracles |
+| `wabt-gap` | 53 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
+| `unsupported` | 17 | neither oracle implements the feature (components, string builtins, `memory.discard`) |
+| `invalid` | 13 | deliberately invalid negative probes (malformed / overflowing bodies) |
 
 Fixtures fixed to reach this state: section-order canonicalisation in `wasm_probe_lib.module()`
 (36 probes), the multivalue export kind (8), plus 15 individual bugs - `M06` (out-of-range i64
