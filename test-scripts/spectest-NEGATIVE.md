@@ -512,13 +512,15 @@ still reported as successful.
 | --- | ---: |
 | modules | 250 |
 | functions decoded | 63 |
-| instructions | 213 |
-| modules with undefined bytes | 15 |
-| modules with an analyzer exception | 12 |
+| instructions | 216 |
+| modules with undefined bytes | 19 |
+| modules with an analyzer exception | 14 |
 | modules that crashed the run | 0 |
 
 | module | expected (testsuite) | analyzer exception |
 | --- | --- | --- |
+| `align.112.malformed.wasm` | malformed memop flags | ValidationException: ERROR Failed to analyze function unnamed_function_0 @ ram:8000001b (WasmPreAnalyzer) w... |
+| `align.113.malformed.wasm` | malformed memop flags | ValidationException: ERROR Failed to analyze function unnamed_function_0 @ ram:8000001b (WasmPreAnalyzer) w... |
 | `binary.56.malformed.wasm` | function and code section have incons... | IndexOutOfBounds: ERROR Analysis Task: Wasm Pre-Analyzer - Index: 0 (AnalysisTaskWrapper) java.lang.IndexOu... |
 | `binary.58.malformed.wasm` | function and code section have incons... | IndexOutOfBounds: ERROR Analysis Task: Wasm Pre-Analyzer - Index 1 out of bounds for length 1 (AnalysisTask... |
 | `binary.115.malformed.wasm` | unexpected content after last section | IndexOutOfBounds: ERROR Analysis Task: Wasm Pre-Analyzer - Index 1 out of bounds for length 1 (AnalysisTask... |
@@ -1563,7 +1565,7 @@ bytes), which OOMs and aborts the headless run instead of hanging.
 | imports | 92 | unlinkable | accepted | accepted-shape | incompatible import type | funcs=0 blocks=2 module=1 |
 | imports | 93 | unlinkable | accepted | accepted-shape | incompatible import type | funcs=0 blocks=2 module=1 |
 | imports | 94 | unlinkable | accepted | accepted-shape | incompatible import type | funcs=0 blocks=2 module=1 |
-| imports | 97 | invalid | accepted | accepted-shape | multiple memories | funcs=0 blocks=2 module=1 |
+| imports | 97 | invalid | accepted | accepted-shape | multiple memories | funcs=0 blocks=3 module=1 |
 | imports | 98 | invalid | accepted | accepted-shape | multiple memories | funcs=0 blocks=2 module=1 |
 | imports | 99 | invalid | accepted | accepted-empty | multiple memories | funcs=0 blocks=1 module=1 |
 | imports | 109 | unlinkable | accepted | accepted-shape | unknown import | funcs=0 blocks=2 module=1 |

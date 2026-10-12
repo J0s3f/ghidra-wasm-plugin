@@ -22,6 +22,16 @@ Everything under `test-scripts/spectest/**` is **additive**: `prepare_spec_tests
 `run_spectest.ps1`, `parse_spec_results.py` and `SpecModuleReport.java` are untouched, and the
 positive baseline still runs unchanged (§7).
 
+**Environment note (measurement validity).** The shared `ghidra-l` install in place when this work
+started contained an extension built from a *different* worktree - its `WasmLoader` was
+pre-multi-memory (`getMemoryAddress` threw for `memidx != 0`, no `MEMORY_STRIDE`). Nothing in a
+headless run reveals that, so every number below was taken **after**
+`test-scripts/build-install.ps1 -GhidraDir <ghidra-l>` installed *this* worktree's build
+(`dist/ghidra_12.1.4_PUBLIC_20261012_ghidra-wt-q.zip`, `lib/ghidra-wt-q.jar`, sha256
+`d43de914d7c9ede3...`). The rule for anyone re-running this: **build-install immediately before the
+run**, and check `Ghidra\Extensions\` afterwards (a second agent installing into the same Ghidra
+replaces the extension for everyone).
+
 ## 1. Headline
 
 All **2948 binary negative modules** of testsuite `d76759e7` were imported (wabt 1.0.42,
@@ -215,29 +225,30 @@ sections happen to parse is indistinguishable from a valid one.
 `-noanalysis` cannot show decode quality, so an evidence pass re-imported a bounded sample with
 analysis: **250 accepted malformed modules**, i.e. the whole `align`/`binary`/`binary-leb128`/
 `custom`/`global` groups plus a slice of `utf8-*`, minus the 9 hazard modules of NS-1/NS-2 (those are
-characterised individually by the hazard pass). Result (`%TEMP%\specneg-evidence`, 1.8 min):
+characterised individually by the hazard pass). Result (`%TEMP%\specneg-evidence`, 1.6 min):
 
 | metric | value |
 | --- | ---: |
 | modules | 250 (59 of them declare any code at all) |
 | functions decoded | 63 |
-| instructions decoded | 213 |
-| undefined bytes (the real decode gap) | 50, across 15 modules |
-| modules where an analyser threw | **12** |
+| instructions decoded | 216 |
+| undefined bytes (the real decode gap) | 66, across 19 modules |
+| modules where an analyser threw | **14** |
 
-The 12 exception classes are `IndexOutOfBoundsException` x6 and `EOFException` x5 from
+The 14 exception classes are `IndexOutOfBoundsException` x6 and `EOFException` x5 from
 `WasmPreAnalyzer` (e.g. `Failed to analyze function unnamed_function_0 @ ram:8000001b`, and
 `Index 1 out of bounds for length 1` for the "function and code section have inconsistent lengths"
-cases) plus one `IllegalStateException` from a custom-section memory block. Ghidra catches these per
-analysis task, logs them, and carries on - so the user gets a program that is silently only partly
-analysed, on a module the harness counted as `accepted`.
+cases), `ValidationException` x2 (also `WasmPreAnalyzer`, on `align.112/113`), and one
+`IllegalStateException` from a custom-section memory block. Ghidra catches these per analysis task,
+logs them, and carries on - so the user gets a program that is silently only partly analysed, on a
+module the harness counted as `accepted`.
 
 Take-aways:
 
-* Accepted malformed modules mostly *do* decode (few undefined bytes): the defect is not the decode
-  but NS-3/NS-4 - accepted modules whose program is empty or truncated.
-* ~5 % of the accepted malformed modules (12/250) make an analyser throw, and NS-1/NS-2 show that a
-  handful of them stall or kill the run outright.
+* Accepted malformed modules mostly *do* decode (66 undefined bytes over 250 modules): the defect is
+  not the decode but NS-3/NS-4 - accepted modules whose program is empty or truncated.
+* ~5.6 % of the accepted malformed modules (14/250) make an analyser throw, and NS-1/NS-2 show that
+  a handful of them stall or kill the run outright.
 * The bounded evidence pass deliberately excludes the 9 hazard modules; with them included it does
   not finish (measured: 24 unresolved modules after a 240 s chunk timeout).
 
