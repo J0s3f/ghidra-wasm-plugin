@@ -10,10 +10,14 @@ WebAssembly (Wasm 3.0 + active proposals).
 | R1.2 limits flags · R1.3 constant expressions · R1.5 unknown value types | **merged** (`REPORT-B.md`; plus an integrator rewrite of the expression scanner - see §2.5) |
 | 5. new exception handling (`try_table`, `throw_ref`, `exnref`) | **merged** (`REPORT-F.md`) |
 | 6. garbage collection (type section, `0xFB` instructions, GC initializers) | **merged** (`REPORT-E.md`) |
+| spec-suite findings (select after terminator, stack-variable crashes, oversized br_table) | **merged** (`REPORT-SF.md`; spec core suite now has 0 real undefined bytes and 0 decompiler failures) |
+| function-references instructions (`call_ref`, `return_call_ref`, `ref.as_non_null`, `br_on_null`, `br_on_non_null`) | **merged** (`REPORT-FR.md`; probe `12` reaches 0 undefined bytes) |
 | 0/1/2 unknown-opcode degradation + multi-memory | **merged** (`REPORT-A-DS.md`; probe 06 decodes `memidx`, probe 18 creates both memory blocks) |
-| 8. memory64 | open (64-bit addressing; limits flags already fixed) |
-| 9. `.name` extras + application | in flight |
-| 7. multi-value returns | in flight |
+| 8. memory64 | **merged** (`REPORT-N.md`): index-type propagation, `ctx_mem64` widths, 64-bit address computation truncated into `ram` (exact below 4 GiB, documented), loader bounds; probe `05` decodes, 8 new `M64_*` probes |
+| 9. `.name` extras + application | in flight (re-dispatched; `REPORT-D.md`) |
+| 4. negative spec tests (`assert_invalid`/`assert_malformed`) | in flight (`REPORT-NS.md`) |
+| robustness fixes: `B04` escaping `OutOfMemoryError`, `M03` 2 GiB block (see §6.2) | queued |
+| 7. multi-value returns | **merged** (`REPORT-MV.md`): functions return a packed struct, all results visible, callers consume them (7 multi-result functions in the real module now carry `wasm_ret_i32_i32*` prototypes) |
 | 10. component model loader | **merged** (`REPORT-C2.md`; embedded core modules import as real programs) |
 | 4. spec-test harness | **merged** (`REPORT-G.md`; see §6) |
 | 4. CI probe gate (probes + fixture baseline) | **merged** (`.github/workflows/probes.yml`, `expected-results.json` - 93 probes) |
@@ -76,9 +80,9 @@ not (fully) disassembled at all, which is worse than a wrong mnemonic.
 | --- | --- | --- |
 | Multi-memory (memarg `memidx`) | `i32.load align=0x42 offset=0x1` plus a spurious `unreachable`; instruction boundaries shift | alignment bit 6 (`0x40`) is not interpreted; only two LEB fields are read (`loadaddr`/`storeaddr`/`loadaddr2`/`atomicaddr3` in the `.sinc` files, `readLeb128` pairs in `WasmFunctionAnalysis.java`) |
 | Multi-memory (loading) | only `.memory0` is created; `(memory 1)(memory 7)` loses the second memory entirely | the loader deliberately refuses non-zero memory indices: `WasmLoader.getMemoryAddress()` throws for `memidx != 0` and `loadMemories()` `continue`s past them (tables *do* support multiple indices, via the `table` address space) |
-| memory64 | Pre-analyzer aborts: `Validation error … pop type mismatch: got i64, expected i32` → body undefined (probe `05`: 1 instr, 6 undefined bytes) | address operands are hardwired to 32-bit (`sp1_32`); the index type is unknown; memory blocks are additionally clamped to `CODE_BASE` (0x80000000) in `WasmLoader`, which cannot represent ≥ 2 GiB memories |
+| memory64 | **fixed** (`REPORT-N.md`): the index type propagates to the pre-analyzer and to the SLEIGH address computation (`ctx_mem64`); addresses are computed in 64-bit pcode and truncated into the 32-bit `ram` space (exact below 4 GiB, wraps above — documented, and the listing marks the form `(i64 index)`); probe `05` now decodes with `undefined_bytes=0` | index type used to be hardwired to 32-bit (`sp1_32`) and the loader clamped every memory to `CODE_BASE` |
 | Shared / 64-bit / custom-page-size limits | shared/`maximum`/index-type fields are dropped from the parsed limits, and a following limits entry desyncs | `WasmResizableLimits` only reads a `maximum` when `flags == 1` (shared = 3, memory64 = 4/5, page-size = 8) |
-| Multi-value returns | `(func (result i32 i32))` becomes `int f(void)`; extra results disappear, callers drop into nothing | `WasmSignatureAnalyzer` still has upstream's `TODO handle multiple returns`; only `returns[0]` is applied |
+| Multi-value returns | **fixed** (`REPORT-MV.md`): results are returned as a packed struct through the `__wasm` output pentry (plus tail-padding zeroing in the epilogue), so every result is visible and callers consume them all | `WasmSignatureAnalyzer` used to apply only `returns[0]` |
 | GC `struct`/`array` type entries | type section loads, but a `0x5F` struct is parsed as a function type (form byte read, value ignored) | `WasmFuncType` assumes `0x60`; `WasmTypeSection` has no `rec`/`sub`/`struct`/`array` handling |
 | `.name` subsections | label (3) explicitly `TODO`; field (10)/tag (11) become `WasmNameUnknownSubsection`; type/table/memory/elem/data names are parsed but never applied to symbols | `WasmNameSubsection.createSubsection`, `WasmLoader` (only function/global/local names are applied) |
 
@@ -116,7 +120,7 @@ bytes change.
 | 02 | `externref_param` | 1 | 3 | 0 | 1/0 | ok |
 | 03 | `externref_table` | 1 | 4 | 0 | 1/0 | ok (`.table0` created) |
 | 04 | `shared_memory_atomic` | 1 | 4 | 0 | 1/0 | **fixed (R1.2)**: limits flags decode fully (`shared`/`maximum`/64-bit/page-size preserved) |
-| 05 | `memory64` | 1 | **1** | **6** | 1/0 | analysis aborts (`i64`/`i32` mismatch), body undefined |
+| 05 | `memory64` | 1 | **4** | **0** | 1/0 | **fixed (memory64)**: 64-bit index decodes and the body analyses cleanly |
 | 06 | `multi_memory` | 1 | 7 | 0 | 1/0 | **wrong**: `i32.load align=0x42 offset=0x1` + spurious `unreachable` |
 | 07 | `data_count_bulk_memory` | 1 | 7 | 0 | 1/0 | ok |
 | 08 | `gc_struct_type` | 1 | 2 | 0 | 1/0 | **fixed (GC)**: `type_0` is now a real `gc_struct_type` with named fields |
