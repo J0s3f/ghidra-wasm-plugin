@@ -74,7 +74,7 @@ not (fully) disassembled at all, which is worse than a wrong mnemonic.
 | Typed function references: `(ref null $t)` / `(ref $t)`, `call_ref` (0x14), `return_call_ref` (0x15), `br_on_null`, `br_on_non_null`, `ref.as_non_null` | `NullPointerException` in `WasmSignatureAnalyzer` (`ValType.asDataType()` on `null`), then `ValType.getSize()` NPE inside the decompiler process → **decompilation fails entirely** (probe `12`) | crash |
 | GC instructions (0xFB): `struct.*`, `array.*`, `i31.*`, `ref.test/cast`, `br_on_cast*`, `any/extern.convert_*` | `0xFB` is not an opcode in any table; desync (probe `09`: 1 undefined byte) | decode gap |
 | Extended-const constant expressions (`i32.add` etc. in globals/offsets) | **Import fails**: `IllegalArgumentException: Missing end byte` (probe `19`) | hard load failure |
-| GC constant expressions (`struct.new`, `ref.i31` in globals/offsets) | **Import fails**: `Invalid instruction opcode 251 in constant expression` (probe `20`) | hard load failure |
+| GC constant expressions (`struct.new`, `ref.i31` in globals/offsets) | **Import fails**: `Invalid instruction opcode 251 in constant expression` for an inline `0xFB` opcode, or `… opcode 0 …` once a 2-byte `(ref 0)` valtype precedes it (the valtype is unhandled so the initializer parse is misaligned) — probe `20` | hard load failure |
 | Custom page sizes (`memory.discard`), wide arithmetic | `0xFC` coverage stops at sub-opcode `0x11` | decode gap |
 | Stack switching / JSPI (`cont.new`, `cont.bind`, `suspend`, `resume`, `switch`, contref types) | no mnemonics (Emscripten `-sASYNCIFY=2` emits this) | decode gap |
 | JS string builtins / stringref (`string.new_utf8`, `string.concat`, …) | no mnemonics (0xFB ≥ 0x80) | decode gap |
@@ -88,6 +88,11 @@ item below names the probes that must change when it is finished.
 
 Recorded on the Ghidra 12.1.4 build of commit `430cbe2`; `u=` is `undefined_bytes`, `d=` is
 `decompiled/failed`. Use this as the before-picture when implementing a roadmap item.
+
+Note: probe `20` was hardened after the first inventory — it is now a spec-valid module
+(`(global (ref 0) (struct.new 0))`); the earlier revision was missing the heap-type byte of the
+`(ref 0)` valtype, which made the parser report a different opcode. Re-measure a probe whenever its
+bytes change.
 
 | # | Probe | funcs | instrs | u | d | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -110,7 +115,7 @@ Recorded on the Ghidra 12.1.4 build of commit `430cbe2`; `u=` is `undefined_byte
 | 17 | `multivalue_block` | 1 | 7 | 0 | 1/0 | ok |
 | 18 | `shared_then_plain_memory` | 1 | 3 | 0 | 1/0 | **only `.memory0`** (loader skips `memidx != 0`) |
 | 19 | `extended_const_global` | – | – | – | – | **import failed** (`Missing end byte`) |
-| 20 | `gc_global_init` | – | – | – | – | **import failed** (`Invalid instruction opcode 251 in constant expression`) |
+| 20 | `gc_global_init` (`(global (ref 0) (struct.new 0))`) | – | – | – | – | **import failed** (`Invalid instruction opcode 0 in constant expression` — the 2-byte `(ref 0)` valtype is unhandled, so the initializer parse is misaligned) |
 | 21 | `component_model` | – | – | – | – | **import failed** (`No load spec found`) |
 
 ## 3. Why this matters by toolchain
