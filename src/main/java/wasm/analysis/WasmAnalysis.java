@@ -32,6 +32,7 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryBlock;
 import wasm.WasmLoader;
 import wasm.format.WasmEnums.ValType;
 import wasm.format.WasmModule;
@@ -50,7 +51,25 @@ public class WasmAnalysis {
 		return TransientProgramProperties.getProperty(program, WasmAnalysis.class, SCOPE.PROGRAM, WasmAnalysis.class, () -> {
 			Memory mem = program.getMemory();
 			Address moduleStart = WasmLoader.getModuleAddress(program.getAddressFactory());
-			ByteProvider memByteProvider = new MemoryByteProvider(mem, moduleStart);
+			/*
+			 * @@MM: bound the re-parse to the module image block.
+			 *
+			 * MemoryByteProvider(mem, start) sizes itself from the *maximum address of the whole
+			 * `ram` address space* (Ghidra's findAddressSpaceMax), not from the end of the block
+			 * containing `start`. The module image is exactly one block at CODE_BASE, so as soon as
+			 * a linear-memory block is mapped *above* it - memory index >= 8, i.e. memidx *
+			 * MEMORY_STRIDE >= CODE_BASE - the provider's length reaches past the module image. The
+			 * section loop in WasmModule then tries to read a section header one byte past the
+			 * module and throws "Address ... does not exist in memory", which voids the whole
+			 * function analysis (every body becomes a stub `unreachable`). A memarg with a memory
+			 * index >= 9 needs at least ten memories, so it was the visible trigger.
+			 *
+			 * The module is one contiguous block, so its end is the correct bound.
+			 */
+			MemoryBlock moduleBlock = mem.getBlock(moduleStart);
+			ByteProvider memByteProvider = (moduleBlock != null)
+					? new MemoryByteProvider(mem, moduleStart, moduleBlock.getEnd())
+					: new MemoryByteProvider(mem, moduleStart);
 			BinaryReader memBinaryReader = new BinaryReader(memByteProvider, true);
 			WasmModule module;
 			try {
