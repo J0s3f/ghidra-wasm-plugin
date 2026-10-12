@@ -115,6 +115,8 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
 | **Emulation coverage** - 9 recorded spec-`assert_*` gaps (out-of-bounds traps, `call_indirect` type mismatch, wrong trap kind, `memory.grow/size` CALLOTHER in the emulator's pcode, div/rem traps, float-to-int trunc traps, `br_table large` value, mutable-global init, NaN payload) | recorded in `REPORT-H3`; emulator coverage, not decoder gaps |
+| **Memory index >= 8 collides with `CODE_BASE`** - memory 8's block cannot be created (the loader logs it); `MEMORY_STRIDE` places memory *n* at `n << 32`, which runs into the code space | open, pre-existing design limitation (found while fixing B3; a memory index >= 9 needed >= 10 memories, which is how it surfaced) |
+| **`WasmPreAnalyzer.guessCStackGlobalForFunction`** still uses an unbounded `MemoryByteProvider` (the B3 fix bounded the `WasmAnalysis` one only) | open, low risk (left as-is to avoid perturbing the C-stack guess on existing modules) |
 | **B9 policy** - 219 spec-negative modules are accepted as bare bytes (lenient loader) | needs a product decision |
 | Unassigned opcode spaces (`0xE7+`, unassigned `0xFB >= 0x80`, unassigned `0xFC`) | deliberately rendered as visible `unimplemented`, with the operand lengths mirrored in the pre-analyzer; genuinely unknown lengths fail safe |
 

@@ -46,6 +46,17 @@ public class WasmTableType implements StructConverter {
 		return limits;
 	}
 
+	/**
+	 * @@T64: table64. The memory64 proposal reuses the memory limits encoding for tables, so bit 2
+	 * (0x04) of the limits flags marks a 64-bit *table* index type ({@code (table i64 N funcref)}).
+	 * The flag is decoded by {@link WasmResizableLimits} (it never desyncs the table section - the
+	 * initial size is still a plain LEB128 that follows the flags byte); this accessor records it so
+	 * the loader can report the table honestly.
+	 */
+	public boolean is64Bit() {
+		return limits.is64Bit();
+	}
+
 	@Override
 	public DataType toDataType() throws DuplicateNameException, IOException {
 		StructureBuilder builder = new StructureBuilder("table_type");
