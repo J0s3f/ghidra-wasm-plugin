@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.LEB128Info;
@@ -33,7 +34,7 @@ public class WasmNameMap implements StructConverter {
 	private String structureName;
 	private LEB128Info count;
 	private List<WasmAssoc> entries = new ArrayList<>();
-	private Map<Long, WasmName> map = new HashMap<>();
+	private Map<Long, String> map = new HashMap<>();
 
 	private static class WasmAssoc {
 		LEB128Info idx;
@@ -48,15 +49,12 @@ public class WasmNameMap implements StructConverter {
 			assoc.idx = reader.readNext(LEB128Info::unsigned);
 			assoc.name = new WasmName(reader);
 			entries.add(assoc);
-			map.put(assoc.idx.asLong(), assoc.name);
+			map.put(assoc.idx.asLong(), assoc.name.getValue());
 		}
 	}
 
 	public String getEntry(long idx) {
-		WasmName result = map.get(idx);
-		if (result == null)
-			return null;
-		return result.getValue();
+		return map.get(idx);
 	}
 
 	@Override
@@ -69,5 +67,9 @@ public class WasmNameMap implements StructConverter {
 			builder.add(assoc.name, "name" + i);
 		}
 		return builder.toStructure();
+	}
+
+	public Map<Long, String> getMap() {
+		return map;
 	}
 }

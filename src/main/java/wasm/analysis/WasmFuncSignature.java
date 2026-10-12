@@ -27,6 +27,10 @@ public class WasmFuncSignature {
 	private Address endAddr; // address of last byte in the function (inclusive)
 	private ValType[] locals;
 
+	public int getFuncidx() {
+		return funcIdx;
+	}
+
 	public ValType[] getParams() {
 		return params;
 	}
