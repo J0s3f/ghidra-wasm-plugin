@@ -20,6 +20,7 @@ import java.io.IOException;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.LEB128;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
 import wasm.format.WasmEnums.ValType;
@@ -33,6 +34,12 @@ public class WasmGlobalType implements StructConverter {
 		type = ValType.readFromReader(reader);
 		mutability = reader.readNextUnsignedByte();
 	}
+
+	// @@GC: a value type is not always a single byte. The GC encodings (ref null ht) = 0x63 and
+	// (ref ht) = 0x64 are followed by a heap type (s33); ValType.readFromReader consumes it so the
+	// global's initializer stays aligned. (A plain heap-type shorthand, e.g. anyref = 0x6e, is one
+	// byte.) GC's own variant of this helper was dropped during the merge in favour of the shared
+	// reader used by every other valtype call site.
 
 	public ValType getType() {
 		return type;

@@ -33,8 +33,8 @@ attach names valtype [
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x30
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x40
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x50
-  _ _ _ _ _ _ _ _ _ exnref _ _ _ _ _ externref # 0x60  # @@EH: exnref at 0x69 added
-  funcref _ _ _ _ _ _ _ _ _ _ v128 f64 f32 i64 i32 # 0x70
+  _ _ _ _ _ _ _ _ _ exnref arrayref structref i31ref eqref anyref externref # 0x60  # @@EH/@@GC: 0x69 exnref, 0x6a-0x6e GC heap-type shorthands
+  funcref none noextern nofunc noexn _ _ _ _ _ _ v128 f64 f32 i64 i32 # 0x70  # @@GC: 0x71-0x74 bottom heap types
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x80
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x90
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0xa0
@@ -581,3 +581,4 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 @include "AtomicOps.sinc"
 @include "RelaxedSimdOps.sinc"
 @include "EH2Ops.sinc"   # @@EH: new exception handling (try_table, throw_ref)
+@include "GCOps.sinc"    # @@GC: garbage collection opcodes (0xFB)

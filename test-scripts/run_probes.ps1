@@ -47,25 +47,35 @@ if (-not $Generators) {
 if (-not $Generators) { throw "no probe generators found in $ScriptDir" }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$probeDir = Join-Path $OutDir "probes"
+if (Test-Path $probeDir) { Remove-Item -Recurse -Force $probeDir }
+New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
 
 Write-Host "== generating probes ==" -ForegroundColor Cyan
 foreach ($g in $Generators) {
     $path = Join-Path $ScriptDir $g
     Write-Host "-- $g"
-    & python $path $OutDir
+    & python $path $probeDir
 }
 
-$probes = Get-ChildItem -Path $OutDir -Filter "*.wasm" | Sort-Object Name
+$probes = Get-ChildItem -Path $probeDir -Filter "*.wasm" | Sort-Object Name
 if ($Only) { $probes = $probes | Where-Object { $_.Name -like "*$Only*" } }
-if (-not $probes) { throw "no probe .wasm files in $OutDir" }
+if (-not $probes) { throw "no probe .wasm files in $probeDir" }
 Write-Host ("== running {0} probe(s) ==" -f $probes.Count) -ForegroundColor Cyan
 
 $proj = Join-Path $OutDir "project"
 Remove-Item -Recurse -Force $proj -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $proj | Out-Null
 
-$importArgs = @()
-foreach ($p in $probes) { $importArgs += @("-import", $p.FullName) }
+# Pass an explicit -import per file only for small selections; a large batch would exceed the
+# Windows command-line limit, so import the whole probe directory instead.
+if ($Only -or $probes.Count -le 25) {
+    $importArgs = @()
+    foreach ($p in $probes) { $importArgs += @("-import", $p.FullName) }
+}
+else {
+    $importArgs = @("-import", $probeDir, "-recursive")
+}
 $scripts = @("-scriptPath", $ScriptDir, "-postScript", "WasmFeatureReport.java")
 if ($Detail) { $scripts += @("-postScript", "ListProgram.java", "-postScript", "DumpAll.java") }
 if ($NoAnalysis) { $scripts += "-noanalysis" }

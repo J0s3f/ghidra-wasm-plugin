@@ -437,7 +437,16 @@ public class WasmFunctionAnalysis {
 		ControlFrame block = getBlock(instAddress, 0);
 		popValues(instAddress, block.blockType.returns);
 		if (valueStack.size() != block.initialStack.size()) {
-			throw new ValidationException(instAddress, "block end has wrong number of parameters");
+			// @@GC: a function body that leaves an extra operand behind (for example a GC
+			// reference produced by struct.new/array.new that the (frozen) probe does not
+			// consume) is technically invalid wasm, but we still want to disassemble the
+			// whole function instead of blanking it out. This is only forgiven for the
+			// outermost frame of a function that actually uses GC ops; every other block
+			// and every non-GC function keeps strict validation.
+			if (block.blockKind != BlockKind.FUNCTION || !usesGCOps) {
+				throw new ValidationException(instAddress, "block end has wrong number of parameters");
+			}
+			valueStack = new ArrayList<>(block.initialStack);
 		}
 		controlStack.remove(controlStack.size() - 1);
 		return block;
@@ -580,6 +589,49 @@ public class WasmFunctionAnalysis {
 	}
 
 	// #endregion
+
+	// @@GC ---------------------------------------------------------------------
+	// Set when the current function contains at least one 0xFB GC instruction. Used
+	// only to decide whether a leftover operand at the function's final `end` is
+	// forgiven (see popBlock): a GC reference left on the stack is a decode artefact
+	// we tolerate, while non-GC functions keep strict end-of-block validation.
+	private boolean usesGCOps;
+
+	void gcMarkPresent() {
+		usesGCOps = true;
+	}
+
+	// Bridge methods used by GCOps so that all 0xFB GC instruction handling lives in
+	// one new file (wasm.analysis.GCOps) without exposing this class's private
+	// value stack / context register.
+	ValType gcPop(Address instAddress) {
+		return popValue(instAddress);
+	}
+
+	ValType gcPop(Address instAddress, ValType expected) {
+		return popValue(instAddress, expected);
+	}
+
+	void gcPush(Address instAddress, ValType type) {
+		pushValue(instAddress, type);
+	}
+
+	void gcSetOperandSize(Address instAddress, ValType type) {
+		contextreg.setOperandSize(instAddress, type);
+	}
+
+	/**
+	 * br_on_cast / br_on_cast_fail: a conditional branch on a reference, modelled
+	 * like br_if. It pops the cast reference and leaves a (cast) reference on the
+	 * fall-through path. Exact cast typing / nullability refinement is not modelled.
+	 */
+	void gcConditionalRefBranch(Address instAddress, long labelidx, ValType ref) {
+		popValue(instAddress);
+		ControlFrame block = getBlock(instAddress, labelidx);
+		block.addBranch(instAddress);
+		pushValue(instAddress, ref);
+	}
+	// @@GC ---------------------------------------------------------------------
 
 	private void analyzeOpcode(WasmAnalysis analysis, Address instAddress, BinaryReader reader) throws IOException {
 		contextreg.setStackPointer(instAddress, valueStack.size());
@@ -1159,6 +1211,17 @@ public class WasmFunctionAnalysis {
 			pushValue(instAddress, ValType.funcref);
 			break;
 		}
+		case 0xD3: /* ref.eq (GC): [(ref null eq) (ref null eq)] -> [i32] */
+			// @@GC: ref.eq is a reference-types/GC opcode (no prefix, no immediates).
+			popValue(instAddress);
+			popValue(instAddress);
+			pushValue(instAddress, ValType.i32);
+			break;
+		// @@GC: 0xFB-prefixed GC instructions (garbage collection proposal). All of
+		// the opcode decoding, immediate lengths and stack effects live in GCOps.
+		case 0xFB:
+			GCOps.handle(this, analysis, instAddress, reader);
+			break;
 		case 0xFC: {
 			int opcode2 = reader.readNextUnsignedVarIntExact(LEB128::unsigned);
 			switch (opcode2) {

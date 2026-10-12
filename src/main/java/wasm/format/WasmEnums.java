@@ -70,6 +70,8 @@ public class WasmEnums {
 		// GC reference types (abstract heap types, encoded as negative s33)
 		// These are represented as distinct ValType entries for easier handling.
 		// exnref (0x69) is the new exception-handling type and is used by EH2Ops.java.
+		// (The multi-byte forms 0x63/0x64 "(ref null ht)/(ref ht)" are consumed structurally by
+		// WasmFuncType/WasmGlobalType.readFromReader; they are not separate enum constants.)
 		exnref(0x69),
 		arrayref(0x6a),
 		structref(0x6b),

@@ -24,6 +24,7 @@ import ghidra.app.util.bin.LEB128Info;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
 import wasm.format.sections.structures.WasmFuncType;
+import wasm.format.sections.structures.WasmGCType;
 
 public class WasmTypeSection extends WasmSection {
 
@@ -34,7 +35,18 @@ public class WasmTypeSection extends WasmSection {
 		super(reader);
 		count = reader.readNext(LEB128Info::unsigned);
 		for (int i = 0; i < count.asLong(); ++i) {
-			types.add(new WasmFuncType(reader));
+			// @@GC: a type entry is a rec group (0x4E), a subtype (0x50/0x4F), a plain
+			// function type (0x60) or a GC composite type (0x5F struct / 0x5E array).
+			// A 0x60 entry still goes through WasmFuncType exactly as before; anything
+			// else is parsed structurally by WasmGCType (one list entry per type index).
+			long pos = reader.getPointerIndex();
+			int form = reader.readNextUnsignedByte();
+			reader.setPointerIndex(pos);
+			if (form == 0x60) {
+				types.add(new WasmFuncType(reader));
+			} else {
+				types.addAll(WasmGCType.parseTypeEntry(reader));
+			}
 		}
 	}
 
