@@ -10,11 +10,14 @@ WebAssembly (Wasm 3.0 + active proposals).
 | R1.2 limits flags · R1.3 constant expressions · R1.5 unknown value types | **merged** (`REPORT-B.md`; plus an integrator rewrite of the expression scanner - see §2.5) |
 | 5. new exception handling (`try_table`, `throw_ref`, `exnref`) | **merged** (`REPORT-F.md`) |
 | 6. garbage collection (type section, `0xFB` instructions, GC initializers) | **merged** (`REPORT-E.md`) |
-| 0/1/2 multi-memory + unknown-opcode degradation · 8 memory64 | in flight (decoder/loader workstream) |
+| 0/1/2 unknown-opcode degradation + multi-memory | **merged** (`REPORT-A-DS.md`; probe 06 decodes `memidx`, probe 18 creates both memory blocks) |
+| 8. memory64 | open (64-bit addressing; limits flags already fixed) |
 | 9. `.name` extras + application | in flight |
 | 7. multi-value returns | in flight |
-| 10. component model loader | in flight |
-| 4. spec-test harness · real-world corpus · CI probe gate · robustness sweep · DWARF line info | queued |
+| 10. component model loader | **merged** (`REPORT-C2.md`; embedded core modules import as real programs) |
+| 4. spec-test harness | **merged** (`REPORT-G.md`; see §6) |
+| 4. CI probe gate (probes + fixture baseline) | **merged** (`.github/workflows/probes.yml`, `expected-results.json` - 93 probes) |
+| 4. real-world corpus sweep · robustness sweep · DWARF line info | in flight / queued |
 
 ## 1. How this inventory was produced
 
