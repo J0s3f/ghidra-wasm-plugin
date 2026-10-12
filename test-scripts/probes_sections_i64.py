@@ -47,6 +47,7 @@ the memory blocks so the placement can be checked byte-for-byte.
 Usage: python probes_sections_i64.py <output-dir>
 """
 import os
+import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -114,15 +115,17 @@ write("H1_13_duplicate_datacount.wasm", module(
 # =====================================================================================
 # B1 - sections out of the canonical order (memory id 5 before type id 1) but otherwise
 # valid: must still import (tolerated; the loader may log a warning).
+#
+# Built by concatenating the section bytes directly (not through module(), which may sort
+# its arguments canonically) so the deliberate misordering can never be normalised away.
 # =====================================================================================
-write("H1_05_out_of_order_sections.wasm", module(
-    memory_section([(0x00, 1)]),                       # id 5 before id 1
-    type_section(functype([], [I32])),
-    func_section([0]),
-    export_section([("f", 0, 0)]),
-    code_section([i32_const(7) + END]),
-    sort=False,                                        # deliberately misordered
-))
+write("H1_05_out_of_order_sections.wasm",
+      b"\x00asm" + struct.pack("<I", 1)
+      + memory_section([(0x00, 1)])                        # id 5 before id 1
+      + type_section(functype([], [I32]))
+      + func_section([0])
+      + export_section([("f", 0, 0)])
+      + code_section([i32_const(7) + END]))
 
 # =====================================================================================
 # B2 - H1_06: memory64, active data segment at i64.const 0x10.
