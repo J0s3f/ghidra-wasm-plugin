@@ -1,0 +1,109 @@
+name: Probes
+
+# Enforces "every feature has a wasm binary and is tested": the synthetic probe suite in
+# test-scripts/ plus the small committed fixture must reproduce the metrics recorded in
+# test-scripts/expected-results.json (the baseline documented in MODERN_WASM_GAPS.md 2.4/2.5).
+# Any drift in funcs/instrs/undefined_bytes/decompiled/decompile_failed, a probe that silently
+# disappears, an expected import failure that starts importing, or a decompiler regression on the
+# fixture fails the job.
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  probes:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clone Repository
+      uses: actions/checkout@v7
+
+    - name: Install Java
+      uses: actions/setup-java@v6
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+
+    - name: Install Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        gradle-version: '9.2.1'
+
+    - name: Install Ghidra 12.1.4
+      uses: antoniovazquezblanco/setup-ghidra@v2
+      with:
+        auth_token: ${{ secrets.GITHUB_TOKEN }}
+        version: '12.1.4'
+
+    - name: Build
+      run: gradle buildExtension
+
+    - name: Install the built extension into Ghidra
+      run: |
+        set -euxo pipefail
+        export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:?setup-ghidra did not export GHIDRA_INSTALL_DIR}"
+        EXT_DIR="$GHIDRA_INSTALL_DIR/Ghidra/Extensions"
+        mkdir -p "$EXT_DIR"
+        find "$EXT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        # dist/ holds exactly one extension zip; install it exactly like Ghidra's extension dialog.
+        unzip -q -o "$(ls -1 dist/*.zip | head -n 1)" -d "$EXT_DIR"
+        find "$EXT_DIR" -maxdepth 3 -name '*.jar' -print
+
+    - name: Prepare Linux shims for run_probes.ps1
+      run: |
+        set -euxo pipefail
+        export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:?setup-ghidra did not export GHIDRA_INSTALL_DIR}"
+        export GHIDRA_HEADLESS_MAXMEM=1500M
+        # run_probes.ps1 shells out to `python` (the runner image only guarantees python3).
+        command -v python || sudo ln -sf "$(command -v python3)" /usr/local/bin/python
+        python --version
+        # run_probes.ps1 locates the launcher with `Join-Path $GhidraDir "support\analyzeHeadless.bat"`.
+        # A backslash is not a path separator on Linux, so that lookup would fail and the script
+        # would throw before importing anything. Symlinking the real launcher under the literal name
+        # keeps run_probes.ps1 unmodified. (A one-character `support/` fix in run_probes.ps1 would
+        # make this shim unnecessary.)
+        ln -sf "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" "$GHIDRA_INSTALL_DIR/support\\analyzeHeadless.bat"
+        ls -l "$GHIDRA_INSTALL_DIR/support" | grep -i analyzeheadless
+
+    - name: Run probe suite
+      run: |
+        set -euxo pipefail
+        pwsh -NoProfile -Command '& ./test-scripts/run_probes.ps1 -OutDir "$env:RUNNER_TEMP/probes" -GhidraDir "$env:GHIDRA_INSTALL_DIR" -Generators gen_feature_probes.py,probes_types.py,probes_eh.py,probes_gc.py'
+
+    - name: Fixture decompile baseline
+      run: |
+        set -euxo pipefail
+        export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:?setup-ghidra did not export GHIDRA_INSTALL_DIR}"
+        export GHIDRA_HEADLESS_MAXMEM=1500M
+        mkdir -p "$RUNNER_TEMP/probes/fixture-project"
+        "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" "$RUNNER_TEMP/probes/fixture-project" WasmFixtureCI \
+          -import "$GITHUB_WORKSPACE/test-scripts/fixtures/wasm_fixture.wasm" \
+          -scriptPath "$GITHUB_WORKSPACE/test-scripts" \
+          -postScript DumpDecomp.java -max-cpu 2 -deleteProject \
+          2>&1 | tee "$RUNNER_TEMP/probes/fixture-run.log"
+        # Prove DumpDecomp.java actually ran; the exact numbers are enforced by check-results.py
+        # against test-scripts/expected-results.json.
+        grep -E 'SUMMARY functions=[0-9]+ decompiled=[0-9]+ failed=[0-9]+ instructions=[0-9]+' \
+          "$RUNNER_TEMP/probes/fixture-run.log"
+
+    - name: Check metrics against the recorded baseline
+      run: |
+        set -euxo pipefail
+        python3 test-scripts/check-results.py \
+          --log "$RUNNER_TEMP/probes/probe-run.log" \
+          --fixture-log "$RUNNER_TEMP/probes/fixture-run.log" \
+          --require-fixture
+
+    - name: Upload probe logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: probe-run-log
+        path: |
+          ${{ runner.temp }}/probes/probe-run.log
+          ${{ runner.temp }}/probes/fixture-run.log
+        if-no-files-found: warn
