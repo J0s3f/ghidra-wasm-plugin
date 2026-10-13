@@ -17,8 +17,11 @@ package ghidra.program.emulation;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongToIntFunction;
 
@@ -45,8 +48,13 @@ import wasm.analysis.WasmAnalysis;
 import wasm.analysis.WasmFuncSignature;
 import wasm.analysis.WasmFunctionAnalysis;
 import wasm.analysis.WasmFunctionAnalysis.StackEffect;
+import wasm.format.WasmEnums.WasmExternalKind;
 import wasm.format.WasmHeader;
 import wasm.format.WasmModule;
+import wasm.format.sections.structures.WasmFuncType;
+import wasm.format.sections.structures.WasmImportEntry;
+import wasm.format.sections.structures.WasmResizableLimits;
+import wasm.format.sections.structures.WasmTableType;
 
 public class WasmEmulateInstructionStateModifier extends EmulateInstructionStateModifier {
 
@@ -55,6 +63,13 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		private WasmModule module;
 		private WasmAnalysis analysis;
 		private long[] functionAddresses;
+
+		/* Emulation-coverage state (see REPORT-EMU.md): the declared memory/table shapes and a
+		 * function-address -> funcidx map, used by the emulator-side trap checks. */
+		private long[] memoryPageSize;
+		private long[] memoryPages;
+		private long[] memoryMaxPages;
+		private Map<Long, Integer> funcidxByAddress;
 
 		public WasmFunctionAnalysisProvider(AddressFactory addressFactory, MemoryState memoryState) {
 			Address moduleAddress = WasmLoader.getModuleAddress(addressFactory);
@@ -95,6 +110,69 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 				functionAddresses[i] = functions.get(i).getStartAddr().getOffset();
 			}
 			Arrays.sort(functionAddresses);
+
+			/* Emulation-coverage state: declared memory shapes, a mutable page counter for
+			 * memory.grow, and a function-address -> funcidx map for call_indirect type checks. */
+			List<WasmResizableLimits> memories = new ArrayList<>();
+			for (WasmImportEntry entry : module.getImports(WasmExternalKind.EXT_MEMORY)) {
+				memories.add(entry.getMemoryType());
+			}
+			memories.addAll(module.getNonImportedMemories());
+			memoryPageSize = new long[memories.size()];
+			memoryPages = new long[memories.size()];
+			memoryMaxPages = new long[memories.size()];
+			for (int i = 0; i < memories.size(); i++) {
+				WasmResizableLimits limits = memories.get(i);
+				memoryPageSize[i] = limits.hasCustomPageSize()
+						? (1L << limits.getPageSizeExponent())
+						: WasmLoader.MEMORY_PAGE_SIZE;
+				memoryPages[i] = limits.getInitial();
+				memoryMaxPages[i] = limits.hasMaximum() ? limits.getMaximum()
+						: (limits.is64Bit() ? (1L << 48) : WasmLoader.MAX_MEMORY32_PAGES);
+			}
+
+			funcidxByAddress = new HashMap<>();
+			for (int i = 0; i < module.getFunctionCount(); i++) {
+				funcidxByAddress.put(WasmLoader.getFunctionAddressOffset(module, i), i);
+			}
+		}
+
+		public int getMemoryCount() {
+			return memoryPages.length;
+		}
+
+		public long getMemoryPageSize(int memidx) {
+			return memoryPageSize[memidx];
+		}
+
+		public long getMemorySizeBytes(int memidx) {
+			return memoryPages[memidx] * memoryPageSize[memidx];
+		}
+
+		/**
+		 * WebAssembly {@code memory.grow} semantics: return the previous size in pages, or -1
+		 * (unsigned) when the requested delta would exceed the declared maximum.
+		 */
+		public long growMemory(int memidx, long deltaPages) {
+			long old = memoryPages[memidx];
+			if (deltaPages < 0 || old + deltaPages > memoryMaxPages[memidx]) {
+				return -1;
+			}
+			memoryPages[memidx] = old + deltaPages;
+			return old;
+		}
+
+		public long getTableSize(int tableidx) {
+			WasmTableType table = module.getTableType(tableidx);
+			return table == null ? 0 : table.getLimits().getInitial();
+		}
+
+		public Integer getFuncidxByAddress(long address) {
+			return funcidxByAddress.get(address);
+		}
+
+		public WasmModule getModule() {
+			return module;
 		}
 
 		public WasmFunctionAnalysis getAnalysisForAddress(Address address) {
@@ -123,6 +201,32 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	private Register contextRegister;
 	private long localsBase;
 	private WasmEmulationHelper helper;
+	/*
+	 * The last value written to each register-space (operand-stack) slot, keyed by offset+size.
+	 * The Wasm stack slots are direct register-space varnodes and an in-place instruction
+	 * (e.g. i32.trunc_f32_s, f32.neg) overwrites its own input, so the pre-instruction value has
+	 * to be remembered to reconstruct it (see operandValue).
+	 */
+	private final Map<Long, Long> regSlotValues = new HashMap<>();
+
+	/*
+	 * The exact WebAssembly trap texts the spec testsuite asserts. The emulator raises these
+	 * itself (see checkMemoryBounds / checkArithmeticTraps / checkCallIndirect), and
+	 * ghidra_scripts/spectest.py forwards them verbatim so assert_trap can compare.
+	 */
+	static final String TRAP_OUT_OF_BOUNDS_MEMORY = "out of bounds memory access";
+	static final String TRAP_INTEGER_DIVIDE_BY_ZERO = "integer divide by zero";
+	static final String TRAP_INTEGER_OVERFLOW = "integer overflow";
+	static final String TRAP_INVALID_CONVERSION = "invalid conversion to integer";
+	static final String TRAP_UNDEFINED_ELEMENT = "undefined element";
+	static final String TRAP_UNINITIALIZED_ELEMENT = "uninitialized element";
+	static final String TRAP_INDIRECT_CALL_TYPE_MISMATCH = "indirect call type mismatch";
+
+	/*
+	 * Must stay in sync with @define REG_STACK_BASE in WebAssembly.slaspec.
+	 * The operand-stack slots s0, s1, ... live at this base in the register space.
+	 */
+	private static final long REG_STACK_BASE = 0x50000000L;
 
 	public WasmEmulateInstructionStateModifier(Emulate emu) {
 		super(emu);
@@ -140,6 +244,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		registerPcodeOpBehavior("ctz", new BitCountOpBehaviour("ctz", Integer::numberOfTrailingZeros, Long::numberOfTrailingZeros));
 		registerPcodeOpBehavior("clz", new BitCountOpBehaviour("clz", Integer::numberOfLeadingZeros, Long::numberOfLeadingZeros));
 		registerPcodeOpBehavior("popcnt", new BitCountOpBehaviour("popcnt", Integer::bitCount, Long::bitCount));
+
+		registerPcodeOpBehavior("memory_size", new MemorySizeOpBehaviour());
+		registerPcodeOpBehavior("memory_grow", new MemoryGrowOpBehaviour());
 	}
 
 	/**
@@ -365,6 +472,605 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		}
 	}
 
+	/*
+	 * ============================ Emulation-coverage trap checks ============================
+	 *
+	 * The SLEIGH emulator reads uninitialized memory as zero and has no notion of the Wasm
+	 * abstract machine's traps, so an out-of-bounds access, a division by zero, an out-of-range
+	 * float->int conversion or an indirect call through a bad table entry simply "succeeds".
+	 * The checks below run once per instruction (postExecuteCallback), inspect the pcode that
+	 * just executed and raise the exact spec trap text when the abstract machine would trap.
+	 * They are purely emulator-side: no pcode/SLEIGH change is involved.
+	 */
+
+	private class MemorySizeOpBehaviour implements OpBehaviorOther {
+		@Override
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+			Varnode[] args = getArgs(inputs, 1, "memory_size");
+			int memidx = (int) emu.getMemoryState().getValue(args[0]);
+			long pages = 0;
+			if (analysisProvider != null && memidx >= 0 &&
+				memidx < analysisProvider.getMemoryCount()) {
+				long pageSize = analysisProvider.getMemoryPageSize(memidx);
+				pages = analysisProvider.getMemorySizeBytes(memidx) / pageSize;
+			}
+			emu.getMemoryState().setValue(out, pages);
+		}
+	}
+
+	private class MemoryGrowOpBehaviour implements OpBehaviorOther {
+		@Override
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+			Varnode[] args = getArgs(inputs, 2, "memory_grow");
+			MemoryState memState = emu.getMemoryState();
+			int memidx = (int) memState.getValue(args[0]);
+			long delta = args[1].getSize() == 4
+					? (memState.getValue(args[1]) & 0xffffffffL)
+					: memState.getValue(args[1]);
+			long result = -1;
+			if (analysisProvider != null && memidx >= 0 &&
+				memidx < analysisProvider.getMemoryCount()) {
+				result = analysisProvider.growMemory(memidx, delta);
+			}
+			memState.setValue(out, result);
+		}
+	}
+
+	private static long slotKey(long offset, int size) {
+		return (offset << 8) | (size & 0xff);
+	}
+
+	/**
+	 * The value an operand held <em>before</em> the instruction that just ran. When the operand
+	 * and the operation's output are the same register-space slot (an in-place instruction such
+	 * as {@code i32.trunc_f32_s} or {@code f32.neg}), the slot already holds the result, so the
+	 * value recorded at the end of the previous instruction is used instead.
+	 */
+	private long operandValue(Emulate emulate, Varnode operand, Varnode output) {
+		if (output != null && operand.getAddress().equals(output.getAddress())) {
+			Long previous = regSlotValues.get(slotKey(operand.getAddress().getOffset(), operand.getSize()));
+			if (previous != null) {
+				return previous;
+			}
+		}
+		return emulate.getMemoryState().getValue(operand);
+	}
+
+	/** Like {@link #operandValue} but returns null when an overwritten operand was never tracked. */
+	private Long operandValueOrNull(Emulate emulate, Varnode operand, Varnode output) {
+		if (output != null && operand.getAddress().equals(output.getAddress())) {
+			return regSlotValues.get(slotKey(operand.getAddress().getOffset(), operand.getSize()));
+		}
+		return emulate.getMemoryState().getValue(operand);
+	}
+
+	/** Remember every register-space (operand-stack) slot this instruction wrote. */
+	private void recordRegisterWrites(Emulate emulate, PcodeOp[] pcode) {
+		MemoryState memState = emulate.getMemoryState();
+		AddressSpace register = emulate.getLanguage().getAddressFactory().getAddressSpace("register");
+		for (PcodeOp op : pcode) {
+			Varnode out = op.getOutput();
+			if (out != null && register.equals(out.getAddress().getAddressSpace())) {
+				regSlotValues.put(slotKey(out.getAddress().getOffset(), out.getSize()),
+					memState.getValue(out));
+			}
+			if (op.getOpcode() == PcodeOp.STORE && register.equals(spaceOf(emulate, op))) {
+				long address = memState.getValue(op.getInput(1));
+				int size = op.getInput(2).getSize();
+				regSlotValues.put(slotKey(address, size), memState.getValue(op.getInput(2)));
+			}
+		}
+	}
+
+	private static AddressSpace spaceOf(Emulate emulate, PcodeOp op) {
+		int spaceId = (int) op.getInput(0).getAddress().getOffset();
+		return emulate.getLanguage().getAddressFactory().getAddressSpace(spaceId);
+	}
+
+	private static byte[] readBytes(Emulate emulate, Address addr, int length) {
+		byte[] buf = new byte[length];
+		int read = emulate.getMemoryState().getChunk(buf, addr.getAddressSpace(),
+			addr.getOffset(), length, false);
+		if (read <= 0) {
+			return null;
+		}
+		if (read < length) {
+			buf = Arrays.copyOf(buf, read);
+		}
+		return buf;
+	}
+
+	private static int readInstructionByte(Emulate emulate, Address addr) {
+		byte[] buf = readBytes(emulate, addr, 1);
+		return buf == null ? -1 : (buf[0] & 0xff);
+	}
+
+	/** Decode an unsigned LEB128 at {@code pos}; {@code outPos[0]} receives the end offset. */
+	private static long decodeULEB(byte[] bytes, int pos, int[] outPos) {
+		long result = 0;
+		int shift = 0;
+		int p = pos;
+		while (p < bytes.length) {
+			int b = bytes[p++] & 0xff;
+			result |= (long) (b & 0x7f) << shift;
+			if ((b & 0x80) == 0) {
+				outPos[0] = p;
+				return result;
+			}
+			shift += 7;
+			if (shift > 63) {
+				return -1;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Trap on a linear-memory access past the end of the declared memory. The emulator has no
+	 * bounds check of its own; this inspects each LOAD/STORE of the instruction that just ran.
+	 * Single-memory modules (the whole core spec suite) always address memory 0, so the effective
+	 * address is used directly even when it is far past the memory (e.g. i32.const -1).
+	 *
+	 * <p>Known limitation: the Wasm spec computes the effective address as a u64
+	 * ({@code dynamic_u32 + static_u32}), but the SLEIGH computes it in 32-bit, so
+	 * {@code 0xFFFFFFFF + 1} wraps to {@code 0}. The wrapped address is checked here, but the
+	 * true u64 sum is not (the SLEIGH reuses temporary registers, making it impossible to
+	 * reliably identify the address-producing INT_ADD in the pcode).
+	 */
+	private void checkMemoryBounds(Emulate emulate, PcodeOp[] pcode) {
+		if (analysisProvider == null || analysisProvider.getMemoryCount() == 0) {
+			return;
+		}
+		MemoryState memState = emulate.getMemoryState();
+		AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+		int count = analysisProvider.getMemoryCount();
+		for (PcodeOp op : pcode) {
+			int opcode = op.getOpcode();
+			if (opcode != PcodeOp.LOAD && opcode != PcodeOp.STORE) {
+				continue;
+			}
+			if (!ram.equals(spaceOf(emulate, op))) {
+				continue;
+			}
+			long address = memState.getValue(op.getInput(1));
+			int size = opcode == PcodeOp.LOAD ? op.getOutput().getSize() : op.getInput(2).getSize();
+			checkAddressInMemory(emulate, address, size, count, opcode == PcodeOp.STORE);
+		}
+	}
+
+	/**
+	 * Check whether {@code address + size} stays within the declared memory. When the access is
+	 * a STORE and the range is partially in bounds, the in-bounds portion is zeroed (the spec
+	 * says an OOB store traps with no memory changed; the emulator's STORE pcode has already
+	 * written the in-bounds bytes by the time postExecuteCallback runs, so we undo the write).
+	 */
+	private void checkAddressInMemory(Emulate emulate, long address, int size, int memCount,
+			boolean isStore) {
+		MemoryState memState = emulate.getMemoryState();
+		int memidx;
+		long addressInMemory;
+		if (memCount == 1) {
+			memidx = 0;
+			addressInMemory = address;
+		}
+		else {
+			memidx = (int) (address / WasmLoader.MEMORY_STRIDE);
+			addressInMemory = address - (long) memidx * WasmLoader.MEMORY_STRIDE;
+		}
+		if (memidx < 0 || memidx >= memCount) {
+			return;
+		}
+		long memorySize = analysisProvider.getMemorySizeBytes(memidx);
+		if (addressInMemory < 0 || addressInMemory + size > memorySize) {
+			if (isStore && addressInMemory >= 0 && addressInMemory < memorySize) {
+				/* Undo the in-bounds portion of the OOB store: zero out the bytes that
+				 * were written within the declared memory. Use the absolute ram address
+				 * (which for multi-memory includes the memidx * MEMORY_STRIDE prefix). */
+				AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+				int inBoundsBytes = (int) (memorySize - addressInMemory);
+				byte[] zeros = new byte[inBoundsBytes];
+				memState.setChunk(zeros, ram, address, inBoundsBytes);
+			}
+			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
+		}
+	}
+
+	/**
+	 * Trap on the integer and float->int operations the spec requires to trap and that the
+	 * generic Ghidra op behaviours do not signal: unsigned div/rem by zero, signed div
+	 * overflow (INT_MIN / -1), and out-of-range/NaN truncations.
+	 */
+	private void checkArithmeticTraps(Emulate emulate, Address lastExecuteAddress, PcodeOp[] pcode) {
+		MemoryState memState = emulate.getMemoryState();
+		for (PcodeOp op : pcode) {
+			switch (op.getOpcode()) {
+				case PcodeOp.INT_DIV:
+				case PcodeOp.INT_REM:
+				case PcodeOp.INT_SDIV:
+				case PcodeOp.INT_SREM: {
+					int size = op.getInput(1).getSize();
+					long denominator = memState.getValue(op.getInput(1));
+					long denom = size == 4 ? (denominator & 0xffffffffL) : denominator;
+					if (denom == 0) {
+						throw new LowlevelError(TRAP_INTEGER_DIVIDE_BY_ZERO);
+					}
+					if (op.getOpcode() == PcodeOp.INT_SDIV) {
+						long numerator = memState.getValue(op.getInput(0));
+						long numer = size == 4 ? (numerator & 0xffffffffL) : numerator;
+						long minValue = size == 4 ? 0x80000000L : Long.MIN_VALUE;
+						long minusOne = size == 4 ? 0xffffffffL : -1L;
+						if (numer == minValue && denom == minusOne) {
+							throw new LowlevelError(TRAP_INTEGER_OVERFLOW);
+						}
+					}
+					break;
+				}
+				case PcodeOp.FLOAT_TRUNC:
+					checkTruncTrap(emulate, lastExecuteAddress, op);
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
+	private void checkTruncTrap(Emulate emulate, Address lastExecuteAddress, PcodeOp op) {
+		int opcode = readInstructionByte(emulate, lastExecuteAddress);
+		/* i32/i64.trunc_f32/f64_s/u are 0xA8..0xAB and 0xAE..0xB1; the trunc_sat family is 0xFC
+		 * and must not trap. */
+		boolean isConversion = (opcode >= 0xA8 && opcode <= 0xAB) || (opcode >= 0xAE && opcode <= 0xB1);
+		if (!isConversion) {
+			return;
+		}
+		boolean signed = opcode == 0xA8 || opcode == 0xAA || opcode == 0xAE || opcode == 0xB0;
+		int inSize = op.getInput(0).getSize();
+		int outSize = op.getOutput().getSize();
+		long raw = operandValue(emulate, op.getInput(0), op.getOutput());
+		double value = inSize == 4 ? Float.intBitsToFloat((int) raw) : Double.longBitsToDouble(raw);
+		if (Double.isNaN(value)) {
+			throw new LowlevelError(TRAP_INVALID_CONVERSION);
+		}
+		boolean overflow;
+		if (signed) {
+			overflow = outSize == 4
+					? !(value >= -2147483648.0 && value < 2147483648.0)
+					: !(value >= -9.223372036854776E18 && value < 9.223372036854776E18);
+		}
+		else {
+			overflow = outSize == 4
+					? !(value > -1.0 && value < 4294967296.0)
+					: !(value > -1.0 && value < 1.8446744073709552E19);
+		}
+		if (overflow) {
+			throw new LowlevelError(TRAP_INTEGER_OVERFLOW);
+		}
+	}
+
+	/**
+	 * Trap on call_indirect / return_call_indirect before the (possibly bogus) target is called:
+	 * an out-of-range index is "undefined element", a null table entry is "uninitialized
+	 * element", and a structurally different function type is "indirect call type mismatch".
+	 */
+	private void checkCallIndirect(Emulate emulate, Address lastExecuteAddress, PcodeOp[] pcode) {
+		if (analysisProvider == null) {
+			return;
+		}
+		boolean hasCallIndirect = false;
+		for (PcodeOp op : pcode) {
+			if (op.getOpcode() == PcodeOp.CALLIND) {
+				hasCallIndirect = true;
+				break;
+			}
+		}
+		if (!hasCallIndirect) {
+			return;
+		}
+		byte[] bytes = readBytes(emulate, lastExecuteAddress, 16);
+		if (bytes == null || bytes.length < 2) {
+			return;
+		}
+		int opcode = bytes[0] & 0xff;
+		if (opcode != 0x11 && opcode != 0x13) {
+			return;
+		}
+		int[] pos = new int[1];
+		long typeidx = decodeULEB(bytes, 1, pos);
+		long tableidx = typeidx < 0 ? -1 : decodeULEB(bytes, pos[0], pos);
+		if (typeidx < 0 || tableidx < 0) {
+			return;
+		}
+
+		AddressSpace tableSpace = emulate.getLanguage().getAddressFactory().getAddressSpace("table");
+		MemoryState memState = emulate.getMemoryState();
+		long elementAddress = -1;
+		for (PcodeOp op : pcode) {
+			if (op.getOpcode() == PcodeOp.LOAD && tableSpace.equals(spaceOf(emulate, op))) {
+				elementAddress = memState.getValue(op.getInput(1));
+				break;
+			}
+		}
+		if (elementAddress < 0) {
+			return;
+		}
+
+		long tableBase = tableidx << 32;
+		long index = (elementAddress - tableBase) / 4;
+		long tableSize = analysisProvider.getTableSize((int) tableidx);
+		if (index < 0 || index >= tableSize) {
+			throw new LowlevelError(TRAP_UNDEFINED_ELEMENT);
+		}
+		long element = memState.getValue(tableSpace, elementAddress, 4) & 0xffffffffL;
+		if (element == 0) {
+			throw new LowlevelError(TRAP_UNINITIALIZED_ELEMENT);
+		}
+
+		Integer funcidx = analysisProvider.getFuncidxByAddress(element);
+		if (funcidx == null) {
+			return;
+		}
+		WasmModule module = analysisProvider.getModule();
+		WasmFuncType expected = module.getType((int) typeidx);
+		WasmFuncType actual = module.getFunctionType(funcidx);
+		if (expected == null || actual == null) {
+			return;
+		}
+		if (!Arrays.equals(expected.getParamTypes(), actual.getParamTypes()) ||
+			!Arrays.equals(expected.getReturnTypes(), actual.getReturnTypes())) {
+			throw new LowlevelError(TRAP_INDIRECT_CALL_TYPE_MISMATCH);
+		}
+	}
+
+	/**
+	 * Wasm's f32/f64 {@code neg} and {@code abs} are pure sign-bit operations that must preserve a
+	 * NaN payload, but Ghidra's FLOAT_NEG/FLOAT_ABS decode to a host double and re-encode, which
+	 * canonicalises a NaN (0x7f80f1e2 -&gt; 0x7fc00000). Recompute the result from the still-live
+	 * operand temp and rewrite the operand-stack store. Emulator-side only.
+	 */
+	private void checkFloatPurity(Emulate emulate, PcodeOp[] pcode) {
+		MemoryState memState = emulate.getMemoryState();
+		for (PcodeOp op : pcode) {
+			int opcode = op.getOpcode();
+			if (opcode != PcodeOp.FLOAT_NEG && opcode != PcodeOp.FLOAT_ABS) {
+				continue;
+			}
+			Varnode in = op.getInput(0);
+			Varnode out = op.getOutput();
+			if (out == null) {
+				continue;
+			}
+			Long original = operandValueOrNull(emulate, in, out);
+			if (original == null) {
+				continue; // the operand has already been overwritten and was not tracked
+			}
+			int size = in.getSize();
+			long signMask = size == 4 ? 0x80000000L : 0x8000000000000000L;
+			long corrected = opcode == PcodeOp.FLOAT_NEG ? (original ^ signMask) : (original & ~signMask);
+			memState.setValue(out, corrected);
+			for (PcodeOp store : pcode) {
+				if (store.getOpcode() != PcodeOp.STORE || !sameVarnode(store.getInput(2), out)) {
+					continue;
+				}
+				AddressSpace space = spaceOf(emulate, store);
+				long address = memState.getValue(store.getInput(1));
+				memState.setValue(space, address, store.getInput(2).getSize(), corrected);
+			}
+		}
+	}
+
+	private static boolean sameVarnode(Varnode a, Varnode b) {
+		return a != null && b != null && a.getSize() == b.getSize() &&
+			a.getAddress().equals(b.getAddress());
+	}
+
+	/**
+	 * Map a Wasm load/store opcode byte to its access width in bytes, or -1 if the opcode is
+	 * not a recognised load/store.
+	 */
+	private static int getLoadStoreAccessWidth(int opcode) {
+		switch (opcode) {
+			case 0x28: case 0x2A: case 0x34: case 0x35: return 4;  // i32.load, f32.load, i64.load32_s/u
+			case 0x29: case 0x2B: return 8;                       // i64.load, f64.load
+			case 0x2C: case 0x2D: case 0x30: case 0x31: return 1;  // 8-bit loads
+			case 0x2E: case 0x2F: case 0x32: case 0x33: return 2;  // 16-bit loads
+			case 0x36: case 0x38: case 0x3E: return 4;             // i32.store, f32.store, i64.store32
+			case 0x37: case 0x39: return 8;                       // i64.store, f64.store
+			case 0x3A: case 0x3C: return 1;                       // 8-bit stores
+			case 0x3B: case 0x3D: return 2;                       // 16-bit stores
+			default: return -1;
+		}
+	}
+
+	/**
+	 * Trap on a 32-bit wrap-around in the effective-address computation. The Wasm spec computes
+	 * the effective address as a u64 ({@code dynamic_u32 + static_u64 offset}), but the SLEIGH
+	 * computes it in 32-bit for 32-bit memories ({@code addr:4 = memoffset:4 + sp1_32}), losing
+	 * the carry. A wrapped access looks in-bounds and does not trap.
+	 *
+	 * <p>This check runs in {@code postExecuteCallback} (there is no pre-execute callback in
+	 * Ghidra's {@code EmulateInstructionStateModifier}). It reads the instruction opcode byte,
+	 * decodes the memarg (align + offset) from the instruction bytes, reads the dynamic base from
+	 * the wasm operand-stack register (via {@link #regSlotValues} for loads, direct read for
+	 * stores), and reconstructs the 64-bit EA to compare against the declared memory size.
+	 *
+	 * <p>For stores whose wrapped address landed in-bounds, the in-bounds bytes written by the
+	 * SLEIGH STORE are zeroed before throwing (same pragmatic undo as
+	 * {@link #checkAddressInMemory}).
+	 */
+	private void checkMemoryBounds64(Emulate emulate, Address lastExecuteAddress, PcodeOp[] pcode) {
+		if (analysisProvider == null || analysisProvider.getMemoryCount() == 0) {
+			return;
+		}
+		int opcode = readInstructionByte(emulate, lastExecuteAddress);
+		if (opcode < 0) {
+			return;
+		}
+		boolean isLoad = (opcode >= 0x28 && opcode <= 0x35);
+		boolean isStore = (opcode >= 0x36 && opcode <= 0x3E);
+		if (!isLoad && !isStore) {
+			return;
+		}
+
+		/* Get the per-instruction context to extract ctx_sp and ctx_mem64. */
+		WasmFunctionAnalysis funcAnalysis = getAnalysis(lastExecuteAddress);
+		if (funcAnalysis == null) {
+			return;
+		}
+		BigInteger context = funcAnalysis.getContext(lastExecuteAddress);
+		if (context == null) {
+			return;
+		}
+		/* ctx_mem64 = bits 14..15 in SLEIGH → stored at shift (128-1-15)=112 in the Java
+		 * ContextRegister (see WasmFunctionAnalysis.ContextRegister.getShift()). */
+		int ctxMem64 = (context.shiftRight(112).intValue()) & 0x3;
+		if (ctxMem64 != 0) {
+			return; // memory64: the SLEIGH computes 64-bit there, already correct
+		}
+		/* ctx_sp = bits 96..127 in SLEIGH → stored at shift (128-1-127)=0 in the Java
+		 * ContextRegister. */
+		long ctxSp = context.longValue() & 0xFFFFFFFFL;
+		if (ctxSp == 0) {
+			return;
+		}
+
+		/* Decode the memarg from the instruction bytes: align:u32 [memidx:u32] offset:u64. */
+		byte[] bytes = readBytes(emulate, lastExecuteAddress, 20);
+		if (bytes == null || bytes.length < 2) {
+			return;
+		}
+		int[] pos = new int[1];
+		pos[0] = 1; // skip opcode byte
+		long align = decodeULEB(bytes, pos[0], pos);
+		if (align < 0) {
+			return;
+		}
+		long memidx = 0;
+		if ((align & 0x40) != 0) {
+			/* Multi-memory: bit 6 of the align/flags field marks a memidx. */
+			memidx = decodeULEB(bytes, pos[0], pos);
+			if (memidx < 0) {
+				return;
+			}
+		}
+		long offset = decodeULEB(bytes, pos[0], pos);
+		if (offset < 0) {
+			return;
+		}
+
+		int accessWidth = getLoadStoreAccessWidth(opcode);
+		if (accessWidth <= 0) {
+			return;
+		}
+
+		/* Read the dynamic base from the wasm operand-stack register.
+		 * Load: address operand is sp1 (top of stack, N=1).
+		 * Store: address operand is sp2 (second from top, N=2). */
+		int stackN = isLoad ? 1 : 2;
+		long slotOffset = REG_STACK_BASE + (ctxSp - stackN) * WasmLoader.REG_SIZE;
+		long dynamicBase;
+		if (isStore) {
+			/* Stores do not modify register slots — read sp2 directly. */
+			AddressSpace regSpace = emulate.getLanguage().getAddressFactory().getAddressSpace("register");
+			dynamicBase = emulate.getMemoryState().getValue(regSpace, slotOffset, 4) & 0xFFFFFFFFL;
+		}
+		else {
+			/* Loads overwrite sp1 with the loaded value. Use regSlotValues (recorded at the
+			 * end of the *previous* instruction, before recordRegisterWrites runs for this one). */
+			Long preValue = regSlotValues.get(slotKey(slotOffset, 4));
+			if (preValue == null) {
+				/* Fallback: reverse-compute from the pcode. Find the LOAD, get the wrapped
+				 * address, find the INT_ADD that produced it, and subtract the constant. */
+				dynamicBase = reverseComputeLoadBase(emulate, pcode);
+				if (dynamicBase < 0) {
+					return; // cannot determine — degrade gracefully
+				}
+			}
+			else {
+				dynamicBase = preValue & 0xFFFFFFFFL;
+			}
+		}
+
+		/* Reconstruct the 64-bit effective address: dynamic_u32 + offset_u64. */
+		long ea64 = dynamicBase + offset;
+
+		/* Determine memory size. */
+		int memCount = analysisProvider.getMemoryCount();
+		long memSize;
+		if (memCount == 1) {
+			memSize = analysisProvider.getMemorySizeBytes(0);
+		}
+		else {
+			int mi = (int) memidx;
+			if (mi < 0 || mi >= memCount) {
+				return;
+			}
+			memSize = analysisProvider.getMemorySizeBytes(mi);
+		}
+
+		if (ea64 + accessWidth > memSize) {
+			if (isStore) {
+				/* Undo the in-bounds portion of the wrapped store: zero the bytes at the
+				 * wrapped 32-bit address that the SLEIGH STORE already wrote. */
+				long wrappedAddr = (dynamicBase + (offset & 0xFFFFFFFFL)) & 0xFFFFFFFFL;
+				if (wrappedAddr >= 0 && wrappedAddr < memSize) {
+					int inBounds = (int) Math.min(accessWidth, memSize - wrappedAddr);
+					AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+					byte[] zeros = new byte[inBounds];
+					emulate.getMemoryState().setChunk(zeros, ram, wrappedAddr, inBounds);
+				}
+			}
+			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
+		}
+	}
+
+	/**
+	 * Fallback for loads when {@link #regSlotValues} has no entry: find the LOAD in the pcode,
+	 * get the wrapped 32-bit address, find the {@code INT_ADD} that produced it, and reverse-
+	 * compute the dynamic base as {@code (wrappedAddr - constantOffset) mod 2^32}.
+	 * Returns -1 if the computation cannot be performed reliably.
+	 */
+	private long reverseComputeLoadBase(Emulate emulate, PcodeOp[] pcode) {
+		AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+		MemoryState memState = emulate.getMemoryState();
+		for (int i = 0; i < pcode.length; i++) {
+			PcodeOp op = pcode[i];
+			if (op.getOpcode() != PcodeOp.LOAD) {
+				continue;
+			}
+			if (!ram.equals(spaceOf(emulate, op))) {
+				continue;
+			}
+			Varnode addrVar = op.getInput(1);
+			long wrappedAddr = memState.getValue(addrVar);
+			/* Scan backwards for the INT_ADD that wrote addrVar. */
+			for (int j = i - 1; j >= 0; j--) {
+				PcodeOp prev = pcode[j];
+				if (prev.getOpcode() != PcodeOp.INT_ADD) {
+					continue;
+				}
+				Varnode prevOut = prev.getOutput();
+				if (prevOut == null || !sameVarnode(prevOut, addrVar)) {
+					continue;
+				}
+				/* Found the INT_ADD. Check that one input is a constant and the other
+				 * is in the register space (the operand-stack slot). */
+				Varnode in0 = prev.getInput(0);
+				Varnode in1 = prev.getInput(1);
+				long constVal;
+				if (in0.isConstant() && !in1.isConstant()) {
+					constVal = in0.getOffset();
+				}
+				else if (in1.isConstant() && !in0.isConstant()) {
+					constVal = in1.getOffset();
+				}
+				else {
+					return -1; // multi-memory or unexpected shape
+				}
+				return (wrappedAddr - (constVal & 0xFFFFFFFFL)) & 0xFFFFFFFFL;
+			}
+		}
+		return -1;
+	}
+
 	private void updateContextValue(Emulate emulate, Address currentAddress) {
 		WasmFunctionAnalysis funcAnalysis = getAnalysis(currentAddress);
 		if (funcAnalysis == null) {
@@ -395,5 +1101,14 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	@Override
 	public void postExecuteCallback(Emulate emulate, Address lastExecuteAddress, PcodeOp[] lastExecutePcode, int lastPcodeIndex, Address currentAddress) throws LowlevelError {
 		updateContextValue(emulate, currentAddress);
+		if (lastExecutePcode == null) {
+			return;
+		}
+		checkMemoryBounds(emulate, lastExecutePcode);
+		checkMemoryBounds64(emulate, lastExecuteAddress, lastExecutePcode);
+		checkArithmeticTraps(emulate, lastExecuteAddress, lastExecutePcode);
+		checkCallIndirect(emulate, lastExecuteAddress, lastExecutePcode);
+		checkFloatPurity(emulate, lastExecutePcode);
+		recordRegisterWrites(emulate, lastExecutePcode);
 	}
 }

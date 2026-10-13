@@ -64,9 +64,10 @@ except NameError:            # Python 3 (e.g. when run under pyghidra) has no `u
     basestring = str
 
 try:
-    from jpype import JArray
+    from jpype import JArray, JByte
 except ImportError:          # Jython / not under PyGhidra
     JArray = None
+    JByte = None
 
 ## Ensure output is not buffered
 class Unbuffered(object):
@@ -105,6 +106,22 @@ null_val = 0x00000000
 ret_addr = 0x80000000
 # per-invoke emulated-instruction budget (see --max-steps)
 DEFAULT_MAX_STEPS = 1000000
+
+# The exact WebAssembly trap texts the emulator can raise itself (see
+# WasmEmulateInstructionStateModifier). assert_trap compares these verbatim, so they are
+# forwarded as-is rather than wrapped in "Emulation stopped: ...".
+WASM_TRAP_TEXTS = frozenset([
+    "out of bounds memory access",
+    "out of bounds table access",
+    "undefined element",
+    "uninitialized element",
+    "indirect call type mismatch",
+    "integer divide by zero",
+    "integer overflow",
+    "invalid conversion to integer",
+    "unreachable",
+    "null function reference",
+])
 
 class EmulationError(Exception):
     pass
@@ -200,6 +217,8 @@ class EmulatedProgram(object):
                     raise EmulationError("unreachable")
                 elif err in ("Divide by 0", "Remainder by 0"):
                     raise EmulationError("integer divide by zero")
+                elif err in WASM_TRAP_TEXTS:
+                    raise EmulationError(err)
                 raise EmulationError("Emulation stopped: " + err)
             steps += 1
             if steps > self.maxSteps:
@@ -233,6 +252,60 @@ def program_metrics(prog):
         undefined_bytes += body.subtract(defined).getNumAddresses()
     return funcs, instrs, undefined_bytes
 
+# The spec testsuite's host environment defines these imported globals (see
+# test/core/../*.wast's `spectest` module and the reference interpreter's spectest host).
+SPECTEST_GLOBAL_VALUES = {
+    "global_i32": struct.pack("<I", 666),
+    "global_i64": struct.pack("<Q", 666),
+    "global_f32": struct.pack("<f", 666.6),
+    "global_f64": struct.pack("<d", 666.6),
+}
+
+def init_spectest_globals(prog_api):
+    """Write the `spectest` host module's imported globals into the emulator, then evaluate the
+    defined globals whose initialiser is a `global.get` of one of them.
+
+    The harness does not instantiate imports, so a module that imports e.g.
+    spectest.global_i32 (global.wast) would read 0 instead of the host's 666. This performs the
+    minimal part of instantiation the suite relies on: set each imported global's initial value,
+    then propagate it to globals initialised by `global.get <imported>` (e.g. global.wast
+    $z1/$z2).
+    """
+    from wasm.format.WasmEnums import WasmExternalKind
+    from wasm import WasmLoader
+    module = prog_api.analysis.getModule()
+    if module is None:
+        return
+    imports = module.getImports(WasmExternalKind.EXT_GLOBAL)
+    factory = prog_api.currentProgram.getAddressFactory()
+    for i, entry in enumerate(imports):
+        if entry.getModule() != "spectest":
+            continue
+        value = SPECTEST_GLOBAL_VALUES.get(entry.getName())
+        if value is None:
+            continue
+        addr = WasmLoader.getGlobalAddress(factory, i)
+        if JArray is not None and JByte is not None:
+            # JByte is signed; map 0..255 onto -128..127
+            data = JArray(JByte)([b - 256 if b > 127 else b for b in value])
+        else:
+            data = value
+        prog_api.emuHelper.writeMemory(addr, data)
+
+    # Defined globals initialised by `global.get <imported>` were loaded as uninitialised (the
+    # loader cannot know the imported value), so copy the value we just installed.
+    for j, entry in enumerate(module.getNonImportedGlobals()):
+        source = entry.asGlobalGet()
+        if source is None:
+            continue
+        size = entry.getGlobalType().getType().getSize()
+        src_addr = WasmLoader.getGlobalAddress(factory, int(source))
+        data = prog_api.emuHelper.readMemory(src_addr, size)
+        if data is None:
+            continue
+        dst_addr = WasmLoader.getGlobalAddress(factory, len(imports) + j)
+        prog_api.emuHelper.writeMemory(dst_addr, data)
+
 def import_program(dirname, filename, max_steps=DEFAULT_MAX_STEPS):
     prog = importFile(File(os.path.join(dirname, filename)))
     if prog is None:
@@ -251,6 +324,7 @@ def import_program(dirname, filename, max_steps=DEFAULT_MAX_STEPS):
     prog.endTransaction(tx, True)
 
     prog_api = EmulatedProgram(prog, max_steps)
+    init_spectest_globals(prog_api)
     return prog_api
 
 def execute_action(progs, action):
