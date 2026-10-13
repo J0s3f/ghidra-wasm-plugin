@@ -9,9 +9,11 @@ This is a *measurement* harness: it does not modify plugin sources.
 
 ```powershell
 .\test-scripts\spectest\fetch_spectest_tools.ps1        # -> $env:TEMP\spectest-tools
+# wabt only (used by the probes workflow's fixture-validity gate):
+.\test-scripts\spectest\fetch_spectest_tools.ps1 -WabtOnly
 ```
 
-* wabt `1.0.42` (windows-x64 release asset) — `wast2json`, `wasm2wat`, `wasm-objdump`
+* wabt `1.0.42` (host-OS release asset) — `wast2json`, `wasm2wat`, `wasm-objdump`, `wasm-validate`
 * WebAssembly spec testsuite `d76759e746f3564a03f6106ae19679742f2a1831`
   (the commit pinned by wabt 1.0.42's `third_party/testsuite` submodule)
 
@@ -36,7 +38,7 @@ Options:
 
 | flag | meaning |
 | --- | --- |
-| `-Subset smoke\|numeric\|control\|memory\|table\|core` | predefined `.wast` selections |
+| `-Subset smoke\|numeric\|control\|memory\|table\|core\|simd\|all` | predefined `.wast` selections |
 | `-Files a,b,c` | explicit `.wast` basenames (overrides `-Subset`) |
 | `-MaxPerWast N` | take at most N valid modules per `.wast` (bounds runtime; 0 = unlimited) |
 | `-Detail` | also run `SpecDisasm.java` (full listing + decompiled C) — only for small selections |
@@ -45,17 +47,50 @@ Options:
 ## 3. Outputs
 
 `summary.json` carries totals, per-`.wast` coverage, crash/warning classes and concrete
-module/fuction examples. `summary.md` is the human-readable version. Per-function rows appear as
+module/function examples. `summary.md` is the human-readable version. Per-function rows appear as
 `SPECFUNC` lines only when a function has undefined bytes or fails to decompile.
 
-## 4. Known environment notes
+## 4. CI gate
+
+`check-spectest.py` compares a run's `summary.json` against the recorded baseline
+(`test-scripts/spectest-expected.json`) and exits non-zero on any metric drift. This is what
+`.github/workflows/spectest.yml` enforces.
+
+```powershell
+python3 test-scripts/check-spectest.py --summary <out>/summary.json --subset core
+# regenerate the baseline from a fresh run:
+python3 test-scripts/check-spectest.py --summary <out>/summary.json --subset core --update
+```
+
+## 5. Emulation assertions
+
+`run_emulate.ps1` drives the Ghidra emulator over the `.json` emitted by `wast2json` and
+executes `assert_return` / `assert_trap` commands against real values. It needs PyGhidra (a
+CPython with a `jpype1` wheel); the script provisions a Python 3.13 venv under
+`$env:TEMP\spectest-tools` and installs PyGhidra offline from Ghidra's own dist directory.
+
+```powershell
+.\test-scripts\spectest\run_emulate.ps1 -Files i32,i64 -OutDir "$env:TEMP\spec-emulate"
+```
+
+| flag | meaning |
+| --- | --- |
+| `-Files a,b,c` | `.wast` basenames to emulate (default: `i32`, `i64`) |
+| `-MaxCommands N` | cap commands per `.wast` (0 = unlimited) |
+| `-MaxSteps N` | cap emulator steps per command (0 = unlimited) |
+| `-NoPrepare` | reuse previously generated `.json` files |
+
+`parse_emulate_report.py` aggregates the per-command RESULT lines into
+`<OutDir>\emulate-summary.md` / `.json`.
+
+## 6. Known environment notes
 
 * A headless run accepts **one** `-scriptPath` only; use the harness' own `SpecDisasm.java` instead of
   combining directories.
 * `analyzeHeadless` can run Java scripts directly. Python scripts (`ghidra_scripts/spectest.py`) need
   the PyGhidra launcher (Ghidra 12 removed Jython).
 
-## 5. Negative tests (rejection behaviour)
+## 7. Negative tests (rejection behaviour)
 
 The sibling harness for the modules a correct implementation must **reject**
 (`assert_invalid` / `assert_malformed` / `assert_unlinkable`). Measurement only; the existing

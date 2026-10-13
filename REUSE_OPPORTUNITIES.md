@@ -45,17 +45,21 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
      regenerated baseline should be byte-identical - any metric that moves is a finding in itself.
      Also fix the 8 export entries in `probes_multivalue.py` (`("f", 1, 1)` -> `("f", 0, 1)`; kind 1 is
      a table index). Re-run the scan over the *merged* tree, since per-agent probe files add new sites.
+    * **STATUS: DONE.** All 201 probes now classify as 118 valid / 53 wabt-gap / 17 unsupported /
+      13 invalid under wabt + binaryen; `test-scripts/check-fixture-validity.py` +
+      `test-scripts/fixture-validity.json` lock in the classification and
+      `.github/workflows/probes.yml` enforces it with wabt.
 2. **Metric semantics**: our `instrs` metric counts pre-analyzer marker instructions
    (`.locals`, `.local`, `.case`, `.default`) - the reference module is **61,658 counted = 60,556 real
    wasm instructions + 1,102 markers**. Either expose `real_instrs` in `WasmFeatureReport.java` or
-   document it; do not compare the raw count against other tools.
+   document it; do not compare the raw count against other tools. *(Documented in MODERN_WASM_GAPS.md §2.4.)*
 3. **Stale rows** in `MODERN_WASM_GAPS.md` §2.4 (probes 09/12/19/20) predate the GC/funcref work -
-   refresh from a run.
+   **refreshed** (201 probes, current counts).
 4. **New minor bug lead**: `WasmLoader.createData` logs a `Data markup conflict` warning on the three
-   extended-const probes (`22`-`24`/`27`) - worth a look.
+   extended-const probes (`22`-`24`/`27`) - **still open**, worth a look.
 5. **Binaryen confirmed open item B4** from the other direction: duplicate sections, section id 99,
    function-section-before-type and a declared-size mismatch were all *accepted* by our loader.
-   The `h1` workstream addresses this (23 of 24 such modules now reject with a diagnostic).
+   **FIXED** by the `h1` workstream (23 of 24 such modules now reject with a diagnostic).
 
 ## 3. What is worth porting (ranked)
 
@@ -86,18 +90,18 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
    `wasm-dis`-based fixture-validity check to the harness/CI.~~ **DONE** (`MODERN_WASM_GAPS.md` 6.5):
    `wasm_probe_lib.module()` now canonicalises section order (custom sections keep their positions;
    `datacount` before `code`, `tag` between `memory` and `global`), the multivalue export kind is
-   fixed, and 15 further individual fixture bugs were fixed. All 136 probes are valid under binaryen
-   133; `test-scripts/check-fixture-validity.py` + `test-scripts/fixture-validity.json` lock in the
-   classification and `.github/workflows/probes.yml` enforces it with wabt.
-2. Refresh the stale doc rows and document the `instrs`-vs-real-instructions distinction. *(S)*
-3. Investigate the extended-const `Data markup conflict` warning. *(S)*
+   fixed, and 15 further individual fixture bugs were fixed. All 201 probes classify as
+   118 valid / 53 wabt-gap / 17 unsupported / 13 invalid; `test-scripts/check-fixture-validity.py`
+   + `test-scripts/fixture-validity.json` lock in the classification and
+   `.github/workflows/probes.yml` enforces it with wabt.
+2. ~~Refresh the stale doc rows and document the `instrs`-vs-real-instructions distinction. *(S)*~~
+   **DONE** (2026-10-13, docs pass).
+3. Investigate the extended-const `Data markup conflict` warning. *(S)* — **still open.**
 4. Add the WABT/Binaryen decode-oracle comparison for the real corpus to the suite that already exists
    (`corpus-sweep.ps1`), so "our decode matches a second engine on real modules" becomes a checked
-   property. *(S-M)*
-5. **Stack-as-aggregate + SROA** (`WasmStackVariableAnalyzer`) *(M)* - the highest-leverage step.
-   Retypd's own model says the signal that drives struct recovery is *offset-width access* labels
-   (`X.σN@k` = "N bits accessed at offset k"), which is exactly what SROA materialises for
-   Ghidra's decompiler. Do this first.
+   property. *(S-M)* — **done in research** (`REUSE_OPPORTUNITIES.md` §1; byte-exact match on the
+   reference module).
+5. ~~**Stack-as-aggregate + SROA** (`WasmStackVariableAnalyzer`) *(M)*~~ **DONE** (`REPORT-SROA.md`).
 
    **Retypd port - decision: measure before porting** (assessment written after reading the
    Retypd pipeline at
@@ -131,13 +135,11 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
    engine with a venv inside a Java extension, or an L-sized Java reimplementation) is
    disproportionate for 591 accesses, and wasm already gives us the type/call-graph structure that
    Retypd has to infer.
-   **Replacement candidate (wasm-specific, M): call-graph-aware struct synthesis.** Direct calls are
-   static and indirect calls go through typed tables whose element lists the loader already resolves,
-   so pointer identity can be propagated across calls without any solver: cluster the observed
-   `(offset, width)` accesses per pointer class, synthesize one Ghidra struct per class, retype the
-   parameters, and let Ghidra's decompiler use it. `type_recovery_metric.py` measures the result
-   directly (target: struct-typed parameters > 0, candidate structures -> 0). Recorded in
-   `MODERN_WASM_GAPS.md` 2.3 as a candidate, not a commitment.
+   **Replacement (wasm-specific, M): call-graph-aware struct synthesis — IMPLEMENTED**
+   (`REPORT-STRUCTS.md`): `WasmStructSynthAnalyzer` (call-graph union-find + struct synthesis)
+   creates **352 structs** and retypes **255 parameters** on the real module, cutting
+   constant-offset accesses **591 → 437 (−26 %)**. v1 limits documented in
+   `MODERN_WASM_GAPS.md` 2.3.
 
 ## 6. External input: the Decompilation Wiki (read for the type-recovery decision)
 
