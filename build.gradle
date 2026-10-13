@@ -43,4 +43,8 @@ tasks.named('buildExtension') {
 	exclude 'MODERN_WASM_GAPS.md'
 	exclude 'RELEASE_NOTES.md'
 	exclude 'REPORT-*.md'
+	exclude 'REUSE_OPPORTUNITIES.md'
+	exclude 'eclipse-formatter.xml'
+	exclude '.gitignore'
+	exclude 'hs_err_pid*.log'
 }
