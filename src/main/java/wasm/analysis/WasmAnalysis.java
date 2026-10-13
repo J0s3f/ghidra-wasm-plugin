@@ -56,15 +56,10 @@ public class WasmAnalysis {
 			 *
 			 * MemoryByteProvider(mem, start) sizes itself from the *maximum address of the whole
 			 * `ram` address space* (Ghidra's findAddressSpaceMax), not from the end of the block
-			 * containing `start`. The module image is exactly one block at CODE_BASE, so as soon as
-			 * a linear-memory block is mapped *above* it - memory index >= 8, i.e. memidx *
-			 * MEMORY_STRIDE >= CODE_BASE - the provider's length reaches past the module image. The
-			 * section loop in WasmModule then tries to read a section header one byte past the
-			 * module and throws "Address ... does not exist in memory", which voids the whole
-			 * function analysis (every body becomes a stub `unreachable`). A memarg with a memory
-			 * index >= 9 needs at least ten memories, so it was the visible trigger.
-			 *
-			 * The module is one contiguous block, so its end is the correct bound.
+			 * containing `start`. The module image is exactly one block at CODE_BASE in `ram`, and
+			 * linear-memory blocks are now in the separate `memory` address space (see
+			 * WebAssembly.slaspec), so they no longer extend the `ram` space's maximum. The
+			 * module is one contiguous block, so its end is the correct bound.
 			 */
 			MemoryBlock moduleBlock = mem.getBlock(moduleStart);
 			ByteProvider memByteProvider = (moduleBlock != null)

@@ -30,11 +30,13 @@ define token I64 (64)
 	f64 = (0,63)
 ;
 
-# @@MM: multi-memory. Linear memory N is addressed at ram offset N * MEMORY_STRIDE, in
-# both the memarg decoders below and the loader (WasmLoader.getMemoryAddress /
-# WasmLoader.MEMORY_STRIDE - keep the two in sync). Memory 0 therefore keeps its old
-# offset 0, and 256 MiB per memory lets indices 0..7 coexist below the module image at
-# WasmLoader.CODE_BASE (0x80000000).
+# @@MM: multi-memory. Linear memory N is addressed at offset N * MEMORY_STRIDE in the
+# dedicated `memory` address space, in both the memarg decoders below and the loader
+# (WasmLoader.getMemoryAddress / WasmLoader.MEMORY_STRIDE - keep the two in sync).
+# Memory 0 therefore keeps its old offset 0, and 256 MiB per memory lets many indices
+# coexist: the `memory` space is 64-bit (size=8, see WebAssembly.slaspec), so memory
+# index >= 8 no longer collides with the module image in `ram` at WasmLoader.CODE_BASE
+# (0x80000000).
 @define MEMORY_STRIDE 0x10000000
 
 attach names valtype [

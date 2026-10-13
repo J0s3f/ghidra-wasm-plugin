@@ -1318,6 +1318,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "MS_01_mem9_load_store.wasm": {
+      "funcs": 1,
+      "instrs": 10,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "MS_02_mem16_load.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "MS_03_mem9_data_segment.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "N01_full_name_section.wasm": {
       "funcs": 1,
       "instrs": 7,
@@ -1591,7 +1615,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 198,
+  "probe_count": 201,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
