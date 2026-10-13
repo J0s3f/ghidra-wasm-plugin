@@ -337,6 +337,28 @@ def memory_section(mems) -> bytes:
     return section(5, vec(out))
 
 
+def memory_custom_page(flags: int, initial: int, maximum, exponent: int) -> bytes:
+    """One memory entry with a custom page size (limits flag 0x08).
+
+    Binary encoding (verified against wabt 1.0.42 + binaryen version_133): the
+    flags byte, the initial page count, the maximum page count when bit 0 is set,
+    then the page-size *exponent* (page size = 2**exponent bytes). Both oracles
+    accept exponents 0 (1 byte) and 16 (64 KiB) and reject anything else.
+    `maximum` is None when the entry carries no maximum (bit 0 clear).
+    """
+    body = bytes([flags]) + uleb(initial)
+    if flags & 0x01:
+        assert maximum is not None, "flags request a maximum but none was given"
+        body += uleb(maximum)
+    body += uleb(exponent)
+    return body
+
+
+def memory_section_custom(mems) -> bytes:
+    """mems: list of (flags, initial, maximum-or-None, exponent); see memory_custom_page."""
+    return section(5, vec([memory_custom_page(f, i, m, e) for (f, i, m, e) in mems]))
+
+
 def global_section(globals_) -> bytes:
     """globals_: list of (valtype, mutable, init_expr_bytes) - the `end` is appended.
 

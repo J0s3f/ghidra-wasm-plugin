@@ -81,6 +81,49 @@ write("B06_limits_two_tables.wasm", module(
 ))
 
 # ---------------------------------------------------------------------------------------------
+# Custom-page-size probes: the limits flag (0x08) decodes (see B03), and the loader must size
+# the memory block as pages x page_size with page_size = 2**exponent (verified against wabt
+# 1.0.42 + binaryen version_133: both accept exponents 0 and 16, reject anything else).
+# ---------------------------------------------------------------------------------------------
+
+# B03b: tiny page size (exponent 0 = 1 byte): 8 pages = 8 bytes, with a 3-byte data segment
+# at offset 0. The block extent (PROBE-BLOCK size=8) is the observable evidence: a loader
+# that hardwires 64 KiB pages would materialise 8 x 65536 = 524288 bytes instead.
+write("B03b_custom_page_size_tiny.wasm", module(
+    type_section(functype([], [])),
+    memory_section_custom([(0x08, 8, None, 0)]),  # flags=8: custom page size, exponent=0 (1-byte pages)
+    func_section([0]),
+    export_section([("f", 0, 0)]),
+    code_section([END]),
+    data_section([active_data(i32_const(0) + END, b"Hi!")]),
+))
+
+# B03c: explicit standard page size (exponent 16 = 64 KiB): 2 pages = 131072 bytes. Must
+# behave exactly like a default-page-size memory of the same size (same block extent, no
+# new warnings) - the observable evidence is the 131072-byte block plus a loader info note
+# naming the declared page size.
+write("B03c_custom_page_size_standard.wasm", module(
+    type_section(functype([], [])),
+    memory_section_custom([(0x08, 2, None, 16)]),  # flags=8: custom page size, exponent=16 (64 KiB pages)
+    func_section([0]),
+    export_section([("f", 0, 0)]),
+    code_section([END]),
+))
+
+# B03d: data segment overruns the page-derived memory: 2 pages of 1 byte = 2 bytes, but an
+# 8-byte segment at offset 0. Placement must fail with a loader error naming the declared
+# page-derived size (only observable once the block extent is genuinely page-sized: with
+# 64 KiB pages the segment would fit silently).
+write("B03d_custom_page_size_overrun.wasm", module(
+    type_section(functype([], [])),
+    memory_section_custom([(0x08, 2, None, 0)]),  # flags=8: custom page size, exponent=0 (1-byte pages)
+    func_section([0]),
+    export_section([("f", 0, 0)]),
+    code_section([END]),
+    data_section([active_data(i32_const(0) + END, b"OVERFLOW")]),
+))
+
+# ---------------------------------------------------------------------------------------------
 # Constant expression probes: extended-const, v128.const, ref.null/ref.func, unknown opcode
 # ---------------------------------------------------------------------------------------------
 

@@ -123,9 +123,10 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			memoryMaxPages = new long[memories.size()];
 			for (int i = 0; i < memories.size(); i++) {
 				WasmResizableLimits limits = memories.get(i);
-				memoryPageSize[i] = limits.hasCustomPageSize()
-						? (1L << limits.getPageSizeExponent())
-						: WasmLoader.MEMORY_PAGE_SIZE;
+				/* Custom page sizes share the loader's saturating helper (see
+				 * WasmLoader.getMemoryPageSize); identical to the old shift for the
+				 * oracle-legal exponents 0/16, bounded for anything else. */
+				memoryPageSize[i] = WasmLoader.getMemoryPageSize(limits);
 				memoryPages[i] = limits.getInitial();
 				memoryMaxPages[i] = limits.hasMaximum() ? limits.getMaximum()
 						: (limits.is64Bit() ? (1L << 48) : WasmLoader.MAX_MEMORY32_PAGES);
@@ -146,7 +147,14 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		}
 
 		public long getMemorySizeBytes(int memidx) {
-			return memoryPages[memidx] * memoryPageSize[memidx];
+			/* Saturating multiply: a hostile page count or page size must bound the
+			 * emulated memory, never wrap it negative (identical for sane values). */
+			long pages = memoryPages[memidx];
+			long pageSize = memoryPageSize[memidx];
+			if (pages < 0 || pageSize <= 0 || pages > Long.MAX_VALUE / pageSize) {
+				return Long.MAX_VALUE;
+			}
+			return pages * pageSize;
 		}
 
 		/**
