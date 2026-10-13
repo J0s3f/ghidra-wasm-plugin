@@ -2,29 +2,28 @@
 # Atomicity does not matter to the decompiler: loads and stores are plain memory accesses, read-modify-write returns
 # the old value, cmpxchg stores only when the old value equals the expected one. wait/notify are callothers.
 
+## 32-bit memory: 32-bit address arithmetic (addr:4, no ZEXT — see BasicOps.sinc).
 atomicaddr3: memalign memoffset is memalign; memoffset; ctx_mem64=0; sp3_32 {
-	local raw:4 = memoffset:4 + sp3_32;
-	addr:8 = zext(raw);
+	addr:4 = memoffset:4 + sp3_32;
 	export addr;
 }
 
 ## @@MM: memarg carrying a memory index (see BasicOps.sinc)
 atomicaddr3: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; ctx_mem64=0; sp3_32 {
-	local raw:4 = memoffset:4 + sp3_32 + memidx_label:4 * $(MEMORY_STRIDE);
-	addr:8 = zext(raw);
+	addr:4 = memoffset:4 + sp3_32 + memidx_label:4 * $(MEMORY_STRIDE);
 	export addr;
 }
 
 ## @@M64: 64-bit-indexed memory (see the loadaddr note in BasicOps.sinc).
 atomicaddr3: memalign memoffset " (i64 index)" is memalign; memoffset; ctx_mem64=3; sp3_64 {
 	local full:8 = memoffset:8 + sp3_64;
-	addr:8 = full;
+	addr:4 = full:4;
 	export addr;
 }
 
 atomicaddr3: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem; memidx_label; memoffset; ctx_mem64=3; sp3_64 {
 	local full:8 = memoffset:8 + sp3_64 + memidx_label:8 * $(MEMORY_STRIDE);
-	addr:8 = full;
+	addr:4 = full:4;
 	export addr;
 }
 

@@ -40,60 +40,58 @@ memoffset: "offset="^ULeb128 is ULeb128 {
 
 ## @@MM: linear memory N is addressed at N * MEMORY_STRIDE in the dedicated `memory`
 ## address space (memory 0 => offset 0, unchanged; see @define MEMORY_STRIDE in
-## WebAssembly.sinc and WasmLoader.MEMORY_STRIDE). The `memory` space is 64-bit (size=8),
+## WebAssembly.sinc and WasmLoader.MEMORY_STRIDE). The `memory` space is 32-bit (size=4),
 ## so memory index >= 8 no longer collides with the module image in `ram` at CODE_BASE.
+## All 32-bit memory address arithmetic stays in 32 bits (addr:4) — no ZEXT in the C.
 ##
 ## @@M64: a 64-bit-indexed memory (memory64) takes an i64 address operand and a u64 offset.
-## The address is computed in 64 bits in the 64-bit `memory` space, so it is modelled
-## exactly for the full 2^64 range (see REPORT-N.md). The two variants are selected by
-## ctx_mem64, which the Java pre-analyzer sets per instruction from the memory's declared
-## index type (it is not encoded in the byte stream).
+## The address is computed in 64 bits and truncated into the 32-bit `memory` space, so it
+## is modelled exactly for effective addresses below 4 GiB and wraps at 4 GiB (see
+## REPORT-N.md). The two variants are selected by ctx_mem64, which the Java pre-analyzer
+## sets per instruction from the memory's declared index type (it is not encoded in the
+## byte stream).
 loadaddr: memalign memoffset is memalign; memoffset; ctx_mem64=0; sp1_32 {
-	local raw:4 = memoffset:4 + sp1_32;
-	addr:8 = zext(raw);
+	addr:4 = memoffset:4 + sp1_32;
 	export addr;
 }
 
 loadaddr: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; ctx_mem64=0; sp1_32 {
-	local raw:4 = memoffset:4 + sp1_32 + memidx_label:4 * $(MEMORY_STRIDE);
-	addr:8 = zext(raw);
+	addr:4 = memoffset:4 + sp1_32 + memidx_label:4 * $(MEMORY_STRIDE);
 	export addr;
 }
 
 loadaddr: memalign memoffset " (i64 index)" is memalign; memoffset; ctx_mem64=3; sp1_64 {
 	local full:8 = memoffset:8 + sp1_64;
-	addr:8 = full;
+	addr:4 = full:4;
 	export addr;
 }
 
 loadaddr: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem; memidx_label; memoffset; ctx_mem64=3; sp1_64 {
 	local full:8 = memoffset:8 + sp1_64 + memidx_label:8 * $(MEMORY_STRIDE);
-	addr:8 = full;
+	addr:4 = full:4;
 	export addr;
 }
 
 storeaddr: memalign memoffset is memalign; memoffset; ctx_mem64=0; sp2_32 {
-	local raw:4 = memoffset:4 + sp2_32;
-	addr:8 = zext(raw);
+	addr:4 = memoffset:4 + sp2_32;
 	export addr;
 }
 
 storeaddr: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; ctx_mem64=0; sp2_32 {
-	local raw:4 = memoffset:4 + sp2_32 + memidx_label:4 * $(MEMORY_STRIDE);
-	addr:8 = zext(raw);
+	addr:4 = memoffset:4 + sp2_32 + memidx_label:4 * $(MEMORY_STRIDE);
 	export addr;
 }
 
 ## @@M64: see the loadaddr note above.
 storeaddr: memalign memoffset " (i64 index)" is memalign; memoffset; ctx_mem64=3; sp2_64 {
 	local full:8 = memoffset:8 + sp2_64;
-	addr:8 = full;
+	addr:4 = full:4;
 	export addr;
 }
 
 storeaddr: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem; memidx_label; memoffset; ctx_mem64=3; sp2_64 {
 	local full:8 = memoffset:8 + sp2_64 + memidx_label:8 * $(MEMORY_STRIDE);
-	addr:8 = full;
+	addr:4 = full:4;
 	export addr;
 }
 

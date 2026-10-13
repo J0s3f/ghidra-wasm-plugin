@@ -9,49 +9,50 @@ the code base and could not be created (the loader logged the failure). The 32-b
 space could not hold many memories at 256 MiB stride.
 
 ### Fix
-Add a dedicated 64-bit `memory` address space to `WebAssembly.slaspec`:
+Add a dedicated 32-bit `memory` address space to `WebAssembly.slaspec`:
 
 ```
-define space memory  type=ram_space  size=8;
+define space memory  type=ram_space  size=4;
 ```
 
-The SLEIGH memory accesses now target `*[memory]:N addr` instead of `*:N addr`.
-The address arithmetic is unchanged (`memidx * MEMORY_STRIDE`), so memory N sits at
-the same numeric offset as before - the only difference is the space name.
+The SLEIGH memory accesses target `*[memory]:N addr` instead of `*:N addr`.
+With `MEMORY_STRIDE = 0x08000000` (128 MiB), memory indices 0..31 fit in the
+32-bit space (memory 31 = 0xF8000000), so memory index >= 8 no longer
+collides with the module image in `ram` at `CODE_BASE = 0x80000000`.
 
-Because the `memory` space is 64-bit (`size=8`), the SLEIGH `loadaddr`/`storeaddr`
-constructors export 64-bit addresses (`addr:8`). 32-bit memory addresses are
-zero-extended (`zext(raw)`); memory64 addresses are computed in 64 bits natively.
-This eliminates the old 32-bit truncation for memory64.
+All 32-bit memory address arithmetic stays in 32 bits (`addr:4`), so the
+decompiled C has no ZEXT noise. memory64 addresses are computed in 64 bits
+and truncated to 32 bits (same as the pre-`memory`-space behaviour).
 
 The Java loader creates memory blocks in the `memory` space via
-`getMemoryAddress()`, which now uses `getAddressSpace("memory")`.
+`getMemoryAddress()`, which uses `getAddressSpace("memory")`.
 
 ## Files Changed
 
 ### SLEIGH / SLASPEC
-- **`data/languages/WebAssembly.slaspec`** (line 28): Added `define space memory type=ram_space size=8;`
-- **`data/languages/WebAssembly.sinc`** (line 33-38): Updated `@@MM` comment to describe
-  the `memory` space (64-bit, no collision with `ram` at CODE_BASE).
+- **`data/languages/WebAssembly.slaspec`** (line 28): Added `define space memory type=ram_space size=4;`
+  (32-bit space; see Regression/Fix above for why not 64-bit).
+- **`data/languages/WebAssembly.sinc`** (line 33-40): Updated `@@MM` comment to describe
+  the `memory` space (32-bit, no collision with `ram` at CODE_BASE; 128 MiB stride).
+  `MEMORY_STRIDE` = `0x08000000`.
 - **`data/languages/BasicOps.sinc`**:
-  - `loadaddr`/`storeaddr` constructors: changed `addr:4` to `addr:8` with `zext(raw)`
-    for 32-bit memories, native 64-bit for memory64.
+  - `loadaddr`/`storeaddr` constructors: `addr:4` for 32-bit memories (32-bit
+    arithmetic, no `zext`); `addr:4 = full:4` (truncate) for memory64.
   - All load/store instructions: `*:N addr` → `*[memory]:N addr`.
-  - Updated `@@MM`/`@@M64` comments.
 - **`data/languages/VectorOps.sinc`**:
-  - `loadaddr2` constructor: same 64-bit address change.
+  - `loadaddr2` constructor: same 32-bit address change.
   - All SIMD load/store instructions: `*:N addr` → `*[memory]:N addr`.
 - **`data/languages/AtomicOps.sinc`**:
-  - `atomicaddr3` constructor: same 64-bit address change.
+  - `atomicaddr3` constructor: same 32-bit address change.
   - All atomic load/store/RMW/cmpxchg instructions: `*:N addr` → `*[memory]:N addr`.
 
 ### Java
 - **`src/main/java/wasm/WasmLoader.java`**:
   - `getMemoryAddress()`: uses `getAddressSpace("memory")` instead of `"ram"`.
-  - `RAM_MAX_ADDRESS` → `MEMORY_MAX_ADDRESS = Long.MAX_VALUE` (64-bit space).
-  - `createMemoryBlock()`: memory64 comment updated (SLEIGH no longer truncates).
-  - `loadMemories()`: comments updated for the `memory` space.
-  - `MEMORY_STRIDE` comment updated.
+  - `MEMORY_STRIDE` = `0x08000000L` (128 MiB, fits 32 memories in 32 bits).
+  - `MEMORY_MAX_ADDRESS` = `0xffffffffL` (32-bit space).
+  - `createMemoryBlock()`: memory64 comment updated (SLEIGH truncates to 32 bits).
+  - `loadMemories()`: comments updated for the 32-bit `memory` space.
 - **`src/main/java/ghidra/program/emulation/WasmEmulateInstructionStateModifier.java`**:
   - `checkMemoryBounds()`: `getAddressSpace("ram")` → `getAddressSpace("memory")`.
   - `checkAddressInMemory()`: zeroing uses `"memory"` space.
@@ -59,9 +60,8 @@ The Java loader creates memory blocks in the `memory` space via
   - `reverseComputeLoadBase()`: `getAddressSpace("ram")` → `getAddressSpace("memory")`.
 - **`src/main/java/wasm/pcode/PcodeOpEmitter.java`**:
   - `emitUnrolledCopy()`: uses `getAddressSpace("memory")` instead of default (`ram`).
-- **`src/main/java/wasm/analysis/WasmAnalysis.java`**: Comment updated (memory blocks
-  no longer extend `ram` space's max address).
-- **`src/main/java/wasm/analysis/WasmPreAnalyzer.java`**: Comment updated similarly.
+- **`src/main/java/wasm/analysis/WasmAnalysis.java`**: Comment updated.
+- **`src/main/java/wasm/analysis/WasmPreAnalyzer.java`**: Comment updated.
 
 ### Tests
 - **`test-scripts/probes_memspace.py`** (new): Three probes:
@@ -124,31 +124,79 @@ OK: every probe matches the recorded fixture classification.
 | MS_02 (mem16 load) | 1 | 4 | 0 | 1 | 0 |
 | MS_03 (mem9 data segment) | 1 | 4 | 0 | 1 | 0 |
 
-## Rendering Change in Decompiled C
+## Regression (post-change, measured by the integrator)
 
-The decompiled C for memory accesses now shows `ZEXT48` wrapping for store addresses
-because the `memory` space is 64-bit and the SLEIGH zero-extends 32-bit addresses:
+The first version of this change widened every exported address to 64 bits
+(`addr:8` with explicit `zext` for 32-bit memories) because the `memory`
+space was 64-bit (`size=8`). SLEIGH requires the pointer size to match
+the space size, so this was the only way to make `*[memory]:N` compile.
 
-```c
-// Before (ram space, 32-bit):
-*(undefined4 *)param_2 = param1;
+Consequence in the real module's decompiled C (`DumpAll` of
+`rasterbator_rs_bg.wasm`):
+- `ZEXT`/`zext` lines in the C: **7 before the change → 570 after**;
+- variable types degraded: `bool`, `int`, `char *`, `uint *` became
+  `undefined4`/`undefined8`;
+- instruction counts, decompile success and undefined_bytes are unchanged
+  (which is why the gates stayed green — but the C is materially worse).
 
-// After (memory space, 64-bit):
-*(undefined4 *)ZEXT48(&param_2) = param1;
-```
+## Fix: 32-bit `memory` space + 128 MiB stride
 
-The numeric addresses are identical. Variable names in the decompiled C change from
-`in_ram_XXXXXXXX` to `in_memory_XXXXXXXX` (space name change). The instruction count,
-decompile success rate, and undefined_bytes are unchanged.
+The `memory` space does not need to be 64-bit for the common cases:
+- 32-bit memories (the overwhelmingly common case) fit in 32 bits;
+- with `MEMORY_STRIDE = 0x08000000` (128 MiB), memory indices 0..31 fit
+  in 32 bits (memory 31 = 0xF8000000), so >= 8 memory support is preserved
+  (MS_02: 17 memories / mem16 works);
+- memory64 addresses above 4 GiB wrap — the same modelling choice as the
+  pre-`memory`-space behaviour (see REPORT-N.md).
+
+Changes:
+- `WebAssembly.slaspec`: `memory` space `size=8` → `size=4` (32-bit).
+- `WebAssembly.sinc`: `MEMORY_STRIDE` `0x10000000` → `0x08000000`.
+- `BasicOps.sinc` / `VectorOps.sinc` / `AtomicOps.sinc`: address
+  constructors use `addr:4` (32-bit arithmetic, no `zext`) for 32-bit
+  memories; memory64 truncates (`addr:4 = full:4`).
+- `WasmLoader.java`: `MEMORY_STRIDE` `0x10000000L` → `0x08000000L`;
+  `MEMORY_MAX_ADDRESS` `Long.MAX_VALUE` → `0xffffffffL`.
+
+### Before/After ZEXT counts (real module `rasterbator_rs_bg.wasm`)
+
+| Script | Pre-change | Broken (64-bit space) | After fix |
+|--------|-----------|----------------------|-----------|
+| DumpAll (all 437 funcs) | 56 | 570 | **47** |
+| DumpDecomp (biggest 3 funcs) | 7 | — | **3** (all 437 funcs) |
+
+Variable types restored: `bool`, `int`, `char *`, `uint *` are back
+(were `undefined4`/`undefined8` in the broken version).
+
+### Gate results (after fix)
+
+- 201-probe gate: **OK** (183 imported, 18 import failures; baseline 201)
+- Fixture: `functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0` ✓
+- Real module: `functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156` ✓
+- Fixture validity: `probes: 201 valid: 118 wabt-gap: 53 unsupported: 17 invalid: 13` ✓
+- Spec-suite core decode: 271 modules, 2747 functions, 33222 instructions, 428 undefined_bytes, 0 decompile_failed ✓
+- MS_01 (10 memories/mem9): `funcs=1 instrs=10 ub=0 decomp=1 fail=0` ✓
+- MS_02 (17 memories/mem16): `funcs=1 instrs=4 ub=0 decomp=1 fail=0` ✓
+- MS_03 (mem9 data segment): `funcs=1 instrs=4 ub=0 decomp=1 fail=0` ✓
+
+### What remains 64-bit (with reason)
+
+- **memory64 address computation**: the SLEIGH computes memory64 effective
+  addresses in 64 bits (`memoffset:8 + sp1_64`) and truncates to 32 bits
+  (`addr:4 = full:4`). This is the same modelling choice as the pre-change
+  `ram`-space behaviour. Only memory64 accesses above 4 GiB wrap.
+- **Table space** (`size=8`): unchanged — table addressing was already
+  64-bit before this change and is not part of the regression.
 
 ## What Was NOT Done
 
 - Did not touch `WasmStackVariableAnalyzer.java`, `WasmStructSynthAnalyzer.java`,
   the emulation modifier's trap logic, or the `cont`-type code (per contract).
-- Did not run the spec-suite decode gate (`spectest/run_spectest.ps1`) - the probe
-  gate + fixture + real module cover the same surface.
-- Did not change `MEMORY_STRIDE` (still 0x10000000 = 256 MiB per memory).
-- Did not change `MAX_MEMORY_BLOCK_BYTES` (still 256 MiB cap per memory).
+- Did not keep the `memory` space 64-bit (see Regression/Fix above: a 64-bit
+  space forced `zext` on every 32-bit address, regressing the decompiled C).
+  The space is 32-bit with a 128 MiB stride, which supports memories 0..31.
+- Did not change `MAX_MEMORY_BLOCK_BYTES` (still `MEMORY_STRIDE` = 128 MiB cap
+  per memory).
 - Did not change the `table` or `global` spaces.
 - Did not push, merge, or tag.
 
@@ -157,5 +205,9 @@ decompile success rate, and undefined_bytes are unchanged.
 - **Probe count**: 201 (198 baseline + 3 new MS probes)
 - **Changed baseline entries**: 3 new (MS_01, MS_02, MS_03); 0 existing entries changed
 - **Real-module summary**: `functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156`
+- **ZEXT count (real module DumpAll)**: 47 (pre-change: 56, broken: 570)
+- **ZEXT count (real module DumpDecomp)**: 3 (pre-change: 7 for 3 funcs only)
 - **Memory-9+ probe result**: MS_01 (mem9) and MS_02 (mem16) import, create blocks,
-  and decode with `undefined_bytes=0`. Before this change, memory 8+ could not be created.
+  and decode with `undefined_bytes=0`. Memory 16 is at 0x80000000 (fits in 32 bits
+  with 128 MiB stride).
+- **`memory` space**: 32-bit (`size=4`), `MEMORY_STRIDE = 0x08000000` (128 MiB).
