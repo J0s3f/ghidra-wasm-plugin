@@ -39,9 +39,10 @@ import wasm.format.WasmEnums.ValType;
  *   subtype  ::= 0x50 vec(typeidx) comptype      (sub)
  *              | 0x4F vec(typeidx) comptype      (sub final)
  *              | comptype
- *   comptype ::= functype | structtype | arraytype
+ *   comptype ::= functype | structtype | arraytype | conttype
  *   structtype ::= 0x5F vec(fieldtype)
  *   arraytype  ::= 0x5E fieldtype
+ *   conttype   ::= 0x5D typeidx                 (stack-switching proposal)
  *   fieldtype  ::= storagetype mut
  *   storagetype::= valtype | 0x78 (i8) | 0x77 (i16)
  * </pre>
@@ -60,7 +61,7 @@ import wasm.format.WasmEnums.ValType;
 public class WasmGCType extends WasmFuncType {
 
 	public enum Kind {
-		FUNC, STRUCT, ARRAY
+		FUNC, STRUCT, ARRAY, CONT
 	}
 
 	/** A field's storage type plus mutability. */
@@ -207,10 +208,20 @@ public class WasmGCType extends WasmFuncType {
 	private final int fieldCountLength; // encoded length of the field-count LEB
 	private final StorageType element; // ARRAY
 	private final WasmFuncType funcType; // FUNC (subtype wrapper around 0x60)
+	private final long contTypeIndex; // CONT: the referenced function type index, or -1 if unknown
+	private final int contTypeIndexLength; // CONT: encoded byte length of the type index LEB
+	private WasmFuncType resolvedContFuncType; // CONT: the referenced function type, resolved by WasmTypeSection
 
 	private WasmGCType(Kind kind, boolean hasSubtype, boolean subtypeFinal, long[] supertypes,
 			int subtypeHeaderLength, int recGroupLength, List<StorageType> fields, int fieldCountLength,
 			StorageType element, WasmFuncType funcType) {
+		this(kind, hasSubtype, subtypeFinal, supertypes, subtypeHeaderLength, recGroupLength, fields,
+			fieldCountLength, element, funcType, -1, 0);
+	}
+
+	private WasmGCType(Kind kind, boolean hasSubtype, boolean subtypeFinal, long[] supertypes,
+			int subtypeHeaderLength, int recGroupLength, List<StorageType> fields, int fieldCountLength,
+			StorageType element, WasmFuncType funcType, long contTypeIndex, int contTypeIndexLength) {
 		this.kind = kind;
 		this.hasSubtype = hasSubtype;
 		this.subtypeFinal = subtypeFinal;
@@ -221,6 +232,8 @@ public class WasmGCType extends WasmFuncType {
 		this.fieldCountLength = fieldCountLength;
 		this.element = element;
 		this.funcType = funcType;
+		this.contTypeIndex = contTypeIndex;
+		this.contTypeIndexLength = contTypeIndexLength;
 	}
 
 	// #region Parsing
@@ -296,6 +309,17 @@ public class WasmGCType extends WasmFuncType {
 				return new WasmGCType(Kind.ARRAY, hasSubtype, finalFlag, supers, headerLength,
 					recGroupLength, null, 0, element, null);
 			}
+			case 0x5D: {
+				/* cont <func typeidx> (stack-switching proposal). The index is an s33 (like a heap
+				 * type), and is resolved to the referenced function type by WasmTypeSection once the
+				 * whole type section is read (it may be a forward reference). Verified against
+				 * binaryen version_133: index 64 must be encoded as 0xC0 0x00 (s33), not 0x40. */
+				long idxPos = reader.getPointerIndex();
+				long idx = reader.readNext(LEB128::signed);
+				int idxLength = (int) (reader.getPointerIndex() - idxPos);
+				return new WasmGCType(Kind.CONT, hasSubtype, finalFlag, supers, headerLength,
+					recGroupLength, null, 0, null, null, idx, idxLength);
+			}
 			default:
 				reader.setPointerIndex(start);
 				throw new IOException(
@@ -317,14 +341,24 @@ public class WasmGCType extends WasmFuncType {
 	// #endregion
 
 	// #region Accessors
+	/**
+	 * The function type whose signature this entry reports: the wrapped 0x60 for a FUNC subtype,
+	 * or the referenced function type for a CONT entry (null until resolved).
+	 */
+	private WasmFuncType signatureSource() {
+		return (kind == Kind.CONT) ? resolvedContFuncType : funcType;
+	}
+
 	@Override
 	public ValType[] getParamTypes() {
-		return (funcType != null) ? funcType.getParamTypes() : new ValType[0];
+		WasmFuncType source = signatureSource();
+		return (source != null) ? source.getParamTypes() : new ValType[0];
 	}
 
 	@Override
 	public ValType[] getReturnTypes() {
-		return (funcType != null) ? funcType.getReturnTypes() : new ValType[0];
+		WasmFuncType source = signatureSource();
+		return (source != null) ? source.getReturnTypes() : new ValType[0];
 	}
 
 	public Kind getKind() {
@@ -366,6 +400,20 @@ public class WasmGCType extends WasmFuncType {
 	public ValType getElementValType() {
 		return (element != null) ? element.asValType() : null;
 	}
+
+	/** CONT: the referenced (function) type index, or -1 when the entry is not a continuation. */
+	public long getContTypeIndex() {
+		return contTypeIndex;
+	}
+
+	/**
+	 * CONT: bind the referenced function type once the whole type section has been parsed. A
+	 * missing/out-of-range reference leaves this null and the signature degrades to an empty
+	 * parameter/return tuple (the pre-analyzer then models the continuation with no operands).
+	 */
+	public void resolveContType(WasmFuncType referenced) {
+		this.resolvedContFuncType = referenced;
+	}
 	// #endregion
 
 	@Override
@@ -396,10 +444,14 @@ public class WasmGCType extends WasmFuncType {
 				}
 				return sb.append("}").toString();
 			}
-			case ARRAY:
-			default:
+			case ARRAY: {
 				return sb.append("array ").append(element).append(element.isMutable() ? " mut" : " const")
 						.toString();
+			}
+			case CONT:
+			default: {
+				return sb.append("cont ").append(contTypeIndex).toString();
+			}
 		}
 	}
 
@@ -430,6 +482,18 @@ public class WasmGCType extends WasmFuncType {
 					builder.add(BYTE, st.encodedLength, "field_" + i + "_" + st.componentName());
 					builder.add(BYTE, "field_" + i + "_mut");
 				}
+				return builder.toStructure();
+			}
+			case CONT: {
+				StructureBuilder builder = new StructureBuilder("gc_cont_type");
+				if (recGroupLength > 0) {
+					builder.add(BYTE, recGroupLength, "rec_group");
+				}
+				if (subtypeHeaderLength > 0) {
+					builder.add(BYTE, subtypeHeaderLength, "subtype");
+				}
+				builder.add(BYTE, "form");
+				builder.add(BYTE, contTypeIndexLength, "cont_type_index");
 				return builder.toStructure();
 			}
 			case ARRAY:
