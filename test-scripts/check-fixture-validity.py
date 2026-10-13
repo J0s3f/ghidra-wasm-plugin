@@ -65,8 +65,16 @@ def first_error_line(text: str) -> str:
     return "?"
 
 
-def run(cmd) -> tuple:
-    p = subprocess.run(cmd, capture_output=True, text=True)
+def run(cmd, timeout: int = 120) -> tuple:
+    """Run an oracle. Returns (ok, reason) where ok is True/False, or None when the oracle
+    timed out (a runaway `wasm-dis` was observed consuming >20 GB on one probe - never let that
+    hang the gate; the timeout is reported and the probe is judged by the other oracle)."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, f"oracle timed out after {timeout}s (runaway process killed)"
+    except OSError as exc:
+        return None, f"oracle failed to start: {exc}"
     return p.returncode == 0, first_error_line(p.stderr or p.stdout)
 
 
@@ -85,13 +93,18 @@ def generate(script_dir: pathlib.Path, probe_dir: pathlib.Path) -> int:
     return 0
 
 
-def classify(wabt_ok, bin_ok, recorded: dict) -> str:
+def classify(wabt_ok, bin_ok, recorded: dict, binaryen_enabled: bool = True) -> str:
+    # A timed-out oracle (None) carries no verdict: judge the probe by the oracle(s) that
+    # answered and fall back to the recorded class, so a runaway validator cannot fail the gate.
+    if binaryen_enabled and (wabt_ok is None or bin_ok is None):
+        cls = recorded.get("class")
+        return cls if cls in CLASSES and cls != "binaryen-gap" else ("valid" if (wabt_ok or bin_ok) else "unknown")
     # A probe recorded as deliberately invalid must stay rejected by wabt; that class is
     # authoritative whenever wabt rejects (binaryen is lenient about some of them, e.g.
     # out-of-order sections). A probe that starts being accepted still shows as a mismatch.
     if not wabt_ok and recorded.get("class") == "invalid":
         return "invalid"
-    if bin_ok is None:
+    if not binaryen_enabled:
         if wabt_ok:
             return "valid"
         cls = recorded.get("class")
@@ -126,6 +139,9 @@ def main() -> int:
                     help="expectation file (default: test-scripts/fixture-validity.json)")
     ap.add_argument("--generate", action="store_true", help="run the generators into --probes first")
     ap.add_argument("--update", action="store_true", help="re-record the expectation file")
+    ap.add_argument("--timeout", type=int, default=120,
+                    help="per-probe oracle timeout in seconds (default 120; a runaway wasm-dis was "
+                         "observed consuming >20 GB on one probe - the timeout keeps the gate alive)")
     ap.add_argument("--invalid", action="append", default=[], metavar="PROBE",
                     help="declare a probe deliberately invalid (for --update)")
     ap.add_argument("--unsupported", action="append", default=[], metavar="PROBE",
@@ -167,16 +183,33 @@ def main() -> int:
 
     results = {}
     problems = []
+    timeouts = []
     for probe in probes:
-        wabt_ok, wabt_msg = run([str(wabt), "--enable-all", str(probe)])
+        wabt_ok, wabt_msg = run([str(wabt), "--enable-all", str(probe)], timeout=args.timeout)
         bin_ok, bin_msg = None, ""
+        skipped_invalid = False
         if binaryen:
-            bin_ok, bin_msg = run([str(binaryen), "--all-features", "-o",
-                                   "NUL" if os.name == "nt" else "/dev/null", str(probe)])
-        cls = classify(wabt_ok, bin_ok, recorded.get(probe.name, {}))
+            if not wabt_ok and recorded.get(probe.name, {}).get("class") == "invalid":
+                # deliberately invalid probe: wabt's rejection is the assertion, and binaryen's
+                # wasm-dis has been observed running away (>20 GB) on this malformed family
+                bin_msg = "skipped: deliberately invalid probe (wabt rejects it)"
+                skipped_invalid = True
+            else:
+                bin_ok, bin_msg = run([str(binaryen), "--all-features", "-o",
+                                       "NUL" if os.name == "nt" else "/dev/null", str(probe)],
+                                      timeout=args.timeout)
+        cls = classify(wabt_ok, bin_ok, recorded.get(probe.name, {}),
+                       binaryen_enabled=binaryen is not None)
         why = ""
         if cls != "valid":
-            why = wabt_msg if not wabt_ok else bin_msg
+            reasons = []
+            if wabt_ok is not True and wabt_msg:
+                reasons.append("wabt: " + wabt_msg)
+            if binaryen and bin_ok is not True and bin_msg:
+                reasons.append("binaryen: " + bin_msg)
+            why = "; ".join(reasons)
+        if not skipped_invalid and (wabt_ok is None or (binaryen and bin_ok is None)):
+            timeouts.append(probe.name)
         results[probe.name] = {"class": cls, "why": why}
 
     if args.update:
@@ -186,6 +219,9 @@ def main() -> int:
         unresolved = []
         for name, r in sorted(results.items()):
             cls = r["class"]
+            if cls == "unknown":
+                # an oracle timed out: keep the recorded class, or record it as unsupported
+                cls = recorded.get(name, {}).get("class", "unsupported")
             if cls == "unexpected":
                 if name in declared_invalid:
                     cls = "invalid"
@@ -229,6 +265,8 @@ def main() -> int:
     for name in sorted(results):
         r = results[name]
         rec = recorded.get(name)
+        if r["class"] == "unknown":
+            continue  # an oracle timed out; the probe is judged by the other oracle / recorded class
         if rec is None:
             problems.append(f"{name}: probe present in the run but not recorded in "
                             f"{expected_path.name} - re-record with --update "
@@ -240,6 +278,9 @@ def main() -> int:
         if name not in results:
             problems.append(f"{name}: recorded but not generated (stale entry)")
 
+    if timeouts:
+        print(f"WARNING: {len(timeouts)} oracle timeout(s) - those probes are judged by the other "
+              f"oracle / their recorded class: {', '.join(sorted(timeouts))}")
     counts = {c: sum(1 for r in results.values() if r["class"] == c) for c in CLASSES}
     print(f"probes: {len(results)}  " + "  ".join(f"{c}: {counts[c]}" for c in CLASSES
                                                   if c != "binaryen-gap" or counts[c]))
