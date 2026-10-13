@@ -110,7 +110,7 @@ All are documented in
 
 ```bash
 export GHIDRA_INSTALL_DIR=<path to Ghidra install directory>
-gradle buildExtension   # produces dist/ghidra_<version>_<date>_ghidra-wasm-plugin.zip
+gradle buildExtension   # produces dist/ghidra_<ghidra version>_<date>_Ghidra-WASM.zip
 ```
 
 After an intentional behaviour change, refresh the probe baseline with
