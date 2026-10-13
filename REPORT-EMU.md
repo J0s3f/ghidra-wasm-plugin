@@ -4,9 +4,8 @@ Branch `fix/emulator-coverage` (base `main` @ `066bfcc`), worktree
 `C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-emu`, pinned Ghidra
 `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5`.
 
-**Status: complete.** All 9 gap classes from REPORT-H3 §3.4 are addressed: 7 fixed and
-verified by full 33-suite harness runs, 2 documented as known limitations (classes 7 and
-the 32-bit address wrap-around subset of class 1).
+**Status: complete.** All 9 gap classes from REPORT-H3 §3.4 are addressed: 8 fixed and
+verified by full 33-suite harness runs, 1 documented as a known limitation (class 7).
 
 ---
 
@@ -16,14 +15,12 @@ the 32-bit address wrap-around subset of class 1).
 | --- | --- | --- | --- |
 | `module` ok/fail | 92/0 | 92/0 | — |
 | `assert_return` ok/fail | 2489/26 | **2511/4** | +22 ok, -22 fail |
-| `assert_trap` ok/fail | 79/104 | **154/29** | +75 ok, -75 fail |
+| `assert_trap` ok/fail | 79/104 | **183/0** | +104 ok, -104 fail |
 | `assert_exhaustion` skip | 5 | 5 | — |
 | `assert_invalid` skip | 893 | 893 | — |
 | `assert_malformed` skip | 203 | 203 | — |
 
-**Remaining 33 failures:**
-* `address.wast` (29): 32-bit wrap-around in effective-address computation
-  (`dynamic_u32 + static_u32` wraps in the SLEIGH; see class 1 note).
+**Remaining 4 failures:**
 * `br_table.wast` (4): `MAX_BR_TABLE_CASES` bound in `WasmFunctionAnalysis.java` (class 7,
   do-not-touch file; documented known degradation).
 
@@ -31,7 +28,7 @@ the 32-bit address wrap-around subset of class 1).
 
 | class | description | baseline | after | status |
 | --- | --- | --- | --- | --- |
-| 1 | OOB memory traps (non-wrap) | 49 fail (address) + others | 20/49 fixed; 29 remain (wrap) | **Partial**: non-wrap fixed, wrap documented |
+| 1 | OOB memory traps (incl. 32-bit wrap-around) | 49 fail (address) + others | 49/49 fixed; 0 remain | **FIXED** (verified, via `checkMemoryBounds64` + `regSlotValues`) |
 | 2 | `call_indirect` type mismatch | 10 fail | 0 fail | **FIXED** (verified) |
 | 3 | undefined vs uninitialized element | 11 fail | 0 fail | **FIXED** (verified) |
 | 4 | `memory_size`/`memory_grow` CALLOTHER | 17 fail | 0 fail | **FIXED** (verified) |
@@ -58,22 +55,21 @@ Both fixture-validity modes: pass (unchanged).
 
 ## 1. Per-class findings (final)
 
-### Class 1 — `assert_trap` did-not-trap: out-of-bounds linear memory — **PARTIAL (fixed non-wrap, documented wrap)**
+### Class 1 — `assert_trap` did-not-trap: out-of-bounds linear memory — **FIXED (verified, incl. 32-bit wrap-around)**
 
-Implementation: `checkMemoryBounds()` in `postExecuteCallback`. Scans the executed instruction's
-pcode for `LOAD`/`STORE` in the `ram` space, reads the effective address and access size from the
-live varnodes, and compares against the declared memory size.
+Implementation: `checkMemoryBounds()` (postExecuteCallback, scans pcode for LOAD/STORE in `ram`)
+plus `checkMemoryBounds64()` (postExecuteCallback, reconstructs the 64-bit EA from the instruction
+bytes + operand-stack register).
 
-* **Fixed (verified):** Simple OOB (e.g. `i32.const -1` with no static offset, `address.wast`
-  `8u_bad` at offset 0xFFFFFFFF, `traps.wast` no_dce.*.load*, `align.wast` store trap).
-  20 of 49 `address.wast` traps now pass; all `traps.wast` and other-suite OOB traps pass.
-* **Remaining (29, documented limitation):** The Wasm spec computes the effective address as a
-  u64 (`dynamic_u32 + static_u32`). The SLEIGH computes it in 32-bit, so `0xFFFFFFFF + 1`
-  wraps to `0`. The wrapped address is checked, but the true u64 sum is not recoverable from
-  the pcode because the SLEIGH reuses temporary registers (an `INT_ADD` that writes to the
-  same varnode as the LOAD's address may be a different computation). Fixing this would require
-  a `preExecuteCallback` bounds check with full instruction decoding + stack-top reads, or a
-  SLEIGH change — both out of scope for an emulator-side fix.
+* **Fixed (verified, non-wrap):** Simple OOB (e.g. `i32.const -1` with no static offset,
+  `address.wast` `8u_bad` at offset 0xFFFFFFFF, `traps.wast` no_dce.*.load*, `align.wast` store trap).
+* **Fixed (verified, wrap-around — the 29 remaining):** The Wasm spec computes the effective
+  address as a u64 (`dynamic_u32 + static_u64 offset`), but the SLEIGH computes it in 32-bit
+  (`addr:4 = memoffset:4 + sp1_32`), losing the carry. `checkMemoryBounds64()` reads the
+  instruction opcode byte, decodes the memarg (align + offset) from the instruction bytes,
+  reads the dynamic base from the wasm operand-stack register (via `regSlotValues` for loads,
+  direct read for stores), and reconstructs the 64-bit EA. Evidence: `address.wast` 49/49 traps
+  (was 20/49).
 * **Store-zeroing fix (class 9 companion):** When an OOB STORE is detected, the in-bounds
   portion of the store range is zeroed before throwing the trap. The spec says an OOB store
   traps with no memory changed, but the emulator's STORE pcode has already written the
@@ -157,12 +153,13 @@ imported globals — faithful to the spec host, not a loosening. Evidence: `glob
 
 ### `src/main/java/ghidra/program/emulation/WasmEmulateInstructionStateModifier.java`
 
-~490 added lines. Contents:
+~700 added lines. Contents:
 * `WasmFunctionAnalysisProvider` extended with memory page size/pages/max and a
   function-address→funcidx map, plus accessors (`getMemoryCount`, `getMemorySizeBytes`,
   `getMemoryPageSize`, `growMemory`, `getTableSize`, `getFuncidxByAddress`, `getModule`).
 * Trap-text constants and the checks `checkMemoryBounds` (+ `checkAddressInMemory` with
-  store-zeroing), `checkArithmeticTraps`, `checkTruncTrap`, `checkCallIndirect`,
+  store-zeroing), `checkMemoryBounds64` (+ `reverseComputeLoadBase` fallback,
+  `getLoadStoreAccessWidth`), `checkArithmeticTraps`, `checkTruncTrap`, `checkCallIndirect`,
   `checkFloatPurity`, `recordRegisterWrites`, plus helpers `spaceOf`, `readBytes`,
   `readInstructionByte`, `decodeULEB`, `sameVarnode`, `slotKey`, `operandValue`,
   `operandValueOrNull`.
@@ -218,15 +215,16 @@ Gotcha: `run_emulate.ps1 -Files` is a `[string[]]`; pass a PowerShell array lite
 * **INT_ADD wrap-around detection in `checkMemoryBounds`** — the SLEIGH reuses temporary
   registers, so an `INT_ADD` that writes to the same varnode as the LOAD's address may be a
   different computation (e.g. data + constant). Both a forward map and a backward scan
-  produced false positives (trapping on in-bounds accesses). Reverted; documented as a known
-  limitation (see class 1).
+  produced false positives (trapping on in-bounds accesses). Reverted; superseded by
+  `checkMemoryBounds64` which decodes the instruction bytes + reads the operand-stack
+  register directly (see class 1).
 * **`test-scripts/DumpFuncPcode.java`** — abandoned, deleted.
 * **`JArray(JByte)(list(value))`** — overflows for bytes >127; must be mapped to signed.
 * **`run_emulate.ps1 -Files "a,b,c"`** — treated as one filename; use `@("a","b","c")`.
-* **SLEIGH/pcode change** (e.g. copying the operand to a temp before `trunc`, or a
-  `callotherfixup` like `funcEntryCallOther`) — rejected: would touch the decompiler path and
-  needs the full 182-probe + fixture + real-module + decode gates. The `regSlotValues`
-  approach is sufficient for classes 6 and 9.
+* **No `preExecuteCallback` in Ghidra's `EmulateInstructionStateModifier`** — the class only
+  has `initialExecuteCallback` and `postExecuteCallback`. The wrap-around fix works in
+  `postExecuteCallback` by reading the instruction bytes + operand-stack register values
+  (via `regSlotValues`) to reconstruct the 64-bit EA after the fact.
 * **CI integration** — not added. The full 33-suite run is ~13 min and needs a PyGhidra venv
   plus ~2 GB free RAM per JVM (33 consecutive JVMs can OOM on systems with small page files).
   `run_emulate.ps1` also hardcodes `py -3.13` (no Linux `py` launcher), so the workflow would
