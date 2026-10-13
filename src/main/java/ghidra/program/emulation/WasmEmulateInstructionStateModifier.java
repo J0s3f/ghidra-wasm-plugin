@@ -222,6 +222,12 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	static final String TRAP_UNINITIALIZED_ELEMENT = "uninitialized element";
 	static final String TRAP_INDIRECT_CALL_TYPE_MISMATCH = "indirect call type mismatch";
 
+	/*
+	 * Must stay in sync with @define REG_STACK_BASE in WebAssembly.slaspec.
+	 * The operand-stack slots s0, s1, ... live at this base in the register space.
+	 */
+	private static final long REG_STACK_BASE = 0x50000000L;
+
 	public WasmEmulateInstructionStateModifier(Emulate emu) {
 		super(emu);
 
@@ -856,6 +862,215 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			a.getAddress().equals(b.getAddress());
 	}
 
+	/**
+	 * Map a Wasm load/store opcode byte to its access width in bytes, or -1 if the opcode is
+	 * not a recognised load/store.
+	 */
+	private static int getLoadStoreAccessWidth(int opcode) {
+		switch (opcode) {
+			case 0x28: case 0x2A: case 0x34: case 0x35: return 4;  // i32.load, f32.load, i64.load32_s/u
+			case 0x29: case 0x2B: return 8;                       // i64.load, f64.load
+			case 0x2C: case 0x2D: case 0x30: case 0x31: return 1;  // 8-bit loads
+			case 0x2E: case 0x2F: case 0x32: case 0x33: return 2;  // 16-bit loads
+			case 0x36: case 0x38: case 0x3E: return 4;             // i32.store, f32.store, i64.store32
+			case 0x37: case 0x39: return 8;                       // i64.store, f64.store
+			case 0x3A: case 0x3C: return 1;                       // 8-bit stores
+			case 0x3B: case 0x3D: return 2;                       // 16-bit stores
+			default: return -1;
+		}
+	}
+
+	/**
+	 * Trap on a 32-bit wrap-around in the effective-address computation. The Wasm spec computes
+	 * the effective address as a u64 ({@code dynamic_u32 + static_u64 offset}), but the SLEIGH
+	 * computes it in 32-bit for 32-bit memories ({@code addr:4 = memoffset:4 + sp1_32}), losing
+	 * the carry. A wrapped access looks in-bounds and does not trap.
+	 *
+	 * <p>This check runs in {@code postExecuteCallback} (there is no pre-execute callback in
+	 * Ghidra's {@code EmulateInstructionStateModifier}). It reads the instruction opcode byte,
+	 * decodes the memarg (align + offset) from the instruction bytes, reads the dynamic base from
+	 * the wasm operand-stack register (via {@link #regSlotValues} for loads, direct read for
+	 * stores), and reconstructs the 64-bit EA to compare against the declared memory size.
+	 *
+	 * <p>For stores whose wrapped address landed in-bounds, the in-bounds bytes written by the
+	 * SLEIGH STORE are zeroed before throwing (same pragmatic undo as
+	 * {@link #checkAddressInMemory}).
+	 */
+	private void checkMemoryBounds64(Emulate emulate, Address lastExecuteAddress, PcodeOp[] pcode) {
+		if (analysisProvider == null || analysisProvider.getMemoryCount() == 0) {
+			return;
+		}
+		int opcode = readInstructionByte(emulate, lastExecuteAddress);
+		if (opcode < 0) {
+			return;
+		}
+		boolean isLoad = (opcode >= 0x28 && opcode <= 0x35);
+		boolean isStore = (opcode >= 0x36 && opcode <= 0x3E);
+		if (!isLoad && !isStore) {
+			return;
+		}
+
+		/* Get the per-instruction context to extract ctx_sp and ctx_mem64. */
+		WasmFunctionAnalysis funcAnalysis = getAnalysis(lastExecuteAddress);
+		if (funcAnalysis == null) {
+			return;
+		}
+		BigInteger context = funcAnalysis.getContext(lastExecuteAddress);
+		if (context == null) {
+			return;
+		}
+		/* ctx_mem64 = bits 14..15 in SLEIGH → stored at shift (128-1-15)=112 in the Java
+		 * ContextRegister (see WasmFunctionAnalysis.ContextRegister.getShift()). */
+		int ctxMem64 = (context.shiftRight(112).intValue()) & 0x3;
+		if (ctxMem64 != 0) {
+			return; // memory64: the SLEIGH computes 64-bit there, already correct
+		}
+		/* ctx_sp = bits 96..127 in SLEIGH → stored at shift (128-1-127)=0 in the Java
+		 * ContextRegister. */
+		long ctxSp = context.longValue() & 0xFFFFFFFFL;
+		if (ctxSp == 0) {
+			return;
+		}
+
+		/* Decode the memarg from the instruction bytes: align:u32 [memidx:u32] offset:u64. */
+		byte[] bytes = readBytes(emulate, lastExecuteAddress, 20);
+		if (bytes == null || bytes.length < 2) {
+			return;
+		}
+		int[] pos = new int[1];
+		pos[0] = 1; // skip opcode byte
+		long align = decodeULEB(bytes, pos[0], pos);
+		if (align < 0) {
+			return;
+		}
+		long memidx = 0;
+		if ((align & 0x40) != 0) {
+			/* Multi-memory: bit 6 of the align/flags field marks a memidx. */
+			memidx = decodeULEB(bytes, pos[0], pos);
+			if (memidx < 0) {
+				return;
+			}
+		}
+		long offset = decodeULEB(bytes, pos[0], pos);
+		if (offset < 0) {
+			return;
+		}
+
+		int accessWidth = getLoadStoreAccessWidth(opcode);
+		if (accessWidth <= 0) {
+			return;
+		}
+
+		/* Read the dynamic base from the wasm operand-stack register.
+		 * Load: address operand is sp1 (top of stack, N=1).
+		 * Store: address operand is sp2 (second from top, N=2). */
+		int stackN = isLoad ? 1 : 2;
+		long slotOffset = REG_STACK_BASE + (ctxSp - stackN) * WasmLoader.REG_SIZE;
+		long dynamicBase;
+		if (isStore) {
+			/* Stores do not modify register slots — read sp2 directly. */
+			AddressSpace regSpace = emulate.getLanguage().getAddressFactory().getAddressSpace("register");
+			dynamicBase = emulate.getMemoryState().getValue(regSpace, slotOffset, 4) & 0xFFFFFFFFL;
+		}
+		else {
+			/* Loads overwrite sp1 with the loaded value. Use regSlotValues (recorded at the
+			 * end of the *previous* instruction, before recordRegisterWrites runs for this one). */
+			Long preValue = regSlotValues.get(slotKey(slotOffset, 4));
+			if (preValue == null) {
+				/* Fallback: reverse-compute from the pcode. Find the LOAD, get the wrapped
+				 * address, find the INT_ADD that produced it, and subtract the constant. */
+				dynamicBase = reverseComputeLoadBase(emulate, pcode);
+				if (dynamicBase < 0) {
+					return; // cannot determine — degrade gracefully
+				}
+			}
+			else {
+				dynamicBase = preValue & 0xFFFFFFFFL;
+			}
+		}
+
+		/* Reconstruct the 64-bit effective address: dynamic_u32 + offset_u64. */
+		long ea64 = dynamicBase + offset;
+
+		/* Determine memory size. */
+		int memCount = analysisProvider.getMemoryCount();
+		long memSize;
+		if (memCount == 1) {
+			memSize = analysisProvider.getMemorySizeBytes(0);
+		}
+		else {
+			int mi = (int) memidx;
+			if (mi < 0 || mi >= memCount) {
+				return;
+			}
+			memSize = analysisProvider.getMemorySizeBytes(mi);
+		}
+
+		if (ea64 + accessWidth > memSize) {
+			if (isStore) {
+				/* Undo the in-bounds portion of the wrapped store: zero the bytes at the
+				 * wrapped 32-bit address that the SLEIGH STORE already wrote. */
+				long wrappedAddr = (dynamicBase + (offset & 0xFFFFFFFFL)) & 0xFFFFFFFFL;
+				if (wrappedAddr >= 0 && wrappedAddr < memSize) {
+					int inBounds = (int) Math.min(accessWidth, memSize - wrappedAddr);
+					AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+					byte[] zeros = new byte[inBounds];
+					emulate.getMemoryState().setChunk(zeros, ram, wrappedAddr, inBounds);
+				}
+			}
+			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
+		}
+	}
+
+	/**
+	 * Fallback for loads when {@link #regSlotValues} has no entry: find the LOAD in the pcode,
+	 * get the wrapped 32-bit address, find the {@code INT_ADD} that produced it, and reverse-
+	 * compute the dynamic base as {@code (wrappedAddr - constantOffset) mod 2^32}.
+	 * Returns -1 if the computation cannot be performed reliably.
+	 */
+	private long reverseComputeLoadBase(Emulate emulate, PcodeOp[] pcode) {
+		AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+		MemoryState memState = emulate.getMemoryState();
+		for (int i = 0; i < pcode.length; i++) {
+			PcodeOp op = pcode[i];
+			if (op.getOpcode() != PcodeOp.LOAD) {
+				continue;
+			}
+			if (!ram.equals(spaceOf(emulate, op))) {
+				continue;
+			}
+			Varnode addrVar = op.getInput(1);
+			long wrappedAddr = memState.getValue(addrVar);
+			/* Scan backwards for the INT_ADD that wrote addrVar. */
+			for (int j = i - 1; j >= 0; j--) {
+				PcodeOp prev = pcode[j];
+				if (prev.getOpcode() != PcodeOp.INT_ADD) {
+					continue;
+				}
+				Varnode prevOut = prev.getOutput();
+				if (prevOut == null || !sameVarnode(prevOut, addrVar)) {
+					continue;
+				}
+				/* Found the INT_ADD. Check that one input is a constant and the other
+				 * is in the register space (the operand-stack slot). */
+				Varnode in0 = prev.getInput(0);
+				Varnode in1 = prev.getInput(1);
+				long constVal;
+				if (in0.isConstant() && !in1.isConstant()) {
+					constVal = in0.getOffset();
+				}
+				else if (in1.isConstant() && !in0.isConstant()) {
+					constVal = in1.getOffset();
+				}
+				else {
+					return -1; // multi-memory or unexpected shape
+				}
+				return (wrappedAddr - (constVal & 0xFFFFFFFFL)) & 0xFFFFFFFFL;
+			}
+		}
+		return -1;
+	}
+
 	private void updateContextValue(Emulate emulate, Address currentAddress) {
 		WasmFunctionAnalysis funcAnalysis = getAnalysis(currentAddress);
 		if (funcAnalysis == null) {
@@ -890,6 +1105,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			return;
 		}
 		checkMemoryBounds(emulate, lastExecutePcode);
+		checkMemoryBounds64(emulate, lastExecuteAddress, lastExecutePcode);
 		checkArithmeticTraps(emulate, lastExecuteAddress, lastExecutePcode);
 		checkCallIndirect(emulate, lastExecuteAddress, lastExecutePcode);
 		checkFloatPurity(emulate, lastExecutePcode);
