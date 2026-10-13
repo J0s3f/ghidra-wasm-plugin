@@ -292,6 +292,26 @@
     "C03_import_shared_mem.wasm": {
       "class": "valid"
     },
+    "CT01_cont_new_valid.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: unexpected type form (got -0x23)"
+    },
+    "CT02_cont_resume_signature.wasm": {
+      "class": "wabt-gap",
+      "why": "0000014: error: unexpected type form (got -0x23)"
+    },
+    "CT03_cont_bad_index.wasm": {
+      "class": "invalid",
+      "why": "000000f: error: unexpected type form (got -0x23)"
+    },
+    "CT04_cont_absent_index.wasm": {
+      "class": "invalid",
+      "why": "000000f: error: unexpected type form (got -0x23)"
+    },
+    "CT05_cont_index_ge64.wasm": {
+      "class": "wabt-gap",
+      "why": "00000d0: error: unexpected type form (got -0x23)"
+    },
     "E01_gc_struct_type.wasm": {
       "class": "wabt-gap",
       "why": "0000018: error: expected valid field type (got -0x8)"
@@ -374,11 +394,11 @@
       "class": "valid"
     },
     "H01_ss_cont_new.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "0000025: error: unexpected opcode: 0xe0"
     },
     "H02_ss_cont_bind.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "000002b: error: unexpected opcode: 0xe0"
     },
     "H03_ss_suspend.wasm": {
@@ -386,31 +406,31 @@
       "why": "000002b: error: unexpected opcode: 0xe2"
     },
     "H04_ss_resume.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "000002a: error: unexpected opcode: 0xe0"
     },
     "H05_ss_resume_handlers.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "0000030: error: unexpected opcode: 0xe0"
     },
     "H06_ss_resume_throw.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "0000030: error: unexpected opcode: 0xe0"
     },
     "H07_ss_resume_throw_ref.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "000002c: error: unexpected opcode: 0xe0"
     },
     "H08_ss_switch.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "000002a: error: unexpected opcode: 0xe0"
     },
     "H09_ss_mixed.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "000003f: error: unexpected opcode: 0xe0"
     },
     "H10_ss_resume_result.wasm": {
-      "class": "unsupported",
+      "class": "wabt-gap",
       "why": "0000035: error: unexpected opcode: 0xe0"
     },
     "H1_01_control_valid.wasm": {
@@ -627,6 +647,15 @@
       "class": "valid"
     },
     "SF03_large_br_table.wasm": {
+      "class": "valid"
+    },
+    "SROA01_struct_frame.wasm": {
+      "class": "valid"
+    },
+    "SROA02_unaligned_overlap.wasm": {
+      "class": "valid"
+    },
+    "SROA03_unreachable_access.wasm": {
       "class": "valid"
     },
     "ST01_call_chain_struct.wasm": {

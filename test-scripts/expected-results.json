@@ -710,6 +710,46 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "CT01_cont_new_valid.wasm": {
+      "funcs": 2,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "CT02_cont_resume_signature.wasm": {
+      "funcs": 2,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "CT03_cont_bad_index.wasm": {
+      "funcs": 2,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "CT04_cont_absent_index.wasm": {
+      "funcs": null,
+      "instrs": null,
+      "undefined_bytes": null,
+      "decompiled": null,
+      "decompile_failed": null,
+      "import_ok": false
+    },
+    "CT05_cont_index_ge64.wasm": {
+      "funcs": 2,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "E01_gc_struct_type.wasm": {
       "funcs": 1,
       "instrs": 2,
@@ -904,7 +944,7 @@
     },
     "H04_ss_resume.wasm": {
       "funcs": 2,
-      "instrs": 8,
+      "instrs": 12,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -912,7 +952,7 @@
     },
     "H05_ss_resume_handlers.wasm": {
       "funcs": 2,
-      "instrs": 11,
+      "instrs": 15,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -920,7 +960,7 @@
     },
     "H06_ss_resume_throw.wasm": {
       "funcs": 2,
-      "instrs": 9,
+      "instrs": 13,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -928,7 +968,7 @@
     },
     "H07_ss_resume_throw_ref.wasm": {
       "funcs": 2,
-      "instrs": 9,
+      "instrs": 13,
       "undefined_bytes": 0,
       "decompiled": 2,
       "decompile_failed": 0,
@@ -944,7 +984,7 @@
     },
     "H09_ss_mixed.wasm": {
       "funcs": 3,
-      "instrs": 28,
+      "instrs": 27,
       "undefined_bytes": 0,
       "decompiled": 3,
       "decompile_failed": 0,
@@ -1470,6 +1510,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "SROA01_struct_frame.wasm": {
+      "funcs": 1,
+      "instrs": 28,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SROA02_unaligned_overlap.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SROA03_unreachable_access.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "ST01_call_chain_struct.wasm": {
       "funcs": 3,
       "instrs": 26,
@@ -1527,7 +1591,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 190,
+  "probe_count": 198,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
