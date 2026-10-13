@@ -629,6 +629,15 @@
     "SF03_large_br_table.wasm": {
       "class": "valid"
     },
+    "SROA01_struct_frame.wasm": {
+      "class": "valid"
+    },
+    "SROA02_unaligned_overlap.wasm": {
+      "class": "valid"
+    },
+    "SROA03_unreachable_access.wasm": {
+      "class": "valid"
+    },
     "bare_component_header.wasm": {
       "class": "invalid",
       "why": "0000008: error: wasm components are not yet supported in this tool"

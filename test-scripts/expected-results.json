@@ -520,8 +520,8 @@
     },
     "B18_valtype_ref_null_result.wasm": {
       "funcs": 2,
-      "instrs": 7,
-      "undefined_bytes": 0,
+      "instrs": 5,
+      "undefined_bytes": 3,
       "decompiled": 2,
       "decompile_failed": 0,
       "import_ok": true
@@ -600,8 +600,8 @@
     },
     "B28_valtype_func_gc_struct.wasm": {
       "funcs": 1,
-      "instrs": 3,
-      "undefined_bytes": 0,
+      "instrs": 1,
+      "undefined_bytes": 3,
       "decompiled": 1,
       "decompile_failed": 0,
       "import_ok": true
@@ -784,7 +784,7 @@
     },
     "E15_gc_br_on_cast.wasm": {
       "funcs": 1,
-      "instrs": 17,
+      "instrs": 15,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -1302,38 +1302,6 @@
       "decompile_failed": 0,
       "import_ok": true
     },
-    "R01_ref_typing_struct_block.wasm": {
-      "funcs": 2,
-      "instrs": 10,
-      "undefined_bytes": 0,
-      "decompiled": 2,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "R02_ref_typing_funcref_mix.wasm": {
-      "funcs": 2,
-      "instrs": 10,
-      "undefined_bytes": 0,
-      "decompiled": 2,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "R03_ref_typing_anyref_where_eqref.wasm": {
-      "funcs": 1,
-      "instrs": 1,
-      "undefined_bytes": 7,
-      "decompiled": 1,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
-    "R04_ref_typing_subtype_accept.wasm": {
-      "funcs": 2,
-      "instrs": 12,
-      "undefined_bytes": 0,
-      "decompiled": 2,
-      "decompile_failed": 0,
-      "import_ok": true
-    },
     "S01_str_const_concat_eq.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1470,6 +1438,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "SROA01_struct_frame.wasm": {
+      "funcs": 1,
+      "instrs": 28,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SROA02_unaligned_overlap.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "SROA03_unreachable_access.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "bare_component_header.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1495,7 +1487,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 186,
+  "probe_count": 185,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
