@@ -26,6 +26,17 @@ WebAssembly (Wasm 3.0 + active proposals).
 | 4. real-world corpus sweep | **merged** (`REPORT-H.md`; 15/15 modules import, 5591/5591 functions decompile - see §6.1) |
 | 4. robustness sweep (malformed inputs) | **merged** (`REPORT-J.md`; 56-module corpus - see §6.2; two real bugs found and reproduced) |
 | 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
+| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): out-of-range/duplicate sections rejected with a diagnostic; i64 offsets placed, ≥ 4 GiB clamped with a log |
+| Spec-suite gates (positive + negative) | **merged** (`REPORT-G.md`, `REPORT-NS.md`): 271 core modules, 0 real undefined bytes, 0 decompile failures; 2948 negative modules classified |
+| Spec assert emulation | **merged** (`REPORT-H3.md`): 33 `.wast` suites, 92/92 modules; assert_return 2511/4, assert_trap 183/0 (4 `br_table large` cases are the deliberate `MAX_BR_TABLE_CASES` bound) |
+| Stack switching / strings / wide arith / `memory.discard` | **merged** (`REPORT-H5.md`): all decode; `cont` types parse (`REPORT-CT.md`) |
+| Name-section label targets | **merged** (`REPORT-H6.md`): label names become real label symbols at branch targets |
+| Reference typing + `cont` types | **merged** (`REPORT-H7.md`, `REPORT-CT.md`): precise `(ref null ht)` model; subtype-aware validation; `cont` types in the type section |
+| Stack-as-aggregate SROA | **merged** (`REPORT-SROA.md`): frames modelled as aggregates, split by (width, offset) access |
+| Call-graph struct synthesis | **merged** (`REPORT-STRUCTS.md`): 352 structs, 255 retyped parameters on the real module; 591 → 437 raw offset accesses |
+| Dedicated memory address space | **merged** (`REPORT-MEMSPACE.md`): 32-bit `memory` space, 128 MiB stride, ≥ 8 memories supported |
+| B9 warning | **merged** (`REPORT-HARD.md`): "Module accepted but nothing was decoded" when a module declares content but yields nothing |
+| Fixture-validity gate | **merged**: 201 probes — 118 valid / 53 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
 
 ## 1. How this inventory was produced
 
@@ -34,10 +45,10 @@ Two independent sources, so that a claim can always be re-checked:
 1. **Code inventory** — the SLEIGH opcode tables (`data/languages/*.sinc`, `WebAssembly.slaspec`), the
    module/section parsers (`src/main/java/wasm/format/**`) and the analyzers
    (`src/main/java/wasm/analysis/**`).
-2. **Empirical probes** — 21 hand-encoded modules, one per feature, imported headlessly into Ghidra
-   and measured. `test-scripts/gen_feature_probes.py` generates them; `test-scripts/WasmFeatureReport.java`
-   reports `funcs/instrs/undefined_bytes/decompiled` per program, `ListProgram.java` prints the
-   disassembly and `DumpAll.java` the decompiled C.
+2. **Empirical probes** — 201 hand-encoded modules, one per feature, imported headlessly into Ghidra
+   and measured. `test-scripts/gen_feature_probes.py` + `test-scripts/probes_*.py` generate them;
+   `test-scripts/WasmFeatureReport.java` reports `funcs/instrs/undefined_bytes/decompiled` per
+   program, `ListProgram.java` prints the disassembly and `DumpAll.java` the decompiled C.
 
 Reproduce everything:
 
@@ -75,6 +86,17 @@ not (fully) disassembled at all, which is worse than a wrong mnemonic.
 | Legacy exception handling: `try`/`catch`/`catch_all`/`throw`/`rethrow`/`delegate`, tag section | `10` |
 | Multi-value blocks and type-index blocktypes | `17` |
 | Function / global / local names from `.name`; DWARF types | code |
+| New exception handling: `try_table`, `throw_ref`, `exnref` | `11`, `30`-`39` |
+| GC: `rec`/`sub`/`struct`/`array` types, `0xFB` instructions (`struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`), GC initializers | `08`, `09`, `E01`-`E20` |
+| Typed function references: `call_ref`, `return_call_ref`, `ref.as_non_null`, `br_on_null`, `br_on_non_null` | `12`, `F01`-`F07` |
+| Multi-memory (memarg `memidx`, several memories, dedicated `memory` address space) | `06`, `18`, `A01`-`A04`, `B05`, `MEM_*` |
+| memory64 (index-type propagation, 64-bit pcode truncated into 32-bit `memory` space) | `05`, `M64_01`-`M64_08` |
+| Extended-const (`i32`/`i64` `add`/`sub`/`mul`) and GC constant expressions | `19`, `20`, `22`-`27`, `B07`-`B15` |
+| Stack switching / JSPI (`cont.new`/`cont.bind`/`resume`/`suspend`/`switch`) + `cont` types | `H01`-`H10`, `CT01`-`CT05` |
+| JS string builtins / stringref (`0xFB` ≥ 0x80) | `S01`-`S10` |
+| Wide arithmetic (`i64.add128`/`sub128`/`mul_wide_s`/`mul_wide_u`) | `A07`, `A09` |
+| `memory.discard` (0xFC 0x12) | `S07` |
+| `.name` extras: label names as real symbols, table/memory/elem/data names, field/tag names | `N01`-`N*` |
 
 ### 2.2 Fixed by the modern-WASM waves (previously wrong or unsupported)
 
@@ -106,34 +128,37 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 
 | Item | State / evidence |
 | --- | --- |
-| **B3 - memory index >= 9** breaks the memarg re-parse in the analysis | in flight (h4) |
-| **B8 - `table64`, memory64 > 4 GiB** | in flight (h4); below 4 GiB is exact, above truncates into `ram` (documented) |
-| **Reference-typing precision** - every `(ref null ht)` maps to `externref` while `ref.null` pushes `anyref`, so a conformant reference-typed block/function signature fails validation (`pop type mismatch`) and its body stays undecoded | in flight (h7); probe `E15` (conformant form: 1 instr / 27 undefined bytes) |
-| **`ref.null <concrete type index>` in a function body** leaves undefined bytes (`B18`, `B28`: 3 bytes each) - the SLEIGH `:ref.null valtype` entry only matches single-byte valtypes | **fixed (h7)**: precise heap-type mapping + subtype-aware validation; `B18`/`B28` now `undefined_bytes=0`, `E15` conformant with 0 undefined bytes. Cosmetic follow-up: `ref.null` abstract heap types now print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it. Also still open: multi-byte block signatures on `try`/`try_table` (single-s33 form kept) |
-| **`cont` types** - `(cont $ft)` in the type section is rejected by the GC type parser, so continuation type indices resolve as ordinary function types | **fixed (`REPORT-CT`)**: the GC type parser accepts the `0x5D cont <s33 typeidx>` composite type and resolves it to the referenced function type; h5's `H01`-`H10` probes now classify `wabt-gap`, and `CT01`-`CT05` pin the parse (valid + `cont.new`, a `resume` signature, an out-of-range index that degrades, a truncated index that is rejected, and the multi-byte s33 index) |
 | **Custom page sizes** - the limits flag decodes, but `MEMORY_PAGE_SIZE` is fixed at 64 KiB, so block sizes/addresses are wrong for a module that declares a custom page size | open (semantic, low priority for RE) |
 | **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
-| **Emulation coverage** - 9 recorded spec-`assert_*` gaps (out-of-bounds traps, `call_indirect` type mismatch, wrong trap kind, `memory.grow/size` CALLOTHER in the emulator's pcode, div/rem traps, float-to-int trunc traps, `br_table large` value, mutable-global init, NaN payload) | recorded in `REPORT-H3`; emulator coverage, not decoder gaps |
-| **Memory index >= 8 collides with `CODE_BASE`** - memory 8's block cannot be created (the loader logs it); `MEMORY_STRIDE` places memory *n* at `n << 32`, which runs into the code space | open, pre-existing design limitation (found while fixing B3; a memory index >= 9 needed >= 10 memories, which is how it surfaced) |
-| **`WasmPreAnalyzer.guessCStackGlobalForFunction`** still uses an unbounded `MemoryByteProvider` (the B3 fix bounded the `WasmAnalysis` one only) | **fixed (`REPORT-CT`)**: now bounded to the module image block's end exactly like the B3 fix; the guessed C-stack global is unchanged (fixture + real module measured, probe gate + spec-suite decode gate pass). Defensive - a wrong guess needs a module image adjacent to a mapped block, and memories are 256 MiB apart |
-| **Type-recovery for pointer parameters** - measured before the pass: ~591 constant-offset accesses, ~77 % of them through ~5 pointer-like parameters; parameters were `undefined4/8`, no structs synthesized | **implemented (v1, `REPORT-STRUCTS.md`)**: `WasmStructSynthAnalyzer` (call-graph union-find + struct synthesis) creates **352 structs** and retypes **255 parameters** on the real module, cutting constant-offset accesses **591 -> 437 (-26 %)**; v1 limits: `call_indirect` not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`. Retypd was measured and **rejected** (see `REUSE_OPPORTUNITIES.md` 5) |
-| **B9** - spec-negative modules accepted as bare bytes (lenient loader) | **resolved (policy: keep accepting, warn)**: `WasmLoader.warnIfNothingLoaded` logs "Module accepted but nothing was decoded" with the declared/loaded counts whenever a module that declares content yields no functions, memories or tables; probe `J06_func_section_without_code` pins it |
-| Unassigned opcode spaces (`0xE7+`, unassigned `0xFB >= 0x80`, unassigned `0xFC`) | deliberately rendered as visible `unimplemented`, with the operand lengths mirrored in the pre-analyzer; genuinely unknown lengths fail safe |
+| **`br_table large` assertion cases** - 4 `assert_return` failures in the emulation harness are the deliberate `MAX_BR_TABLE_CASES` bound (decode-side) | open (deliberate bound) |
+| **Struct-synthesis v1 limits** - `call_indirect` targets not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN` | open (v1 scope, documented in `REPORT-STRUCTS.md`) |
+| **128 MiB materialisation cap** - memories larger than 128 MiB are clamped (with a warning); the SLEIGH truncates effective addresses to 32 bits, so decoded accesses above 4 GiB wrap | documented limitation |
+| **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | cosmetic, open |
+| **Multi-byte block signatures on `try`/`try_table`** - single-s33 form kept | open (low priority) |
+| **Extended-const `Data markup conflict` warning** on probes `22`-`24`/`27` - `WasmLoader.createData` logs a warning worth investigating | open (low priority) |
+| **Emulation coverage** - 4 remaining `assert_return` gaps (all `br_table large`); the other 9 recorded spec-`assert_*` gaps are resolved | emulator coverage, not decoder gaps |
 
 ### 2.4 Observed baseline (reproducible with the commands above)
 
 The authoritative per-probe expectations are machine-checked data, not prose:
 
-* `test-scripts/expected-results.json` - the probe gate (172 probes at the time of writing:
-  `funcs`/`instrs`/`undefined_bytes`/`decompiled`/`decompile_failed` per probe plus expected import
-  failures), enforced by `.github/workflows/probes.yml` and locally by `test-scripts/check-local.ps1`.
-* `test-scripts/fixture-validity.json` - the external-oracle classification of every probe (see 6.5).
+* `test-scripts/expected-results.json` - the probe gate (**201 probes**: 183 probed-imported
+  + 18 expected import failures; `funcs`/`instrs`/`undefined_bytes`/`decompiled`/`decompile_failed`
+  per probe), enforced by `.github/workflows/probes.yml` and locally by `test-scripts/check-local.ps1`.
+* `test-scripts/fixture-validity.json` - the external-oracle classification of every probe (see 6.5):
+  **118 valid / 53 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
+  `oracle_skip: ["binaryen"]`.
 * Real module `rasterbator_rs_bg.wasm`: `functions=437 decompiled=437 failed=0 instructions=61658
   undefined_bytes=156` - the 156 bytes are 39 import stubs x 4, i.e. **0 real decode gaps**; checked on
   every local run with `-RealModule`.
 * Spec suite (core subset): 271/271 imported, 2747/2747 functions decompiled,
-  `real_undefined_bytes=0` (`test-scripts/spectest-expected.json`, `.github/workflows/spectest.yml`).
+  33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures
+  (`test-scripts/spectest-expected.json`, `.github/workflows/spectest.yml`).
+* Emulation assertion harness: 33 `.wast` suites, 92/92 modules;
+  **assert_return 2511/4**, **assert_trap 183/0** (the 4 remaining assert_return
+  failures are the `br_table large` cases - the deliberate `MAX_BR_TABLE_CASES`
+  bound, decode-side).
 
 Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.locals`, `.local`,
 `.case`, `.default`); the real module's 61,658 counted instructions are 60,556 real wasm instructions
@@ -143,18 +168,20 @@ Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.loc
 ## 3. Why this matters by toolchain
 
 * **Classic Emscripten / `wasm-bindgen` (Rust) output** — MVP + 2.0 + SIMD + threads + tail calls:
-  covered today (a 179 KiB Rust module decompiles 437/437 functions cleanly).
+  fully covered (a 179 KiB Rust module decompiles 437/437 functions cleanly).
 * **Kotlin/Wasm, Dart, Java (TeaVM/J2CL), OCaml, .NET** — emit **GC** modules with **typed function
-  references**: currently unusable, and `(ref null $t)` parameters actively break decompilation.
-* **Clang/LLVM ≥ 19** — emits the **new EH** (`try_table`); the legacy EH that the plugin implements
-  is the deprecated encoding.
-* **Emscripten `-pthread`** — works, but the shared-memory limits bug can silently drop memories.
-* **Emscripten `MEMORY64` / wasm64 targets** — function bodies are left undefined.
-* **Emscripten `-sASYNCIFY=2` (JSPI)** — stack switching, unsupported.
+  references**: now covered (GC type section, `0xFB` instructions, `call_ref` family, precise
+  `(ref null ht)` model).
+* **Clang/LLVM ≥ 19** — emits the **new EH** (`try_table`): covered (plus `throw_ref`, `exnref`).
+* **Emscripten `-pthread`** — works; shared-memory limits flags decode fully.
+* **Emscripten `MEMORY64` / wasm64 targets** — covered below 4 GiB (exact); above 4 GiB the
+  `memory` space truncates (documented).
+* **Emscripten `-sASYNCIFY=2` (JSPI)** — stack switching decodes (`cont.new`/`resume`/`switch`);
+  `cont` types parse.
 
 ## 4. Roadmap
 
-**Status: items 0-9 below were implemented by the modern-WASM waves (see 2.2). What remains open is listed in 2.3; this section is kept as the original task breakdown and acceptance criteria.**
+**Status: items 0-10 below were implemented by the modern-WASM waves (see 2.2). What remains open is listed in 2.3; this section is kept as the original task breakdown and acceptance criteria.**
 
 Ordered by leverage. "Effort" is a rough size estimate (S ≈ hours, M ≈ a day, L ≈ several days).
 
@@ -256,10 +283,10 @@ once the address-range handling for the wasm code block is fixed.
 
 ### 10. Longer-term / lower priority for binary RE
 
-Stack switching (JSPI), JS string builtins, wide arithmetic, `memory.discard`, shared-everything
-threads, and the component model. For the component model, the pragmatic first step is a loader that
-recognizes the component header, reports a clear error, and (optionally) extracts nested core modules
-so they can be imported and analyzed individually — instead of today's `No load spec found`.
+~~Stack switching (JSPI), JS string builtins, wide arithmetic, `memory.discard`, shared-everything
+threads, and the component model.~~ Most of these are now implemented (see 2.1/2.2). What remains:
+shared-everything threads (unimplemented fallback), component-model semantics (by design —
+core-module extraction only), and custom page sizes (see 2.3).
 
 ## 5. Adding a probe (how to extend this document)
 
@@ -279,38 +306,27 @@ Remember that SIMD/relaxed-SIMD opcodes (0xFD) and prefixes are **LEB128-encoded
 ## 6. Spec-suite baseline (new, added after the harness landed)
 
 A headless harness for the *official* WebAssembly spec testsuite now exists under
-`test-scripts/spectest/` (see `REPORT-G.md` and `test-scripts/spectest-BASELINE.md`). It is a
-measurement tool, not a fix; metrics below were reproduced by the integrator.
+`test-scripts/spectest/` (see `REPORT-G.md`). It is a measurement tool, not a fix; metrics below
+were reproduced by the integrator and are enforced by `.github/workflows/spectest.yml`.
 
 Both decompile harnesses (`DumpDecomp.java`, `spectest/SpecModuleReport.java`) retry a failed
-decompilation once with a much larger budget (120 s -> 600 s): the heaviest spec functions
-(`br_table.0.wasm`, the ~16k-label function) can exceed the first budget on a loaded CI runner, which
-showed up as a flaky `decompiled 2747 -> 2746` on Linux. The retry removes the flake without
+decompilation once with a much larger budget (120 s → 600 s): the heaviest spec functions
+(`br_table.0.wasm`, the ~16k-label function) can exceed the first budget on a loaded CI runner,
+which showed up as a flaky `decompiled 2747 → 2746` on Linux. The retry removes the flake without
 loosening any expected metric.
 
-* **core subset** (73 `.wast`): 271 valid modules, **271 imported (100 %)**, 33192 instructions,
-  2746/2747 functions decompiled, 458 undefined bytes = 428 import-stub bytes + **30 real decode-gap
-  bytes**.
-* **all subset incl. SIMD** (147 `.wast`): 257 modules, 257 imported, 48005 instructions, 210
-  undefined bytes = 176 stub + **34 real**; the SIMD suite is clean (99 modules, 0 gaps).
+* **core subset** (73 `.wast`): 271 valid modules, **271 imported (100 %)**, 33222 instructions,
+  **2747/2747 functions decompiled**, 428 undefined bytes = 428 import-stub bytes + **0 real
+  decode-gap bytes**, 0 decompile failures.
+* **all subset incl. SIMD** (147 `.wast`): SIMD suite is clean (128 modules, 0 gaps).
 
-Ranked findings (bug leads for the next rounds):
+Ranked findings (all resolved):
 
-1. **`select` (0x1B) is not decoded after an unconditional terminator** (`unreachable`, `br`,
-   `br_table`, `return`) - the only real decode gap. Repro: `unwind.wast`, functions
-   `select-after-unreachable` / `select-after-br` / `select-after-br_table` / `select-after-return`;
-   `select-after-br_if` decodes fine, which isolates the trigger (suspect the
-   `ctx_operand_size`-conditioned `select` constructors).
-2. **Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body).
-3. **`WasmStackVariableAnalyzer` exceptions**: `Index 0 out of bounds for length 0`
-   (`i64.store`, `i64.store16`, `f32.load`, `i64.load8_s`) and `GenericAddress cannot be cast to
-   Register` (`local.set`).
-4. **Import stubs are modelled as 4-byte body-less functions** (428 bytes of `EXTERNAL` block noise
-   per importing module).
-5. Emulation-based `assert_*` execution is still blocked (`funcEntryCallOther requires two inputs`
-   under PyGhidra), so this baseline covers loading, disassembly and decompilation only;
-   `assert_invalid`/`assert_malformed` rejection behaviour and the proposal suites (`proposals/`) are
-   follow-ups.
+1. ~~**`select` (0x1B) is not decoded after an unconditional terminator**~~ — **FIXED** (SF workstream).
+2. ~~**Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body)~~ — **FIXED** (`MAX_BR_TABLE_CASES` bound; modelled cases capped at 1024).
+3. ~~**`WasmStackVariableAnalyzer` exceptions**~~ — **FIXED** (SROA workstream; stack-as-aggregate model).
+4. ~~**Import stubs are modelled as 4-byte body-less functions**~~ — documented (428 bytes of `EXTERNAL` block noise per importing module; by design).
+5. **Emulation-based `assert_*` execution** — **IMPLEMENTED** (`run_emulate.ps1` + PyGhidra; 33 suites, 92/92 modules; assert_return 2511/4, assert_trap 183/0; the 4 remaining are `br_table large` cases).
 
 ### 6.1 Real-world corpus baseline
 
@@ -329,15 +345,13 @@ packages incl. `@jsquash/*`, `sql.js`, `web-tree-sitter`; 3 rustc `wasm32-unknow
 * Nothing in the corpus exercises a documented unsupported feature - mainstream wasm-bindgen /
   Emscripten output is MVP + 2.0 (+ SIMD), which is why it all decodes.
 
-### 6.2 Robustness baseline (malformed inputs) — **partly fixed by `REPORT-HARD.md`**
+### 6.2 Robustness baseline (malformed inputs) — **fixed by `REPORT-HARD.md`**
 
 `test-scripts/make_malformed_corpus.py` (56 modules) + `test-scripts/robustness-sweep.ps1` +
 `test-scripts/robustness-RESULTS.md` classify every case as import_ok / import_failed / process_died /
-hang. Original 56-module run: 27 `import_ok` (one the valid control), 27 `import_failed` (all caught and
-reported), **1 `process_died`**, **1 timeout**, 0 hangs.
+hang.
 
-**Integrator-reproduced, then fixed** (hardening workstream, `REPORT-HARD.md`; fixes verified against
-its own pinned install):
+**Fixed** (hardening workstream, `REPORT-HARD.md`; fixes verified against its own pinned install):
 
 1. **`B04`/`J02` (30 bytes) used to abort the analysis process** with an escaping
    `java.lang.OutOfMemoryError` from an unbounded `locals` count. Now bounded (1,000,000 locals per
@@ -346,7 +360,7 @@ its own pinned install):
    headless run exits 0.
 2. **`M03`/`J01`/`NS12` (17 bytes) used to materialize a 2 GiB memory block** and never finish analysis.
    Limits are now validated (`initial <= maximum`, 32-bit <= 65536 pages, 64-bit <= 2^48, block capped at
-   256 MiB): `Import failed: initial size N page(s) exceeds the 32-bit limit of 65536 page(s)` in ~10 s.
+   128 MiB): `Import failed: initial size N page(s) exceeds the 32-bit limit of 65536 page(s)` in ~10 s.
    Tables are bounded the same way (B5: `initial <= maximum`, > 64 MiB skipped with a diagnostic).
 
 Aggregate effect (from the hardening report): the 56-module sweep went from
@@ -369,30 +383,25 @@ skipped; real-module regression unchanged.
 `test-scripts/spectest/` gained an additive negative harness (`prepare_spec_negative.py`,
 `run_spectest_negative.ps1`, `SpecNegativeReport.java`, `parse_spec_negative.py`); the full per-file
 table is `test-scripts/spectest-NEGATIVE.md` and the analysis is `REPORT-NS.md`. All **2948 binary
-negative modules** of the pinned testsuite were classified (import-only): **59 rejected / 2889 accepted
-/ 0 crash / 0 hang**, plus a hazard pass (analysis on, one JVM per module) on the 9 extreme-metadata
-modules which produced **5 analysis hangs**.
+negative modules** of the pinned testsuite were classified (import-only): after the hardening
+workstream, **130 rejected / 2818 accepted / 0 accepted-partial / 0 crash / 0 hang** (originally
+59 rejected / 2889 accepted / 53 accepted-partial / 0 crash / 0 hang).
 
-Integrator-reproduced, ranked (all three from the original run were **fixed** by the hardening
-workstream - see §6.2 - and the fixes were re-verified by the integrator):
+All three originally-ranked findings were **fixed** by the hardening workstream (see §6.2):
 
-1. **B3 - silent truncation (high severity, new class). → FIXED.** `WasmLoader.load()` used to swallow
+1. **B3 - silent truncation (high severity). → FIXED.** `WasmLoader.load()` used to swallow
    every exception from `doLoad`, so a malformed custom-section name (bad UTF-8, 53 spec modules)
-   produced `Import succeeded` with **`funcs=0`** - everything after the failing section was lost
-   without a diagnostic. It now fails honestly:
+   produced `Import succeeded` with **`funcs=0`**. It now fails honestly:
    `Import failed: Failed to create markup for section .custom.\uFFFD (id SEC_CUSTOM) at file offset 0x8: Invalid DataType name`.
-2. **B1/J02/B04 - absurd `locals` count (high). → FIXED.** Bounded (1M/function, 10M/module); clean
-   import failure, no escaping `OutOfMemoryError`, no nonsense program.
-3. **B2/J01/M03/NS12 - absurd memory minimum (high). → FIXED.** Limits validated (`initial <= maximum`,
-   32-bit <= 65536 pages, 64-bit <= 2^48) and blocks capped at 256 MiB; ~10 s bounded rejection instead
-   of a 2 GiB block and an analysis wedge.
-4. **B4 (medium) - out-of-range section ids and duplicate sections dropped invisibly: FIXED** (h1:
-   `WasmSection`/`WasmModule` reject them with a diagnostic - see `REPORT-H1.md`).
+2. **B1/J02/B04 - absurd `locals` count (high). → FIXED.** Bounded (1M/function, 10M/module).
+3. **B2/J01/M03/NS12 - absurd memory minimum (high). → FIXED.** Limits validated and blocks
+   capped at 128 MiB.
+4. **B4 (medium) - out-of-range section ids and duplicate sections. → FIXED** (`REPORT-H1.md`:
+   `WasmSection`/`WasmModule` reject them with a diagnostic).
    **B5 fixed** (table limits validated; oversized tables skipped with a diagnostic);
-   **B6/B9** (219 modules accepted as bare bytes) is by design in a lenient loader - since B9 it
+   **B9** (219 modules accepted as bare bytes) is by design in a lenient loader — since B9 it
    warns explicitly ("Module accepted but nothing was decoded"), see 2.3.
-5. **B7 (low) - rejections are now deliberate loader diagnostics** for the paths that were fixed
-   (section markup, locals, memory/table limits) instead of "no loader matched" / "no memory blocks".
+5. **B7 (low)** - rejections are now deliberate loader diagnostics for the paths that were fixed.
 
 ### 6.5 Fixture-validity baseline (every probe must be a valid module)
 
@@ -410,14 +419,17 @@ A probe that is not recorded, or whose verdict changes, fails the gate; `--updat
 both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
 silently.
 
-Classification of the 191 probes after the continuation-type fix (`REPORT-CT.md`):
+Classification of the **201 probes** (current state):
 
 | class | count | meaning |
 | --- | --- | --- |
-| `valid` | 108 | accepted by both oracles |
+| `valid` | 118 | accepted by both oracles |
 | `wabt-gap` | 53 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
 | `unsupported` | 17 | neither oracle implements the feature (components, string builtins, `memory.discard`) |
 | `invalid` | 13 | deliberately invalid negative probes (malformed / overflowing bodies) |
+
+13 probes carry `oracle_skip: ["binaryen"]` (binaryen's `wasm-dis` runs away on the malformed
+J03 family, so it is never invoked on them; the checker also supports `--timeout`).
 
 Fixtures fixed to reach this state: section-order canonicalisation in `wasm_probe_lib.module()`
 (36 probes), the multivalue export kind (8), plus 15 individual bugs - `M06` (out-of-range i64
