@@ -116,6 +116,13 @@ jobs:
           --probes "$RUNNER_TEMP/fixture-probes" \
           --wabt "$RUNNER_TEMP/spectest-tools/wabt-1.0.42/bin"
 
+    - name: Harness capture regression test
+      run: |
+        set -euxo pipefail
+        # The probe/spec runners capture analyzeHeadless output; a native command's stderr must not
+        # abort them, and the log must be UTF-8 for check-results.py (5.1's Tee-Object wrote UTF-16).
+        pwsh -NoProfile -File test-scripts/test-stderr-capture.ps1 -OutDir "$RUNNER_TEMP/stderr-capture"
+
     - name: Upload probe logs
       if: always()
       uses: actions/upload-artifact@v7

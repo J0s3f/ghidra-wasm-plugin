@@ -70,7 +70,20 @@ def basename_of(ref: str) -> str:
 
 
 def read_log(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    """Read a harness log.
+
+    The capture is pinned to UTF-8 by the PowerShell scripts, but older captures (or a run under
+    Windows PowerShell 5.1, whose Tee-Object/Out-File wrote UTF-16) must still parse: detect a
+    BOM or NUL bytes and fall back to UTF-16, otherwise read UTF-8 (BOM tolerated).
+    """
+    raw = path.read_bytes()
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in raw[:64]:
+        for enc in ("utf-16", "utf-16-le"):
+            try:
+                return raw.decode(enc)
+            except UnicodeError:
+                continue
+    return raw.decode("utf-8-sig", errors="replace")
 
 
 def parse_probe_log(text: str):

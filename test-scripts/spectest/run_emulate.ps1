@@ -98,10 +98,18 @@ foreach ($f in $Files) {
     if ($MaxSteps -gt 0) { $extra += "--max-steps=$MaxSteps" }
 
     Write-Host "== emulating $f ==" -ForegroundColor Cyan
-    & $PythonExe -m pyghidra --install-dir $GhidraDir --project-path $proj --project-name spectest `
-        --skip-analysis $script $json "--report=$rep" @extra 2>&1 |
-        Tee-Object (Join-Path $repDir "$f.log") |
-        Select-String -Pattern "SUMMARY|ERROR:" | ForEach-Object { $_.Line }
+    # Native stderr must not abort the run (PS 7.3+ turns it into ErrorRecords that
+    # $ErrorActionPreference = 'Stop' would terminate on); the log is kept for the parsers.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $emLog = Join-Path $repDir "$f.log"
+    try {
+        & $PythonExe -m pyghidra --install-dir $GhidraDir --project-path $proj --project-name spectest `
+            --skip-analysis $script $json "--report=$rep" @extra 2>&1 |
+            Out-File -FilePath $emLog -Encoding utf8
+    }
+    finally { $ErrorActionPreference = $prevEap }
+    Select-String -Path $emLog -Pattern "SUMMARY|ERROR:" | ForEach-Object { $_.Line }
     Remove-Item -Recurse -Force $proj -ErrorAction SilentlyContinue
 }
 

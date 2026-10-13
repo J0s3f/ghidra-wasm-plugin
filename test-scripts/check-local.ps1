@@ -69,8 +69,17 @@ function Invoke-DumpDecomp([string]$Wasm, [string]$LogName) {
     New-Item -ItemType Directory -Force -Path $proj | Out-Null
     $log = Join-Path $OutDir $LogName
     Write-Host ("== DumpDecomp {0} -> {1} ==" -f (Split-Path -Leaf $Wasm), $LogName) -ForegroundColor Cyan
-    & $headless $proj "Reg" -import $Wasm -scriptPath $testScripts -postScript DumpDecomp.java `
-        -max-cpu 2 -deleteProject 2>&1 | Tee-Object -FilePath $log | Out-Null
+    # Native stderr must not abort the run: PowerShell 7.3+ turns a native command's stderr into
+    # ErrorRecords when merged with 2>&1, and $ErrorActionPreference='Stop' would then terminate on
+    # harmless JVM warnings (e.g. sun.misc.Unsafe). Capturing with an explicit UTF-8 encoding also
+    # keeps the log readable by check-results.py on any host (PS 5.1's Tee-Object writes UTF-16).
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $headless $proj "Reg" -import $Wasm -scriptPath $testScripts -postScript DumpDecomp.java `
+            -max-cpu 2 -deleteProject 2>&1 | Out-File -FilePath $log -Encoding utf8
+    }
+    finally { $ErrorActionPreference = $prevEap }
     if ($LASTEXITCODE -ne 0) { throw "analyzeHeadless failed for $Wasm ($LASTEXITCODE)" }
     Select-String -Path $log -Pattern "SUMMARY|DECOMPILE FAIL" |
         ForEach-Object { ($_.Line -replace "^\S+\s+\S+\s+", "") -replace " \((GhidraScript|HeadlessAnalyzer)\).*$", "" }

@@ -105,7 +105,14 @@ $log = Join-Path $OutDir "headless.log"
 $all = @($proj, "SpecRun", "-import", $importDir, "-recursive") + $scripts +
        @("-max-cpu", "$MaxCpu", "-deleteProject")
 Write-Host ("run: {0} {1}" -f $headless, ($all -join " ")) -ForegroundColor DarkGray
-& $headless @all 2>&1 | Tee-Object -FilePath $log | Out-Null
+# Native stderr must not abort the run (PS 7.3+ turns it into ErrorRecords that $ErrorActionPreference
+# = 'Stop' would terminate on); capture with an explicit UTF-8 encoding for the parsers.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    & $headless @all 2>&1 | Out-File -FilePath $log -Encoding utf8
+}
+finally { $ErrorActionPreference = $prevEap }
 
 # --- 4. parse -------------------------------------------------------------------------------------
 Write-Host "== summarising ==" -ForegroundColor Cyan

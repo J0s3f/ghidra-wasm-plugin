@@ -129,7 +129,14 @@ if ($Detail) { $scripts += @("-postScript", "ListProgram.java", "-postScript", "
 if ($NoAnalysis) { $scripts += "-noanalysis" }
 
 $all = @($proj, "ProbeRun") + $importArgs + $scripts + @("-max-cpu", "$MaxCpu", "-deleteProject")
-& $headless @all 2>&1 | Tee-Object -FilePath (Join-Path $OutDir "probe-run.log") | Out-Null
+# Native stderr must not abort the run (PS 7.3+ turns it into ErrorRecords that $ErrorActionPreference
+# = 'Stop' would terminate on); capture with an explicit UTF-8 encoding for check-results.py.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    & $headless @all 2>&1 | Out-File -FilePath (Join-Path $OutDir "probe-run.log") -Encoding utf8
+}
+finally { $ErrorActionPreference = $prevEap }
 
 Write-Host "== results ==" -ForegroundColor Cyan
 $log = Get-Content (Join-Path $OutDir "probe-run.log")
