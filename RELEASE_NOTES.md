@@ -1,90 +1,109 @@
-# Ghidra-WASM 2.6.1
+# Ghidra-WASM 2.7.0
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
 
 ## Download
 
-Use the asset that matches your Ghidra version - the name begins with `ghidra_12.1.4_PUBLIC_` for
+Use the asset that matches your Ghidra version — the name begins with `ghidra_12.1.4_PUBLIC_` for
 Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 **File → Install Extensions → +** and restart Ghidra. You do not need to unzip the file.
 
-## New in 2.6.1 (since 2.6.0)
+The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
+configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
+`build.gradle`.
 
-**Decoder / loader**
+## New in 2.7.0 (since 2.6.1)
 
-* **Unknown opcodes degrade gracefully.** An opcode the plugin does not implement is decoded as a
-  visible `unimplemented` instruction that consumes exactly the encoded operand bytes (stack
-  switching `cont.new`/`cont.bind`/`suspend`/`switch`, JS string builtins, wide arithmetic,
-  `memory.discard`, ...) instead of desyncing the byte stream and blanking the whole function.
-* **Multi-memory**: memarg memory indices are decoded (`i32.load align=2 memidx=1 offset=0`) and
-  **every** memory gets a block; memory 0 keeps its original placement.
-* **memory64** (roadmap item 8): the memory's index type propagates to the pre-analyzer and to the
-  SLEIGH address computation (`ctx_mem64`); addresses are computed in 64-bit pcode and truncated into
-  the 32-bit `ram` space (exact below 4 GiB - documented, and the listing marks the form `(i64 index)`),
-  with loader bounds so a hostile header cannot allocate wildly. Probe `05`: 0 undefined bytes.
-* **Function-references instructions**: `call_ref`, `return_call_ref`, `ref.as_non_null`,
-  `br_on_null`, `br_on_non_null` (probe `12` reaches 0 undefined bytes; `call_ref` decompiles to a
-  real indirect call).
-* **The three defects the official spec-suite run exposed** are fixed: `select` is decoded after an
-  unconditional terminator (`unreachable`/`br`/`br_table`/`return`), `WasmStackVariableAnalyzer` no
-  longer throws on unreachable-code stack slots, and a pathologically large `br_table` can no longer
-  kill the decompiler (modelled cases capped at 1024, the rest still consumed). The spec core suite now
-  reports **0 real undefined bytes and 0 decompiler failures**.
+### Decoder / loader
 
-**New feature coverage**
+* **Dedicated 32-bit `memory` address space** with a 128 MiB stride between memory indices
+  (memory 0 at offset 0, memory N at `N * 0x08000000`). This supports **≥ 8 memories** without
+  colliding with the module image in `ram` at `CODE_BASE`. All 32-bit memory address arithmetic
+  stays in 32 bits, so decompiled C has no ZEXT noise. memory64 addresses above 4 GiB wrap
+  (documented).
+* **Section diagnostics + 64-bit data offsets**: out-of-range and duplicate sections are rejected
+  with a clear diagnostic naming the section, id and file offset. 64-bit (memory64) data-segment
+  offsets are placed; offsets ≥ 4 GiB are clamped with a log.
+* **Reference typing + `cont` types**: precise `(ref null ht)` / `(ref ht)` type model with
+  subtype-aware validation. `ref.null` types match precisely. `cont` types (`0x5D cont <s33
+  typeidx>`) parse in the type section and resolve to the referenced function type.
+* **B9 warning**: a module that declares content but yields no functions, memories or tables
+  logs "Module accepted but nothing was decoded" with the declared/loaded counts.
+* **128 MiB materialisation cap**: every memory block is capped at 128 MiB (`MAX_MEMORY_BLOCK_BYTES
+  = MEMORY_STRIDE`). A larger declared memory is clamped with a warning rather than rejected, so a
+  spec-valid module with a very large memory still imports — just with a bounded block.
 
-* **Multi-value returns** (item 7): all results are returned as a packed struct through the `__wasm`
-  output pentry (with tail-padding zeroing in the epilogue), so every result is visible to the
-  decompiler and callers consume them all. In the reference Rust module, 7 multi-result functions now
-  carry `wasm_ret_i32_i32*` prototypes instead of silently dropping results.
-* **`.name` extras** (item 9): label (id 3), field (id 10) and tag (id 11) subsections are parsed, and
-  a new analyzer applies table/memory/elem/data names as labels plus module/type/field/tag and
-  label-name information as comments. Malformed name sections can no longer break an import (this also
-  fixes a `ClassCastException` that made such modules fail).
-* **DWARF source line info** is imported again: the fix supplies
-  `programBaseAddressFixup = CODE_BASE + code-section content start` (stock Ghidra never sets it, so
-  every row used to land at `ram:0x0` and be rejected) and skips unresolvable rows instead of aborting
-  the import. Verified with `rustc`-built fixtures (`ram:8000009b -> fixture.rs:12`, incl. inlined
-  `core` lines).
+### New feature coverage
 
-**Robustness against malformed input**
+* **Stack switching / JSPI**: `cont.new`, `cont.bind`, `resume`, `suspend`, `switch` all decode;
+  `cont` types parse. (Semantics are not emulated — decode only.)
+* **JS string builtins** (stringref, `0xFB` ≥ 0x80): decoded. Unassigned sub-opcodes render as
+  `unimplemented (reserved)`.
+* **Wide arithmetic** (`0xFC` 0x13–0x16): `i64.add128`, `i64.sub128`, `i64.mul_wide_s`,
+  `i64.mul_wide_u`.
+* **`memory.discard`** (`0xFC` 0x12): decoded.
+* **`.name` label targets**: label names from `.name` subsection 3 become real label symbols at
+  the branch targets (not just comments).
 
-* Bounds everywhere a tiny module could previously allocate wildly: `locals` (1,000,000 per function,
-  10,000,000 per module), memory limits (`initial <= maximum`, 32-bit <= 65536 pages, 64-bit <= 2^48,
-  every materialised block capped at 256 MiB) and table limits (oversized tables skipped with a
-  diagnostic). A 30-byte module can no longer abort the run with an escaping `OutOfMemoryError`, and a
-  17-byte module can no longer materialise a 2 GiB block.
-* `WasmLoader.load()` no longer swallows load failures: a malformed module fails with a diagnostic
-  naming the section, id and file offset, instead of reporting `Import succeeded` on a truncated
-  program (that bug could silently lose every function after a bad section).
-* Aggregate effect: the 56-module malformed sweep went from 1 process death + 1 analysis timeout to
-  **0 / 0**, and the 2948-module negative spec suite from 59 to **130 correctly rejected** modules,
-  with no crashes and no hangs.
+### Decompiler quality
 
-**Verification infrastructure**
+* **Stack-as-aggregate SROA**: `WasmStackVariableAnalyzer` models each function frame as one
+  aggregate and splits it by (width, offset) access, so Ghidra's VSA can propagate types through
+  stack slots. This eliminates the previous `Index 0 out of bounds` / `GenericAddress cannot be
+  cast to Register` failures.
+* **Call-graph-aware struct synthesis**: `WasmStructSynthAnalyzer` clusters constant-offset
+  accesses per pointer class across the call graph, synthesizes Ghidra structs, and retypes
+  parameters. On the reference Rust module: **352 structs** created, **255 parameters** retyped,
+  cutting raw constant-offset accesses **591 → 437 (−26 %)**.
 
-* A **136-probe CI gate** (`probes.yml`) with a committed fixture and a real-module decompile baseline:
-  a metric drift, a new probe without a baseline, an unexpected import result or a decompiler
-  regression fails the build.
-* Harnesses for the **official spec testsuite** (positive: 271/271 core modules imported, 0 real
-  undefined bytes; SIMD clean), a **15-module real-world corpus** (15/15 imported, 5591/5591 functions
-  decompiled, 1 real undefined byte in total), the malformed-input corpus and the negative spec suite.
-* The test tooling now pins each checkout to one Ghidra install and refuses to measure a stale build.
+### Verification infrastructure
 
-## Also included in 2.6.0
+* **201-probe CI gate** (up from 136): `probes.yml` enforces the committed fixture and a
+  real-module decompile baseline. A metric drift, a new probe without a baseline, an unexpected
+  import result or a decompiler regression fails the build.
+* **Fixture-validity gate**: every probe is validated by wabt `wasm-validate` (CI) and optionally
+  binaryen `wasm-dis` (local). The recorded classification (`fixture-validity.json`) is:
+  **118 valid / 53 wabt-gap / 17 unsupported / 13 invalid**. 13 probes carry
+  `oracle_skip: ["binaryen"]` (binaryen's `wasm-dis` runs away on the malformed J03 family).
+  The checker supports `--timeout`.
+* **Spec-suite CI gate** (`spectest.yml`): 271 core modules imported, **2747/2747 functions
+  decompiled**, 33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures.
+* **Emulation assertion harness**: 33 `.wast` suites, 92/92 modules; **assert_return 2511/4**,
+  **assert_trap 183/0**. The 4 remaining `assert_return` failures are the `br_table large` cases —
+  the deliberate `MAX_BR_TABLE_CASES` bound (decode-side). Needs a PyGhidra venv (provisioned
+  automatically by `run_emulate.ps1`).
+* **Type-recovery proxy metric** (`test-scripts/type_recovery_metric.py`): counts
+  constant-offset field accesses in decompiled C, grouped by base — the signal a type-recovery
+  pass would type.
+* The test tooling pins each checkout to one Ghidra install and refuses to measure a stale build.
 
-If you are upgrading from 2.5.x: garbage collection (`rec`/`sub`/`struct`/`array` types and the `0xFB`
-instruction set), the new exception handling (`try_table`, `throw_ref`, `exnref`), component-model
-unwrapping (embedded core modules load as real programs), memory/table limit flags, constant-expression
-decoding with extended-const folding and unknown-value-type safety.
+## Also included in earlier releases
+
+* **2.6.1**: graceful degradation for unknown opcodes, multi-memory, memory64, function-references
+  instructions, spec-suite fixes (`select` after terminator, stack-variable crashes, oversized
+  `br_table`), multi-value returns, `.name` extras, DWARF source line info, loader hardening.
+* **2.6.0**: garbage collection, new exception handling, component-model unwrapping, memory/table
+  limit flags, constant-expression decoding.
 
 ## Known open items
 
-Out-of-range section ids and duplicate sections still accepted silently; data segments of 64-bit
-memories are dropped; memory indices >= 9 break the re-parse path; `table64` and `> 4 GiB` memory64
-memories; stack-switching/string-builtin semantics (they decode as `unimplemented` by design); spec
-`assert_*` emulation. All are documented in
+* **Custom page sizes**: the page size is fixed at 64 KiB.
+* **Shared-everything threads**: `global.atomic.*`, shared tables / `table.atomic.*` have no
+  mnemonics (the `0xFE` atomic *memory* ops are implemented).
+* **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
+  (core-module extraction only, by design).
+* **`br_table large` assertion cases**: 4 `assert_return` failures in the emulation harness are
+  the deliberate `MAX_BR_TABLE_CASES` bound.
+* **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
+  only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
+* **128 MiB materialisation cap**: memories larger than 128 MiB are clamped (with a warning);
+  memory64 addresses above 4 GiB wrap.
+* **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`).
+* **Multi-byte block signatures** on `try`/`try_table` (single-s33 form kept).
+* **Extended-const `Data markup conflict`** warning lead.
+
+All are documented in
 [MODERN_WASM_GAPS.md](https://github.com/J0s3f/ghidra-wasm-plugin/blob/main/MODERN_WASM_GAPS.md).
 
 ## Build
