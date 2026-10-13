@@ -1,4 +1,5 @@
-Module to load WebAssembly files into Ghidra, supporting disassembly and decompilation.
+Module to load WebAssembly files into Ghidra, supporting disassembly and decompilation
+of modern WebAssembly (Wasm 3.0 + active proposals).
 
 ## Features
 
@@ -6,6 +7,20 @@ Module to load WebAssembly files into Ghidra, supporting disassembly and decompi
 - Cross-references for function calls and branches
 - Cross-references for table entries and globals containing function pointers
 - Recovery of the C stack, when the stack pointer is stored in a global variable (typical for compilers like Emscripten)
+- Graceful degradation: unknown opcodes are decoded as visible `unimplemented` instructions
+- Bulk memory, reference types, SIMD, relaxed SIMD, threads & atomics, tail calls
+- Legacy and new exception handling (`try_table`, `throw_ref`, `exnref`)
+- Garbage collection (`rec`/`sub`/`struct`/`array` types and the `0xFB` instruction set)
+- Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, ...)
+- Multi-value returns (packed struct, all results visible)
+- Multi-memory (dedicated 32-bit `memory` address space, 128 MiB stride, ≥ 8 memories)
+- memory64 (64-bit index type; addresses exact below 4 GiB, wrap above)
+- Extended constant expressions
+- Stack switching / JSPI (decode only), JS string builtins, wide arithmetic, `memory.discard`
+- Component-model core-module extraction
+- DWARF source line info
+- `.name` section (function/global/local/table/memory/elem/data/type/field/tag names; label names as real symbols)
+- Stack-as-aggregate SROA and call-graph-aware struct synthesis for better decompilation
 
 ## Tips
 
@@ -67,18 +82,27 @@ Emscripten `__syscall3` function in order to process `writev` calls.
 
 ## Limitations and Known Bugs
 
+- Custom page sizes are not supported (page size is fixed at 64 KiB).
+- Shared-everything threads (`global.atomic.*`, shared tables / `table.atomic.*`)
+  have no mnemonics (the `0xFE` atomic memory ops are implemented).
+- Component-model semantics (canonical ABI, `canon` ops, component types) are not
+  modelled; only embedded core modules are extracted.
+- Memories larger than 128 MiB are clamped (with a warning); memory64 addresses
+  above 4 GiB wrap.
+- Stack switching / JSPI, JS string builtins, wide arithmetic, and
+  `memory.discard` decode but their semantics are not emulated.
+- `ref.null` abstract heap types print numerically (`ref.null heaptype=-0x15`).
 - Currently, inlining functions (via marking them "In Line") is not supported
 and will confuse the decompiler. This is because the inlined function's
 references to stack and local variables will affect the caller. I tried to solve
 this limitation by injecting code to save and restore stack and locals on
-function entry/exit, but ran into a Ghidra limitation - the decompiler does not
+function entry/exit, but ran into a Ghidra limitation — the decompiler does not
 inject "uponentry" Pcode into inlined functions.
 - Currently, there is no way to change the C stack pointer after initial analysis
 (attempting to re-analyze the program with a new C stack pointer will not change
 anything).
 - Initial analysis and disassembly can be very slow. This is primarily because
 Ghidra is quite slow at setting large numbers of context registers.
-- Multiple return values are untested and will probably not work.
 
 ## Internals
 
@@ -98,7 +122,12 @@ Four different types of "registers" are defined: input (iN), output (oN), stack
 disassembly; stack registers will appear in the PCode, and input/output
 registers will appear in function types.
 
+Linear memories live in a dedicated 32-bit `memory` address space (not `ram`),
+with a 128 MiB stride between memory indices (memory 0 at offset 0, memory N at
+`N * 0x08000000`).
+
 ## Acknowledgements
 
 - This module borrows loader functionality from this repo: https://github.com/andr3colonel/ghidra_wasm
 - This module was directly based on https://github.com/garrettgu10/ghidra-wasm-plugin
+- Upstream: https://github.com/nneonneo/ghidra-wasm-plugin (GPL-3.0)

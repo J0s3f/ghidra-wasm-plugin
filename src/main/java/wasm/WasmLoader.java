@@ -105,7 +105,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	public final static long MEMORY_PAGE_SIZE = 65536L;
 	/*
 	 * B2/J01/M03/NS12/NS10: the largest initialized region the loader will materialise for a
-	 * single memory (256 MiB, i.e. MEMORY_STRIDE). A malformed or absurd `initial` used to be
+	 * single memory (128 MiB, i.e. MEMORY_STRIDE). A malformed or absurd `initial` used to be
 	 * clamped to CODE_BASE (2 GiB) and a tiny module could force that allocation, wedging
 	 * auto-analysis. Valid modules are unaffected: the largest memory in the 747-module
 	 * regression corpus is 17 pages (1 MiB), and the memory64 / multi-memory probes use 1-7
