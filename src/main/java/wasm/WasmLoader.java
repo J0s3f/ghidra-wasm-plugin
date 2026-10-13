@@ -101,7 +101,9 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 * above 4 GiB wrap - a modelling choice, not a space limitation (see REPORT-N.md).
 	 */
 	public final static long MEMORY_MAX_ADDRESS = 0xffffffffL;
-	/* The size of one WebAssembly linear-memory page. */
+	/* The size of one WebAssembly linear-memory page when a memory does not declare a
+	 * custom page size (64 KiB). A memory whose limits carry flag 0x08 declares its page
+	 * size as a log2 exponent instead - see {@link #getMemoryPageSize}. */
 	public final static long MEMORY_PAGE_SIZE = 65536L;
 	/*
 	 * B2/J01/M03/NS12/NS10: the largest initialized region the loader will materialise for a
@@ -413,6 +415,10 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	}
 
 	private static void createMemoryBlock(Program program, int memidx, long length, boolean is64Bit, TaskMonitor monitor) {
+		createMemoryBlock(program, memidx, length, is64Bit, MEMORY_PAGE_SIZE, null, monitor);
+	}
+
+	private static void createMemoryBlock(Program program, int memidx, long length, boolean is64Bit, long pageSize, WasmResizableLimits limits, TaskMonitor monitor) {
 		if (length == 0) {
 			return;
 		}
@@ -436,7 +442,19 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			block.setWrite(false);
 			block.setExecute(false);
 			block.setSourceName("Wasm Memory");
-			if (is64Bit) {
+			if (pageSize != MEMORY_PAGE_SIZE) {
+				/*
+				 * Custom page size (limits flag 0x08): the block covers initial-pages of
+				 * pageSize bytes, not of 64 KiB, so name the declared size - a tiny/one-byte
+				 * page would otherwise look like a loader bug in the listing.
+				 */
+				block.setComment("Custom page size: " + pageSize + " byte(s) per page"
+						+ (limits != null ? " (2^" + limits.getPageSizeExponent() + ")" : "")
+						+ (is64Bit ? "; the index type is i64, but the SLEIGH truncates effective "
+								+ "addresses to 32 bits, so only addresses below 4 GiB are decoded "
+								+ "exactly (accesses above that wrap; see REPORT-N.md)" : ""));
+			}
+			else if (is64Bit) {
 				/*
 				 * @@M64: make the (lossy) representation visible in the listing. The block
 				 * is in the 32-bit `memory` address space, but the SLEIGH truncates effective
@@ -452,16 +470,76 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	}
 
 	/**
-	 * @@M64: the byte size of a memory's declared initial size (pages), with saturation.
-	 * A 64-bit memory can declare a u64 page count; anything that does not fit - or whose
-	 * byte size would overflow - becomes {@link Long#MAX_VALUE} so the caller's clamp can
-	 * never be defeated by an integer overflow.
+	 * Custom memory page sizes (the standardised WebAssembly 3.0 gap closed here; see
+	 * MODERN_WASM_GAPS.md §2.3): a memory whose limits carry flag 0x08 declares its page
+	 * size as a log2 exponent, so one page holds {@code 2^exponent} bytes.
+	 *
+	 * <p>Encoding verified against wabt 1.0.42 ({@code wasm-objdump -x} prints
+	 * {@code pagesize 1} for exponent 0 and hides the size for exponent 16, i.e. the
+	 * default 64 KiB) and binaryen version_133: both accept exponents 0 (1 byte) and 16
+	 * (64 KiB) and reject any other value. The loader stays lenient (project policy: it
+	 * is not a validator) and honours any representable exponent instead of rejecting
+	 * the module.
+	 *
+	 * @return the memory's page size in bytes; {@link #MEMORY_PAGE_SIZE} when no custom
+	 *         page size is declared, saturating to {@link Long#MAX_VALUE} for an
+	 *         unrepresentable exponent (never negative, never shifted-mod-64, so the
+	 *         caller's clamp can never be defeated by an integer overflow)
 	 */
-	private static long memoryByteSize(long pages) {
-		if (pages < 0 || pages > (Long.MAX_VALUE / MEMORY_PAGE_SIZE)) {
+	public static long getMemoryPageSize(WasmResizableLimits limits) {
+		if (limits == null || !limits.hasCustomPageSize()) {
+			return MEMORY_PAGE_SIZE;
+		}
+		long exponent = limits.getPageSizeExponent();
+		if (exponent < 0 || exponent > 62) {
 			return Long.MAX_VALUE;
 		}
-		return pages * MEMORY_PAGE_SIZE;
+		return 1L << exponent;
+	}
+
+	/**
+	 * Look up the resizable limits of memory {@code memidx}, whether imported or
+	 * defined. Returns null when the index names no known memory.
+	 */
+	private static WasmResizableLimits getMemoryLimits(WasmModule module, int memidx) {
+		if (memidx < 0) {
+			return null;
+		}
+		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_MEMORY);
+		if (memidx < imports.size()) {
+			return imports.get(memidx).getMemoryType();
+		}
+		List<WasmResizableLimits> memories = module.getNonImportedMemories();
+		int local = memidx - imports.size();
+		if (local < memories.size()) {
+			return memories.get(local);
+		}
+		return null;
+	}
+
+	/**
+	 * @@M64: the byte size of a memory's declared initial size (pages of
+	 * {@link #MEMORY_PAGE_SIZE} bytes), with saturation. A 64-bit memory can declare a
+	 * u64 page count; anything that does not fit - or whose byte size would overflow -
+	 * becomes {@link Long#MAX_VALUE} so the caller's clamp can never be defeated by an
+	 * integer overflow.
+	 */
+	private static long memoryByteSize(long pages) {
+		return memoryByteSize(pages, MEMORY_PAGE_SIZE);
+	}
+
+	/**
+	 * Custom-page-size form: the byte size of {@code pages} pages of {@code pageSize}
+	 * bytes, with saturation. A memory with a custom page size declares
+	 * {@code pages * pageSize} bytes; anything unrepresentable becomes
+	 * {@link Long#MAX_VALUE} so the caller's clamp can never be defeated by an integer
+	 * overflow.
+	 */
+	private static long memoryByteSize(long pages, long pageSize) {
+		if (pages < 0 || pageSize <= 0 || pages > (Long.MAX_VALUE / pageSize)) {
+			return Long.MAX_VALUE;
+		}
+		return pages * pageSize;
 	}
 
 	/**
@@ -471,6 +549,12 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 * caps a 32-bit memory at 65536 pages (4 GiB) / a 64-bit memory at 2^48 pages. A malformed
 	 * module can otherwise declare {@code initial = 0xFFFFFFFF} pages (J01/M03/NS12) or a
 	 * {@code min > max} pair (M01), neither of which a real engine would accept.
+	 *
+	 * <p>Custom page sizes (limits flag 0x08) need no extra check here: limits are counted
+	 * in pages regardless of the page size, and any byte-size explosion is bounded by the
+	 * saturating {@link #memoryByteSize} computation plus the materialisation cap in
+	 * {@link #loadMemories} - so a hostile exponent can never force a huge block or an
+	 * overflow, and no new rejection is introduced (project policy: keep accepting).
 	 *
 	 * @throws IOException when the declared limits are out of range; the caller lets this fail the
 	 *         import (a load failure must be visible, see {@link #load})
@@ -730,21 +814,37 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			 * materialised size. The SLEIGH truncates effective addresses to 32 bits, so decoded
 			 * accesses at or above 4 GiB wrap (see REPORT-N.md).
 			 */
-			long declared = memoryByteSize(mem.getInitial());
+			/*
+			 * Custom page sizes (limits flag 0x08): the declared size is pages x page_size,
+			 * not pages x 64 KiB - see getMemoryPageSize. A memory without the flag keeps
+			 * MEMORY_PAGE_SIZE, so its sizing, capping and messages below are byte-identical
+			 * to before.
+			 */
+			long pageSize = getMemoryPageSize(mem);
+			String pageNote = pageSize != MEMORY_PAGE_SIZE
+					? " (" + mem.getInitial() + " page(s) of " + pageSize + " byte(s))"
+					: "";
+			long declared = memoryByteSize(mem.getInitial(), pageSize);
 			long length = Math.min(declared, MAX_MEMORY_BLOCK_BYTES);
 			if (length != declared) {
 				Msg.warn(WasmLoader.class, "Memory " + memidx + (mem.is64Bit() ? " (i64 index)" : "")
 						+ " declares " + (declared == Long.MAX_VALUE ? "an unrepresentably large" : "" + declared)
-						+ " byte(s) but is mapped to " + length + " byte(s) (the loader's "
+						+ " byte(s)" + pageNote + " but is mapped to " + length + " byte(s) (the loader's "
 						+ MAX_MEMORY_BLOCK_BYTES + "-byte materialisation bound); accesses beyond the "
 						+ "mapped size are not modelled (see REPORT-HARD.md)");
+			} else if (mem.hasCustomPageSize()) {
+				Msg.info(WasmLoader.class, "Memory " + memidx + (mem.is64Bit() ? " (i64 index)" : "")
+						+ " declares a custom page size of " + pageSize + " byte(s) (2^"
+						+ mem.getPageSizeExponent() + "); its " + mem.getInitial() + " page(s) ("
+						+ declared + " byte(s)) are mapped into the `memory` space at 0x"
+						+ Long.toHexString(((long) memidx) * MEMORY_STRIDE));
 			} else if (mem.is64Bit()) {
 				Msg.info(WasmLoader.class, "Memory " + memidx + " has a 64-bit (i64) index type; its "
 						+ length + " byte(s) are mapped into the 64-bit `memory` space at 0x"
 						+ Long.toHexString(((long) memidx) * MEMORY_STRIDE)
 						+ " (the SLEIGH truncates effective addresses to 32 bits; see REPORT-N.md)");
 			}
-			createMemoryBlock(program, memidx, length, mem.is64Bit(), monitor);
+			createMemoryBlock(program, memidx, length, mem.is64Bit(), pageSize, mem, monitor);
 		}
 	}
 
@@ -803,9 +903,28 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 				loadDataToMemory(program, module, dataidx, memidx, offset, monitor);
 			} catch (Exception e) {
 				Address memStart = getMemoryAddress(program.getAddressFactory(), memidx, offset);
-				Msg.error(this, "Failed to initialize memory " + memidx + " with data segment " + dataidx + " at " + memStart, e);
+				Msg.error(this, "Failed to initialize memory " + memidx + " with data segment " + dataidx + " at " + memStart
+						+ declaredMemoryNote(module, memidx, offset, dataSegment.getSize()), e);
 			}
 		}
+	}
+
+	/**
+	 * Page-size-aware note for a data segment that could not be placed: when the target
+	 * memory declares a custom page size, name the page-derived declared size so the
+	 * failure reads as a bounds overrun instead of a mystery. Returns "" for default
+	 * page sizes, keeping the historical message byte-identical.
+	 */
+	private static String declaredMemoryNote(WasmModule module, int memidx, long offset, long segmentSize) {
+		WasmResizableLimits limits = getMemoryLimits(module, memidx);
+		if (limits == null || !limits.hasCustomPageSize()) {
+			return "";
+		}
+		long pageSize = getMemoryPageSize(limits);
+		long declared = memoryByteSize(limits.getInitial(), pageSize);
+		return " (memory declares " + limits.getInitial() + " page(s) of " + pageSize + " byte(s) = "
+				+ (declared == Long.MAX_VALUE ? "an unrepresentably large size" : declared + " byte(s)")
+				+ "; the " + segmentSize + "-byte segment at offset " + offset + " does not fit)";
 	}
 
 	/**
