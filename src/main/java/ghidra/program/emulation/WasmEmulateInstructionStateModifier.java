@@ -622,14 +622,14 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			return;
 		}
 		MemoryState memState = emulate.getMemoryState();
-		AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+		AddressSpace memorySpace = emulate.getLanguage().getAddressFactory().getAddressSpace("memory");
 		int count = analysisProvider.getMemoryCount();
 		for (PcodeOp op : pcode) {
 			int opcode = op.getOpcode();
 			if (opcode != PcodeOp.LOAD && opcode != PcodeOp.STORE) {
 				continue;
 			}
-			if (!ram.equals(spaceOf(emulate, op))) {
+			if (!memorySpace.equals(spaceOf(emulate, op))) {
 				continue;
 			}
 			long address = memState.getValue(op.getInput(1));
@@ -664,12 +664,12 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		if (addressInMemory < 0 || addressInMemory + size > memorySize) {
 			if (isStore && addressInMemory >= 0 && addressInMemory < memorySize) {
 				/* Undo the in-bounds portion of the OOB store: zero out the bytes that
-				 * were written within the declared memory. Use the absolute ram address
+				 * were written within the declared memory. Use the absolute memory-space address
 				 * (which for multi-memory includes the memidx * MEMORY_STRIDE prefix). */
-				AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+				AddressSpace memorySpace = emulate.getLanguage().getAddressFactory().getAddressSpace("memory");
 				int inBoundsBytes = (int) (memorySize - addressInMemory);
 				byte[] zeros = new byte[inBoundsBytes];
-				memState.setChunk(zeros, ram, address, inBoundsBytes);
+				memState.setChunk(zeros, memorySpace, address, inBoundsBytes);
 			}
 			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
 		}
@@ -1013,9 +1013,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 				long wrappedAddr = (dynamicBase + (offset & 0xFFFFFFFFL)) & 0xFFFFFFFFL;
 				if (wrappedAddr >= 0 && wrappedAddr < memSize) {
 					int inBounds = (int) Math.min(accessWidth, memSize - wrappedAddr);
-					AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+					AddressSpace memorySpace = emulate.getLanguage().getAddressFactory().getAddressSpace("memory");
 					byte[] zeros = new byte[inBounds];
-					emulate.getMemoryState().setChunk(zeros, ram, wrappedAddr, inBounds);
+					emulate.getMemoryState().setChunk(zeros, memorySpace, wrappedAddr, inBounds);
 				}
 			}
 			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
@@ -1029,14 +1029,14 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	 * Returns -1 if the computation cannot be performed reliably.
 	 */
 	private long reverseComputeLoadBase(Emulate emulate, PcodeOp[] pcode) {
-		AddressSpace ram = emulate.getLanguage().getAddressFactory().getAddressSpace("ram");
+		AddressSpace memorySpace = emulate.getLanguage().getAddressFactory().getAddressSpace("memory");
 		MemoryState memState = emulate.getMemoryState();
 		for (int i = 0; i < pcode.length; i++) {
 			PcodeOp op = pcode[i];
 			if (op.getOpcode() != PcodeOp.LOAD) {
 				continue;
 			}
-			if (!ram.equals(spaceOf(emulate, op))) {
+			if (!memorySpace.equals(spaceOf(emulate, op))) {
 				continue;
 			}
 			Varnode addrVar = op.getInput(1);

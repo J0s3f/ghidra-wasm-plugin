@@ -107,8 +107,8 @@ public class PcodeOpEmitter {
 	 * opaque memory_copy() call.
 	 */
 	public void emitUnrolledCopy(Varnode src, Varnode dst, int count, int gran) {
-		AddressSpace ram = language.getAddressFactory().getDefaultAddressSpace();
-		Varnode ramId = constVn(ram.getSpaceID(), 4);
+		AddressSpace memorySpace = language.getAddressFactory().getAddressSpace("memory");
+		Varnode memId = constVn(memorySpace.getSpaceID(), 4);
 		int ptrSize = src.getSize();
 		for (int i = 0; i < count; i++) {
 			long off = (long) i * gran;
@@ -118,10 +118,10 @@ public class PcodeOpEmitter {
 			add1.setInput(src, 0);
 			add1.setInput(constVn(off, ptrSize), 1);
 			add1.setOutput(sp);
-			/* val = *[ram] sp */
+			/* val = *[memory] sp */
 			Varnode val = newUnique(gran);
 			PcodeOp load = newOp(PcodeOp.LOAD);
-			load.setInput(ramId, 0);
+			load.setInput(memId, 0);
 			load.setInput(sp, 1);
 			load.setOutput(val);
 			/* dp = dst + off */
@@ -130,9 +130,9 @@ public class PcodeOpEmitter {
 			add2.setInput(dst, 0);
 			add2.setInput(constVn(off, ptrSize), 1);
 			add2.setOutput(dp);
-			/* *[ram] dp = val */
+			/* *[memory] dp = val */
 			PcodeOp store = newOp(PcodeOp.STORE);
-			store.setInput(ramId, 0);
+			store.setInput(memId, 0);
 			store.setInput(dp, 1);
 			store.setInput(val, 2);
 		}

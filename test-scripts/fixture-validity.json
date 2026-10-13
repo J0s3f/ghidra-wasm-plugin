@@ -562,6 +562,15 @@
     "M64_08_simd_atomic.wasm": {
       "class": "valid"
     },
+    "MS_01_mem9_load_store.wasm": {
+      "class": "valid"
+    },
+    "MS_02_mem16_load.wasm": {
+      "class": "valid"
+    },
+    "MS_03_mem9_data_segment.wasm": {
+      "class": "valid"
+    },
     "N01_full_name_section.wasm": {
       "class": "valid"
     },

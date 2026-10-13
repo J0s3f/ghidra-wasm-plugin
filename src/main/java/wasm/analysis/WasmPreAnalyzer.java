@@ -87,10 +87,9 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 		 * @@MM: bound the read to the module image block, exactly as WasmAnalysis.getState() does
 		 * (see the B3 fix there). MemoryByteProvider(mem, start) sizes itself from the *maximum
 		 * address of the whole `ram` address space*, not from the end of the block containing
-		 * `start`, so once a linear-memory block is mapped above the module image the provider
-		 * reaches past the module. A function body at the very end of the module could then read
-		 * its trailing `local.get`/`global.get` bytes from unrelated memory instead of failing.
-		 * Every function address is inside the single module image block, so its end is the
+		 * `start`. Linear-memory blocks are now in the separate `memory` address space (see
+		 * WebAssembly.slaspec), so they no longer extend the `ram` space's maximum. Every
+		 * function address is inside the single module image block, so its end is the
 		 * correct bound. This is defensive: the guess is unchanged for the fixture and the real
 		 * module (both measured).
 		 */

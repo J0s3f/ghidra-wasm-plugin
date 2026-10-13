@@ -81,22 +81,26 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	public final static long IMPORT_BASE = 0x7f000000L;
 	public final static long CODE_BASE = 0x80000000L;
 	/*
-	 * @@MM: multi-memory. Linear memory N is mapped into `ram` at N * MEMORY_STRIDE
-	 * (memory 0 therefore stays at offset 0, exactly as before, so the C stack/heap
-	 * analysis and every single-memory module are unaffected). The stride keeps the
-	 * memories apart: with the module itself at CODE_BASE (0x80000000), memory
-	 * indices 0..7 fit without overlapping each other, and each memory should be at
-	 * most MEMORY_STRIDE bytes. Must stay in sync with @define MEMORY_STRIDE in
-	 * data/languages/WebAssembly.sinc.
+	 * @@MM: multi-memory. Linear memory N is mapped into the dedicated `memory` address
+	 * space at N * MEMORY_STRIDE (memory 0 therefore stays at offset 0, exactly as
+	 * before, so the C stack/heap analysis and every single-memory module are
+	 * unaffected). The `memory` space is 32-bit (size=4, see WebAssembly.slaspec), so
+	 * the stride is 128 MiB: memory index >= 8 no longer collides with the module image
+	 * in `ram` at CODE_BASE (0x80000000), and indices 0..31 fit in 32 bits (memory 31 =
+	 * 0xF8000000). All 32-bit memory address arithmetic stays in 32 bits (addr:4), so
+	 * the decompiled C has no ZEXT noise. memory64 addresses above 4 GiB wrap (same as
+	 * the pre-memory-space behaviour; see REPORT-N.md). The stride keeps the memories
+	 * apart: each memory should be at most MEMORY_STRIDE bytes. Must stay in sync with
+	 * @define MEMORY_STRIDE in data/languages/WebAssembly.sinc.
 	 */
-	public final static long MEMORY_STRIDE = 0x10000000L;
+	public final static long MEMORY_STRIDE = 0x08000000L;
 	/*
-	 * @@M64: `ram` is a 32-bit address space (see WebAssembly.ldefs), so 0xffffffff is the
-	 * highest address any block or data segment can be mapped to. A 64-bit (memory64)
-	 * memory whose declared size does not fit, or a data segment at an offset beyond
-	 * 4 GiB, is clamped to the end of the space - and logged - instead of overflowing.
+	 * @@M64: the `memory` address space is 32-bit (size=4, see WebAssembly.slaspec), so
+	 * getMemoryAddress() can represent any offset up to 4 GiB. The SLEIGH truncates
+	 * memory64 effective addresses to 32 bits (addr:4 = full:4), so decoded accesses
+	 * above 4 GiB wrap - a modelling choice, not a space limitation (see REPORT-N.md).
 	 */
-	public final static long RAM_MAX_ADDRESS = 0xffffffffL;
+	public final static long MEMORY_MAX_ADDRESS = 0xffffffffL;
 	/* The size of one WebAssembly linear-memory page. */
 	public final static long MEMORY_PAGE_SIZE = 65536L;
 	/*
@@ -175,25 +179,29 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	/**
 	 * @@MM: the address of a byte in linear memory {@code memidx}.
 	 *
-	 * <p>Memory 0 lives at ram offset 0 (unchanged); memory N &gt;= 1 lives at
-	 * {@code N * MEMORY_STRIDE} (see {@link #MEMORY_STRIDE}), matching the address the
-	 * SLEIGH memarg decoders compute for a memarg that carries a memory index.
+	 * <p>Memory 0 lives at offset 0 in the dedicated {@code memory} address space
+	 * (unchanged); memory N &gt;= 1 lives at {@code N * MEMORY_STRIDE} (see
+	 * {@link #MEMORY_STRIDE}), matching the address the SLEIGH memarg decoders compute
+	 * for a memarg that carries a memory index. The {@code memory} space is 32-bit, so
+	 * with MEMORY_STRIDE = 128 MiB, memory indices 0..31 are representable without
+	 * colliding with the module image in {@code ram}.
 	 *
 	 * <p>@@M64: a 64-bit (memory64) memory may address up to 2^64, which the 32-bit
-	 * {@code ram} space cannot represent. Anything that does not fit is clamped to the
-	 * top of the space and logged rather than overflowing into a wrong address.
+	 * {@code memory} space cannot represent. The SLEIGH truncates effective addresses to
+	 * 32 bits (see REPORT-N.md), so decoded accesses above 4 GiB wrap - a modelling
+	 * choice, not a space limitation.
 	 */
 	public static Address getMemoryAddress(AddressFactory addressFactory, int memidx, long offset) {
 		long base = ((long) memidx) * MEMORY_STRIDE;
 		long address = base + offset;
-		if (memidx < 0 || offset < 0 || base < 0 || address < 0 || address > RAM_MAX_ADDRESS) {
+		if (memidx < 0 || offset < 0 || base < 0 || address < 0 || address > MEMORY_MAX_ADDRESS) {
 			Msg.warn(WasmLoader.class, "Address memidx=" + memidx + " offset=0x" + Long.toHexString(offset)
-					+ " does not fit the 32-bit `ram` address space; clamping to 0x"
-					+ Long.toHexString(RAM_MAX_ADDRESS)
-					+ " (memory64 addresses/data above 4 GiB are not modelled; see REPORT-N.md)");
-			address = RAM_MAX_ADDRESS;
+					+ " does not fit the 32-bit `memory` address space; clamping to 0x"
+					+ Long.toHexString(MEMORY_MAX_ADDRESS)
+					+ " (see REPORT-N.md)");
+			address = MEMORY_MAX_ADDRESS;
 		}
-		return addressFactory.getAddressSpace("ram").getAddress(address);
+		return addressFactory.getAddressSpace("memory").getAddress(address);
 	}
 
 	public static Address getGlobalAddress(AddressFactory addressFactory, int globalidx) {
@@ -431,12 +439,12 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			if (is64Bit) {
 				/*
 				 * @@M64: make the (lossy) representation visible in the listing. The block
-				 * is a 32-bit `ram` region, but the module's memory is 64-bit-addressed;
-				 * only effective addresses below 4 GiB are modelled exactly.
+				 * is in the 32-bit `memory` address space, but the SLEIGH truncates effective
+				 * addresses to 32 bits, so only addresses below 4 GiB are decoded exactly.
 				 */
-				block.setComment("64-bit (memory64) linear memory: the index type is i64, but the block is "
-						+ "mapped into the 32-bit `ram` space, so only addresses below 4 GiB are represented "
-						+ "(accesses above that wrap; see REPORT-N.md)");
+				block.setComment("64-bit (memory64) linear memory: the index type is i64, but the SLEIGH "
+						+ "truncates effective addresses to 32 bits, so only addresses below 4 GiB are "
+						+ "decoded exactly (accesses above that wrap; see REPORT-N.md)");
 			}
 		} catch (Exception e) {
 			Msg.error(WasmLoader.class, "Failed to create memory block " + memidx + " at " + dataStart, e);
@@ -699,25 +707,28 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			 */
 			validateMemoryLimits(memidx, mem);
 			/*
-			 * @@MM: memory N is mapped into `ram` at N * MEMORY_STRIDE (see getMemoryAddress).
+			 * @@MM: memory N is mapped into the dedicated `memory` address space at
+			 * N * MEMORY_STRIDE (see getMemoryAddress). The `memory` space is 32-bit
+			 * (size=4), so with MEMORY_STRIDE = 128 MiB, memory indices 0..31 are
+			 * representable without colliding with the module image in `ram`.
 			 *
-			 * B2: a memory's materialised size is bounded by MAX_MEMORY_BLOCK_BYTES (256 MiB) so a
+			 * B2: a memory's materialised size is bounded by MAX_MEMORY_BLOCK_BYTES (128 MiB) so a
 			 * tiny module can never force a multi-GiB block (which wedges auto-analysis). Memory 0
 			 * used to keep a 2 GiB clamp of its own; the bound is now uniform across memories.
 			 *
 			 * @@M64: the size of a 64-bit memory is a u64, so it is computed with saturation and
-			 * then clamped (and logged) like any other memory. `ram` is a 32-bit space, so a
-			 * memory larger than the bound is only partly represented.
+			 * then clamped (and logged) like any other memory. The `memory` space is 32-bit, and
+			 * the SLEIGH truncates effective addresses to 32 bits, so a memory larger than 4 GiB
+			 * is only partly decoded.
 			 *
 			 * @@M64 >4 GiB: a memory64 declaration with an initial size above 4 GiB (e.g. 70000
 			 * pages = 4,587,520,000 bytes) is *valid* per the memory64 proposal and is accepted
 			 * here: the declared byte count is computed as a long (never overflowing), the block is
-			 * capped at MAX_MEMORY_BLOCK_BYTES (256 MiB) and the mismatch is logged - so the import
+			 * capped at MAX_MEMORY_BLOCK_BYTES (128 MiB) and the mismatch is logged - so the import
 			 * is honest and bounded instead of silently truncated or an OOM. The module's code
 			 * section still decodes because nothing in the decode path depends on the memory's
-			 * materialised size. Addresses/offsets at or above 4 GiB cannot be represented in the
-			 * 32-bit `ram` space; getMemoryAddress() clamps them to the top of the space and logs,
-			 * rather than wrapping into a wrong address (see REPORT-N.md).
+			 * materialised size. The SLEIGH truncates effective addresses to 32 bits, so decoded
+			 * accesses at or above 4 GiB wrap (see REPORT-N.md).
 			 */
 			long declared = memoryByteSize(mem.getInitial());
 			long length = Math.min(declared, MAX_MEMORY_BLOCK_BYTES);
@@ -729,9 +740,9 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 						+ "mapped size are not modelled (see REPORT-HARD.md)");
 			} else if (mem.is64Bit()) {
 				Msg.info(WasmLoader.class, "Memory " + memidx + " has a 64-bit (i64) index type; its "
-						+ length + " byte(s) are mapped into the 32-bit `ram` space at 0x"
+						+ length + " byte(s) are mapped into the 64-bit `memory` space at 0x"
 						+ Long.toHexString(((long) memidx) * MEMORY_STRIDE)
-						+ " (addresses/offsets >= 4 GiB wrap; see REPORT-N.md)");
+						+ " (the SLEIGH truncates effective addresses to 32 bits; see REPORT-N.md)");
 			}
 			createMemoryBlock(program, memidx, length, mem.is64Bit(), monitor);
 		}
