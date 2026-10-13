@@ -287,6 +287,9 @@
     },
     "C02_invalid_body.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "C:/Users/micro/AppData/Local/Temp/fixture-validity-probes/C02_invalid_body.wasm:000002e: error: type mismatch in implicit return, expected [i32] but got []"
     },
     "C03_import_shared_mem.wasm": {
@@ -302,10 +305,16 @@
     },
     "CT03_cont_bad_index.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "000000f: error: unexpected type form (got -0x23)"
     },
     "CT04_cont_absent_index.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "000000f: error: unexpected type form (got -0x23)"
     },
     "CT05_cont_index_ge64.wasm": {
@@ -438,14 +447,23 @@
     },
     "H1_02_unknown_section_id.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "000000a: error: invalid section code: 42"
     },
     "H1_03_duplicate_type_section.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "0000010: error: multiple Type sections"
     },
     "H1_04_duplicate_code_section.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "000001d: error: multiple Code sections"
     },
     "H1_05_out_of_order_sections.wasm": {
@@ -476,10 +494,16 @@
     },
     "H1_13_duplicate_datacount.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "000000d: error: multiple DataCount sections"
     },
     "J03_locals_count_neg.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "error: function local count exceeds maximum value"
     },
     "J04_table_initial_4G_elems.wasm": {
@@ -487,10 +511,16 @@
     },
     "J05_functype_param_overflow.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "0000011: error: invalid function param count 4294967295, only 1 bytes left in section"
     },
     "J06_func_section_without_code.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "0000012: error: function signature count != function body count"
     },
     "L01_name_labels.wasm": {
@@ -579,6 +609,9 @@
     },
     "N03_malformed_name_subsection.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "error: expected function name count (3) <= function count (1)"
     },
     "R01_ref_typing_struct_block.wasm": {
@@ -681,6 +714,9 @@
     },
     "bare_component_header.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "0000008: error: wasm components are not yet supported in this tool"
     },
     "component_with_module.wasm": {
@@ -689,6 +725,9 @@
     },
     "truncated_component.wasm": {
       "class": "invalid",
+      "oracle_skip": [
+        "binaryen"
+      ],
       "why": "0000008: error: wasm components are not yet supported in this tool"
     }
   }

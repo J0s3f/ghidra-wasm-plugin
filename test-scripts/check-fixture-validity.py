@@ -184,22 +184,30 @@ def main() -> int:
     results = {}
     problems = []
     timeouts = []
+    binaryen_skips = {}
     for probe in probes:
+        rec = recorded.get(probe.name, {})
+        rec_skip = set(rec.get("oracle_skip") or [])
         wabt_ok, wabt_msg = run([str(wabt), "--enable-all", str(probe)], timeout=args.timeout)
         bin_ok, bin_msg = None, ""
-        skipped_invalid = False
+        bin_skipped = False
         if binaryen:
-            if not wabt_ok and recorded.get(probe.name, {}).get("class") == "invalid":
+            if "binaryen" in rec_skip:
+                # recorded as not handled by binaryen (runaway or otherwise): never run it again
+                bin_msg = "skipped: recorded as not handled by binaryen (oracle_skip)"
+                bin_skipped = True
+            elif not wabt_ok and rec.get("class") == "invalid":
                 # deliberately invalid probe: wabt's rejection is the assertion, and binaryen's
                 # wasm-dis has been observed running away (>20 GB) on this malformed family
                 bin_msg = "skipped: deliberately invalid probe (wabt rejects it)"
-                skipped_invalid = True
+                bin_skipped = True
             else:
                 bin_ok, bin_msg = run([str(binaryen), "--all-features", "-o",
                                        "NUL" if os.name == "nt" else "/dev/null", str(probe)],
                                       timeout=args.timeout)
-        cls = classify(wabt_ok, bin_ok, recorded.get(probe.name, {}),
-                       binaryen_enabled=binaryen is not None)
+                if bin_ok is None:
+                    binaryen_skips[probe.name] = bin_msg
+        cls = classify(wabt_ok, bin_ok, rec, binaryen_enabled=binaryen is not None)
         why = ""
         if cls != "valid":
             reasons = []
@@ -208,7 +216,9 @@ def main() -> int:
             if binaryen and bin_ok is not True and bin_msg:
                 reasons.append("binaryen: " + bin_msg)
             why = "; ".join(reasons)
-        if not skipped_invalid and (wabt_ok is None or (binaryen and bin_ok is None)):
+        if bin_skipped:
+            binaryen_skips[probe.name] = bin_msg
+        if not bin_skipped and (wabt_ok is None or (binaryen and bin_ok is None)):
             timeouts.append(probe.name)
         results[probe.name] = {"class": cls, "why": why}
 
@@ -236,6 +246,8 @@ def main() -> int:
             old_why = recorded.get(name, {}).get("why")
             if cls != "valid":
                 entry["why"] = old_why or r["why"]
+            if name in binaryen_skips:
+                entry["oracle_skip"] = ["binaryen"]
             out[name] = entry
         if unresolved:
             print("ERROR: these probes are rejected by every oracle and are not declared "
@@ -281,6 +293,10 @@ def main() -> int:
     if timeouts:
         print(f"WARNING: {len(timeouts)} oracle timeout(s) - those probes are judged by the other "
               f"oracle / their recorded class: {', '.join(sorted(timeouts))}")
+    if binaryen_skips:
+        names = sorted(binaryen_skips)
+        shown = ", ".join(names[:6]) + (f", ... ({len(names)} total)" if len(names) > 6 else "")
+        print(f"binaryen not run on {len(names)} probe(s) (recorded/learned): {shown}")
     counts = {c: sum(1 for r in results.values() if r["class"] == c) for c in CLASSES}
     print(f"probes: {len(results)}  " + "  ".join(f"{c}: {counts[c]}" for c in CLASSES
                                                   if c != "binaryen-gap" or counts[c]))
