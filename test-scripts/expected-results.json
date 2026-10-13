@@ -302,6 +302,54 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "40_eh2_try_table_ref_null_exn.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 8,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "41_eh2_try_table_ref_null_typeidx1.wasm": {
+      "funcs": 1,
+      "instrs": 1,
+      "undefined_bytes": 8,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "42_eh2_try_table_typeidx128.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "43_eh_legacy_try_ref_null_exn.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "44_eh_legacy_try_ref_null_typeidx1.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "45_eh_legacy_try_typeidx128.wasm": {
+      "funcs": 1,
+      "instrs": 5,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "A01_mm_scalar_memarg.wasm": {
       "funcs": 1,
       "instrs": 25,
@@ -1615,7 +1663,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 201,
+  "probe_count": 207,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

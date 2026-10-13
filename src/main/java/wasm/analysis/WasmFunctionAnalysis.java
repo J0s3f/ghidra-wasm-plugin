@@ -1321,9 +1321,7 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 		case 0x06: /* try bt (legacy exception handling) */ {
-			/* Multi-byte block signatures are not decoded here: the SLEIGH :try constructors still
-			   read a single ULeb128, so both sides must stay on the single-s33 form. */
-			BlockType blocktype = new BlockType(analysis, readSignedLeb128(reader));
+			BlockType blocktype = readBlockType(analysis, reader);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.TRY, blocktype, valueStack));
 			break;

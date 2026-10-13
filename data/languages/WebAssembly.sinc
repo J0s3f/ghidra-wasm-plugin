@@ -473,6 +473,32 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 :delegate ULeb128 is opc=0x18; ULeb128; ctx_is_directive=0 {
 }
 
+# @@TRY_MULTIBYTE: multi-byte block signatures for legacy try (0x06).
+# The plain ULeb128 forms above consume only the first byte of a (ref null ht)/(ref ht) valtype
+# or a multi-byte s33 type index, desynchronising the body. Add explicit multi-byte forms.
+:try "blocktype="^multi_blocktype is opc=0x06; multi_blocktype; ctx_case_index=0; ctx_is_directive=0 {
+}
+:try "blocktype="^multi_blocktype br_target is opc=0x06; multi_blocktype; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	goto br_target;
+}
+:try "blocktype="^multi_blocktype br_target is opc=0x06; multi_blocktype; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	sp0_32 = wasm_exception_payload();
+	goto br_target;
+}
+:try "blocktype="^multi_blocktype br_target is opc=0x06; multi_blocktype; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	sp0_64 = wasm_exception_payload();
+	goto br_target;
+}
+
 ## Reference Instructions
 # @@FR: ref.null's immediate is an s33 heap type (abstract types are the negative values
 # -0x10..-0x0c, concrete type indices are >= 0). The previous `valtype` operand is restricted

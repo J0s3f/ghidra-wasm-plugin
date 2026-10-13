@@ -135,7 +135,18 @@ public class EH2Ops {
 	 */
 	public static void analyzeTryTable(WasmFunctionAnalysis func, WasmAnalysis analysis, Address instAddress, BinaryReader reader) throws IOException {
 		Address functionStart = func.getSignature().getStartAddr();
-		long blocktype = readSignedLeb128(reader);
+		// Read blocktype using the multi-byte capable reader (handles ref null ht, ref ht, and multi-byte s33 type indices)
+		ValType.BlockTypeInfo blocktypeInfo = ValType.readBlockType(reader);
+		long blocktype;
+		if (blocktypeInfo.typeIndex >= 0) {
+			blocktype = blocktypeInfo.typeIndex;
+		} else if (blocktypeInfo.type != null) {
+			// Convert valtype to the s33 representation used by the rest of the code
+			// For valtype, the s33 encoding is: -(valtype + 0x80)
+			blocktype = -(blocktypeInfo.type.typeByte + 0x80);
+		} else {
+			blocktype = -0x40; // empty block type
+		}
 		long count = readLeb128(reader);
 
 		long handlerLabel = -1;
