@@ -406,6 +406,30 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "B03b_custom_page_size_tiny.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B03c_custom_page_size_standard.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "B03d_custom_page_size_overrun.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "B04_limits_shared_memory64.wasm": {
       "funcs": 1,
       "instrs": 2,
@@ -1615,7 +1639,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 201,
+  "probe_count": 204,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

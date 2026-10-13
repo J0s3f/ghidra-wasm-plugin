@@ -36,7 +36,7 @@ WebAssembly (Wasm 3.0 + active proposals).
 | Call-graph struct synthesis | **merged** (`REPORT-STRUCTS.md`): 352 structs, 255 retyped parameters on the real module; 591 → 437 raw offset accesses |
 | Dedicated memory address space | **merged** (`REPORT-MEMSPACE.md`): 32-bit `memory` space, 128 MiB stride, ≥ 8 memories supported |
 | B9 warning | **merged** (`REPORT-HARD.md`): "Module accepted but nothing was decoded" when a module declares content but yields nothing |
-| Fixture-validity gate | **merged**: 201 probes — 118 valid / 53 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
+| Fixture-validity gate | **merged**: 204 probes — 121 valid / 53 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
 
 ## 1. How this inventory was produced
 
@@ -45,7 +45,7 @@ Two independent sources, so that a claim can always be re-checked:
 1. **Code inventory** — the SLEIGH opcode tables (`data/languages/*.sinc`, `WebAssembly.slaspec`), the
    module/section parsers (`src/main/java/wasm/format/**`) and the analyzers
    (`src/main/java/wasm/analysis/**`).
-2. **Empirical probes** — 201 hand-encoded modules, one per feature, imported headlessly into Ghidra
+2. **Empirical probes** — 204 hand-encoded modules, one per feature, imported headlessly into Ghidra
    and measured. `test-scripts/gen_feature_probes.py` + `test-scripts/probes_*.py` generate them;
    `test-scripts/WasmFeatureReport.java` reports `funcs/instrs/undefined_bytes/decompiled` per
    program, `ListProgram.java` prints the disassembly and `DumpAll.java` the decompiled C.
@@ -109,6 +109,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | Multi-memory (memarg `memidx`, several memories, loading) | fixed (`REPORT-A-DS`/`REPORT-N`): alignment bit 6 consumed, `memidx` exposed, one block per memory; probes `06`, `A01`-`A04`, `B05`, `18` |
 | memory64 | fixed (`REPORT-N`): index type propagates, 64-bit address pcode truncated into `ram` (exact below 4 GiB); probes `05`, `M64_01`-`M64_08` |
 | Shared / 64-bit / custom-page-size limits | fixed (`REPORT-B`): flags decoded fully, following limits entries stay aligned |
+| Custom memory page sizes (block sizing) | fixed (`REPORT-PAGESIZE-MUSESPARK.md`): the declared page size (limits flag `0x08`, log2 exponent) sizes the memory block as pages x page_size, with page-aware cap/overrun diagnostics; probes `B03b`-`B03d` |
 | Multi-value returns | fixed (`REPORT-MV`): results returned as a packed struct; probes `M01`-`M12`, `16`, `17` |
 | GC type entries (`struct`/`array`/`rec`/`sub`) | fixed (`REPORT-E`): real Ghidra structures/arrays; probes `E01`-`E20` |
 | GC instructions (`0xFB`) | fixed (`REPORT-E`): `struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`; probes `E10`-`E18` |
@@ -128,7 +129,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 
 | Item | State / evidence |
 | --- | --- |
-| **Custom page sizes** - the limits flag decodes, but `MEMORY_PAGE_SIZE` is fixed at 64 KiB, so block sizes/addresses are wrong for a module that declares a custom page size | open (semantic, low priority for RE) |
+| **Custom page sizes** - the limits flag decodes and the declared page size sizes the block (see 2.2) | fixed (semantic, `REPORT-PAGESIZE-MUSESPARK.md`); residual: exotic (non-0/16) exponents are honoured leniently, oracles accept only 1 B / 64 KiB |
 | **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
 | **`br_table large` assertion cases** - 4 `assert_return` failures in the emulation harness are the deliberate `MAX_BR_TABLE_CASES` bound (decode-side) | open (deliberate bound) |
@@ -143,11 +144,11 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 
 The authoritative per-probe expectations are machine-checked data, not prose:
 
-* `test-scripts/expected-results.json` - the probe gate (**201 probes**: 183 probed-imported
+* `test-scripts/expected-results.json` - the probe gate (**204 probes**: 186 probed-imported
   + 18 expected import failures; `funcs`/`instrs`/`undefined_bytes`/`decompiled`/`decompile_failed`
   per probe), enforced by `.github/workflows/probes.yml` and locally by `test-scripts/check-local.ps1`.
 * `test-scripts/fixture-validity.json` - the external-oracle classification of every probe (see 6.5):
-  **118 valid / 53 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
+  **121 valid / 53 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
   `oracle_skip: ["binaryen"]`.
 * Real module `rasterbator_rs_bg.wasm`: `functions=437 decompiled=437 failed=0 instructions=61658
   undefined_bytes=156` - the 156 bytes are 39 import stubs x 4, i.e. **0 real decode gaps**; checked on
@@ -419,11 +420,11 @@ A probe that is not recorded, or whose verdict changes, fails the gate; `--updat
 both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
 silently.
 
-Classification of the **201 probes** (current state):
+Classification of the **204 probes** (current state):
 
 | class | count | meaning |
 | --- | --- | --- |
-| `valid` | 118 | accepted by both oracles |
+| `valid` | 121 | accepted by both oracles |
 | `wabt-gap` | 53 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
 | `unsupported` | 17 | neither oracle implements the feature (components, string builtins, `memory.discard`) |
 | `invalid` | 13 | deliberately invalid negative probes (malformed / overflowing bodies) |

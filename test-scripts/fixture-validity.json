@@ -164,6 +164,15 @@
     "B03_limits_custom_page_size.wasm": {
       "class": "valid"
     },
+    "B03b_custom_page_size_tiny.wasm": {
+      "class": "valid"
+    },
+    "B03c_custom_page_size_standard.wasm": {
+      "class": "valid"
+    },
+    "B03d_custom_page_size_overrun.wasm": {
+      "class": "valid"
+    },
     "B04_limits_shared_memory64.wasm": {
       "class": "valid"
     },
