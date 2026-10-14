@@ -969,20 +969,27 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			return;
 		}
 		long slot = REG_STACK_BASE + (stackSize - stackN) * WasmLoader.REG_SIZE;
-		Long saved = regSlotValues.get(slotKey(slot, addressBytes));
 		long dynamicBase;
-		if (saved != null) {
-			dynamicBase = saved;
-		} else if (!overwritesAddress) {
-			AddressSpace register = emulate.getLanguage().getAddressFactory().getAddressSpace("register");
-			dynamicBase = emulate.getMemoryState().getValue(register, slot, addressBytes);
-		} else if (!is64Bit && opcode >= 0x28 && opcode <= 0x35) {
-			dynamicBase = reverseComputeLoadBase(emulate, pcode);
-			if (dynamicBase < 0) {
-				return;
+		if (overwritesAddress) {
+			// Loads (and lane loads / atomic RMWs) overwrite the address slot with the result.
+			// The live register now holds the loaded value, so we must use the cached address.
+			Long saved = regSlotValues.get(slotKey(slot, addressBytes));
+			if (saved != null) {
+				dynamicBase = saved;
+			} else if (!is64Bit && opcode >= 0x28 && opcode <= 0x35) {
+				dynamicBase = reverseComputeLoadBase(emulate, pcode);
+				if (dynamicBase < 0) {
+					return;
+				}
+			} else {
+				return; // The regular full-width LOAD/STORE range check still applies.
 			}
 		} else {
-			return; // The regular full-width LOAD/STORE range check still applies.
+			// Stores do not overwrite the address slot; the live register still holds the address.
+			// After a call returns, the shadow stack restores the caller's address, but the
+			// cache may still hold the callee's value. Prefer the live register.
+			AddressSpace register = emulate.getLanguage().getAddressFactory().getAddressSpace("register");
+			dynamicBase = emulate.getMemoryState().getValue(register, slot, addressBytes);
 		}
 		if (!is64Bit) {
 			dynamicBase &= 0xffffffffL;
