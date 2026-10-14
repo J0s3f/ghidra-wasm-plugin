@@ -28,7 +28,7 @@ WebAssembly (Wasm 3.0 + active proposals).
 | 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
 | Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are diagnosed |
 | Spec-suite gates (positive + negative) | **merged** (`REPORT-G.md`, `REPORT-NS.md`): 271 core modules, 0 real undefined bytes, 0 decompile failures; 2948 negative modules classified |
-| Spec assert emulation | **merged** (`REPORT-H3.md`): 33 `.wast` suites, 92/92 modules; assert_return 2511/4, assert_trap 183/0 (4 `br_table large` cases are the deliberate `MAX_BR_TABLE_CASES` bound) |
+| Spec assert emulation | **merged** (`REPORT-H3.md`): 33 `.wast` suites, 92/92 modules; assert_return 2514/1, assert_trap 183/0 (`br_table large` was 145/4 before the `MAX_BR_TABLE_CASES` default-target fix, `REPORT-R5-BRTABLE.md`; the 1 remaining is the documented case-index-past-cap residual) |
 | Stack switching / strings / wide arith / `memory.discard` | **merged** (`REPORT-H5.md`): all decode; `cont` types parse (`REPORT-CT.md`) |
 | Name-section label targets | **merged** (`REPORT-H6.md`): label names become real label symbols at branch targets |
 | Reference typing + `cont` types | **merged** (`REPORT-H7.md`, `REPORT-CT.md`): precise `(ref null ht)` model; subtype-aware validation; `cont` types in the type section |
@@ -133,13 +133,13 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **Custom page sizes** - the limits flag decodes and the declared page size sizes the block (see 2.2) | fixed (semantic, `REPORT-PAGESIZE-MUSESPARK.md`); residual: exotic (non-0/16) exponents are honoured leniently, oracles accept only 1 B / 64 KiB |
 | **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
-| **`br_table large` assertion cases** - 4 `assert_return` failures in the emulation harness are the deliberate `MAX_BR_TABLE_CASES` bound (decode-side) | open (deliberate bound) |
+| **`br_table large` assertion cases** - the `MAX_BR_TABLE_CASES` expansion bound used to truncate at the cap *including* the default label, so a br_table with >= 1024 explicit cases lost its DEFAULT target (production control flow, not harness-only). **Fixed** (`REPORT-R5-BRTABLE.md`): at most `MAX_BR_TABLE_CASES - 1` case targets are modelled and the default target is **always** modelled; `br_table` emulation 145/4 -> 148/1. Residual: an input whose index equals a dropped case (>= `MAX_BR_TABLE_CASES - 1`) is modelled as taking the default - one `br_table large` assert_return remains | fixed (residual: case indices past the cap) |
 | **Struct-synthesis v1 limits** - `call_indirect` targets not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN` | open (v1 scope, documented in `REPORT-STRUCTS.md`) |
 | **128 MiB materialisation cap** - blocks remain capped with a warning; i64 decoded accesses now retain full 64-bit addresses in `memory64` (item 11). Both spaces use a 128 MiB stride, so large ranges of memories in the same space can alias beyond that stride. High data segments outside the materialised prefix are reported, not materialised. | addressing truncation fixed; cap/stride isolation remain documented limits |
 | **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | **fixed** (`REPORT-REFNULL-MISTRAL.md`): named constructors per Wasm 3.0 absheaptype byte (0x69=exn … 0x74=noexn) added alongside the generic s33 form; SLEIGH's specificity disambiguation prefers the 8-bit-constrained named variants over the 1-bit-constrained single-byte SLeb128, so `ref.null struct`/`ref.null exn`/`ref.null func`/etc. now print by name while concrete type indices still decode via the s33 path byte-identically (`ref.null heaptype=0x1`). 12 new probes `RN01`-`RN12` cover every abstract heap type in a function body. Residual: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` still prints numerically (the `multi_blocktype` immediate table was not extended - optional, cosmetic); `ref.test`/`ref.cast`/`br_on_cast*` `ht=` operands in GCOps.sinc also still print numerically (same pattern could apply there too) |
 | **Multi-byte block signatures on `try`/`try_table`** - decode multi-byte valtypes/type indices now (see 2.2); the typed `BlockTypeInfo` path (grafted from `feat/tryblocktype-catjam`) fully decodes the ref-typed cases (`undefined_bytes` 8 -> 0 on probes `40`/`41`) | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`) |
 | **Extended-const `Data markup conflict` warning** - `WasmLoader.createData` logged "Data markup conflict" on probes `19`, `22`, `27`, `B07`-`B09`, `B14`, `B25` (the row originally named `22`-`24`/`27`; measurement shows it fires on every probe whose global/data initializer is a multi-instruction constant expression, not on the single-instruction const probes `23`/`24`) | fixed (`REPORT-EXTCONST-MISTRAL.md`): `ConstantExpression.toDataType()` double-counted the terminating `end` byte for folded extended-const and unparsed initializers, sizing the enclosing section's `.module` structure one byte too long so it collided with the next section's markup (or overran the `.module` block when the section was last) and left a whole section undissected; the raw-byte array now excludes the trailing `end` byte. Placed bytes/offsets were already correct - only the `.module` structural markup was wrong |
-| **Emulation coverage** - 4 remaining `assert_return` gaps (all `br_table large`); the other 9 recorded spec-`assert_*` gaps are resolved | emulator coverage, not decoder gaps |
+| **Emulation coverage** - 1 remaining `assert_return` gap (the `br_table large` case index `10000`, which is past the modelled-case cap; the other 3 `br_table large` gaps are now resolved by the default-target fix) | emulator coverage, not decoder gaps (see `REPORT-R5-BRTABLE.md`) |
 
 ### 2.4 Observed baseline (reproducible with the commands above)
 
@@ -158,9 +158,13 @@ The authoritative per-probe expectations are machine-checked data, not prose:
   33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures
   (`test-scripts/spectest-expected.json`, `.github/workflows/spectest.yml`).
 * Emulation assertion harness: 33 `.wast` suites, 92/92 modules;
-  **assert_return 2511/4**, **assert_trap 183/0** (the 4 remaining assert_return
-  failures are the `br_table large` cases - the deliberate `MAX_BR_TABLE_CASES`
-  bound, decode-side).
+  **assert_return 2514/1**, **assert_trap 183/0**. The `br_table` suite alone measured
+  **145/4 -> 148/1** across the `MAX_BR_TABLE_CASES` default-target fix
+  (`REPORT-R5-BRTABLE.md`); the single remaining assert_return failure is the
+  `br_table large` case index `10000`, whose target is a *case* past the modelled-case cap
+  (a documented residual of the bound, not the default target - which is now always modelled).
+  The full 33-suite aggregate is the recorded 2511/4 shifted by the measured br_table delta
+  (+3 successes, -3 failures); only the `large` function exceeds the cap, so no other suite moves.
 
 Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.locals`, `.local`,
 `.case`, `.default`); the real module's 61,658 counted instructions are 60,556 real wasm instructions
@@ -364,10 +368,10 @@ loosening any expected metric.
 Ranked findings (all resolved):
 
 1. ~~**`select` (0x1B) is not decoded after an unconditional terminator**~~ — **FIXED** (SF workstream).
-2. ~~**Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body)~~ — **FIXED** (`MAX_BR_TABLE_CASES` bound; modelled cases capped at 1024).
+2. ~~**Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body)~~ — **FIXED** (`MAX_BR_TABLE_CASES` bound: at most 1023 *case* targets are modelled per br_table; the default target is always modelled — `REPORT-R5-BRTABLE.md`).
 3. ~~**`WasmStackVariableAnalyzer` exceptions**~~ — **FIXED** (SROA workstream; stack-as-aggregate model).
 4. ~~**Import stubs are modelled as 4-byte body-less functions**~~ — documented (428 bytes of `EXTERNAL` block noise per importing module; by design).
-5. **Emulation-based `assert_*` execution** — **IMPLEMENTED** (`run_emulate.ps1` + PyGhidra; 33 suites, 92/92 modules; assert_return 2511/4, assert_trap 183/0; the 4 remaining are `br_table large` cases).
+5. **Emulation-based `assert_*` execution** — **IMPLEMENTED** (`run_emulate.ps1` + PyGhidra; 33 suites, 92/92 modules; assert_return 2514/1, assert_trap 183/0; the 1 remaining is the `br_table large` case index `10000`, a *case* past the modelled-case cap — `REPORT-R5-BRTABLE.md`).
 
 ### 6.1 Real-world corpus baseline
 

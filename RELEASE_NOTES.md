@@ -69,10 +69,11 @@ configuration (`.github/`) and internal documentation (`REPORT-*.md`) are exclud
   The checker supports `--timeout`.
 * **Spec-suite CI gate** (`spectest.yml`): 271 core modules imported, **2747/2747 functions
   decompiled**, 33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures.
-* **Emulation assertion harness**: 33 `.wast` suites, 92/92 modules; **assert_return 2511/4**,
-  **assert_trap 183/0**. The 4 remaining `assert_return` failures are the `br_table large` cases —
-  the deliberate `MAX_BR_TABLE_CASES` bound (decode-side). Needs a PyGhidra venv (provisioned
-  automatically by `run_emulate.ps1`).
+* **Emulation assertion harness**: 33 `.wast` suites, 92/92 modules; **assert_return 2514/1**,
+  **assert_trap 183/0**. The 1 remaining `assert_return` failure is the `br_table large`
+  `large(10000)` case (a case target past the modelled-case cap). The `MAX_BR_TABLE_CASES` bound no
+  longer drops the DEFAULT target — `br_table` alone went 145/4 → 148/1 (`REPORT-R5-BRTABLE.md`).
+  Needs a PyGhidra venv (provisioned automatically by `run_emulate.ps1`).
 * **Type-recovery proxy metric** (`test-scripts/type_recovery_metric.py`): counts
   constant-offset field accesses in decompiled C, grouped by base — the signal a type-recovery
   pass would type.
@@ -93,8 +94,9 @@ configuration (`.github/`) and internal documentation (`REPORT-*.md`) are exclud
   mnemonics (the `0xFE` atomic *memory* ops are implemented).
 * **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
   (core-module extraction only, by design).
-* **`br_table large` assertion cases**: 4 `assert_return` failures in the emulation harness are
-  the deliberate `MAX_BR_TABLE_CASES` bound.
+* **`br_table large` assertion cases**: 1 remaining `assert_return` failure in the emulation
+  harness (the `large(10000)` case, a case target past the modelled-case cap). The bound no longer
+  drops the DEFAULT target (`REPORT-R5-BRTABLE.md`).
 * **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
   only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
 * **128 MiB materialisation cap**: memories larger than 128 MiB are clamped (with a warning);
