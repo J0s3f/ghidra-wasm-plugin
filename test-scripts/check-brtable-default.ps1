@@ -36,7 +36,7 @@ param(
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $testScripts = Join-Path $repo "test-scripts"
-if (-not $Fixture) { $Fixture = Join-Path $testScripts "fixtures\brtable_default.wasm" }
+if (-not $Fixture) { $Fixture = Join-Path (Join-Path $testScripts "fixtures") "brtable_default.wasm" }
 
 # --- install pinning (same rule as build-install.ps1 / check-local.ps1) -----------------------
 $pinFile = Join-Path $testScripts ".ghidra-install"

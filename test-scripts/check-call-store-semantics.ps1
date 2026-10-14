@@ -41,7 +41,7 @@ if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
 if (-not (Test-Path $GhidraDir)) { throw "Ghidra install not found: $GhidraDir" }
 
 $repo = Split-Path -Parent $PSScriptRoot
-$fixturesDir = Join-Path $repo "test-scripts\fixtures"
+$fixturesDir = Join-Path (Join-Path $repo "test-scripts") "fixtures"
 $call32 = Join-Path $fixturesDir "call32.wasm"
 $call64 = Join-Path $fixturesDir "call64.wasm"
 if (-not (Test-Path $call32)) { throw "Fixture not found: $call32" }
@@ -51,7 +51,10 @@ if (-not (Test-Path $call64)) { throw "Fixture not found: $call64" }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 
 $testScript = Join-Path $PSScriptRoot "CallStoreTest.java"
-$analyzeHeadless = Join-Path $GhidraDir "support\analyzeHeadless.bat"
+$supportDir = Join-Path $GhidraDir "support"
+$analyzeHeadless = Join-Path $supportDir "analyzeHeadless.bat"
+if (-not (Test-Path $analyzeHeadless)) { $analyzeHeadless = Join-Path $supportDir "analyzeHeadless" }
+if (-not (Test-Path $analyzeHeadless)) { throw "analyzeHeadless not found under $supportDir" }
   # Discover the installed extension's script dir (the directory name depends on the build:
   # "Ghidra-WASM" for the integration checkout, the worktree name for a private install).
   $extRoot = Join-Path (Join-Path $GhidraDir "Ghidra") "Extensions"
