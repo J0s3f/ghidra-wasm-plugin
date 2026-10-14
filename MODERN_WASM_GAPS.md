@@ -135,7 +135,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
 | **`br_table large` assertion cases** - 4 `assert_return` failures in the emulation harness are the deliberate `MAX_BR_TABLE_CASES` bound (decode-side) | open (deliberate bound) |
 | **Struct-synthesis v1 limits** - `call_indirect` targets not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN` | open (v1 scope, documented in `REPORT-STRUCTS.md`) |
-| **128 MiB materialisation cap** - memories larger than 128 MiB are clamped (with a warning); the SLEIGH truncates effective addresses to 32 bits, so decoded accesses above 4 GiB wrap | documented limitation |
+| **128 MiB materialisation cap** - memories larger than 128 MiB are clamped (with a warning); the SLEIGH truncates effective addresses to 32 bits, so decoded accesses above 4 GiB wrap (hybrid option: item 11) | documented limitation |
 | **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | cosmetic, open |
 | **Multi-byte block signatures on `try`/`try_table`** - decode multi-byte valtypes/type indices now (see 2.2); the typed `BlockTypeInfo` path (grafted from `feat/tryblocktype-catjam`) fully decodes the ref-typed cases (`undefined_bytes` 8 -> 0 on probes `40`/`41`) | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`) |
 | **Extended-const `Data markup conflict` warning** on probes `22`-`24`/`27` - `WasmLoader.createData` logs a warning worth investigating | open (low priority) |
@@ -289,6 +289,42 @@ once the address-range handling for the wasm code block is fixed.
 threads, and the component model.~~ Most of these are now implemented (see 2.1/2.2). What remains:
 shared-everything threads (unimplemented fallback), component-model semantics (by design —
 core-module extraction only), and custom page sizes (see 2.3).
+
+### 11. memory64 above 4 GiB: the hybrid address-space option (effort L)
+
+*Where*: the `memory` space definition in `WebAssembly.slaspec`, every memory-access constructor
+(`BasicOps.sinc`, `VectorOps.sinc`, `AtomicOps.sinc`, `StringOps.sinc`), the loader's block placement
+(`WasmLoader.getMemoryAddress` / `MEMORY_STRIDE`), and the per-instruction context assignment in the
+analysis (`ctx_mem64`, already set for 64-bit operand widths since `REPORT-N`).
+
+*Problem*: the dedicated `memory` space is 32-bit (`size=4`), so decoded accesses into a
+64-bit-indexed memory truncate above 4 GiB (exact below). A full 64-bit space was tried and rejected
+during the memory-space work: it reintroduced ZEXT noise across every access in every module — a
+common-case decompiler-quality regression traded for a rare addressing edge (see `REPORT-MEMSPACE`).
+
+*Hybrid design*: keep the 32-bit `memory` space for i32-indexed memories and add a second,
+64-bit-indexed space (`size=8`, same 128 MiB stride scheme). Per instruction:
+
+1. the loader/analysis knows each memory's index type and each instruction's `memidx` (multi-memory
+   allows mixed index types in one module, so this must be per instruction, not per module) and sets
+   `ctx_mem64` for accesses to 64-bit-indexed memories;
+2. each memory-access constructor gains a second variant gated on that bit that emits into the
+   `memory64` space with the full effective address (no truncation);
+3. blocks are placed into the matching space; the emulator's bounds checks (which already compute
+   64-bit effective addresses) target the same block content.
+
+*Cost*: two variants of every memory-access constructor, the context assignment, dual block
+placement, and a decompiler-quality re-check. The i32 path must stay byte-identical — that is the
+point of the hybrid.
+
+*Alternatives*: (a) keep the documented truncation (status quo; the 128 MiB materialisation cap
+bounds blocks anyway); (b) a full 64-bit space (rejected — ZEXT regression); (c) raise the
+materialisation cap only (does not fix addressing).
+
+*Acceptance if implemented*: probes `B8_04_mem64_over4g` / `B8_05_mem64_just_over4g` list their
+>4 GiB effective addresses untruncated (evidence: `ListProgram.java` before/after plus a targeted
+emulation assert); all 210 probes and the real module (`437/437/0/61658/156`) unchanged; the
+fixture-validity gate unchanged.
 
 ## 5. Adding a probe (how to extend this document)
 
