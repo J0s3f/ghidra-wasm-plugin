@@ -43,10 +43,25 @@ to compare against. (It remains in the corpus sweep / fixture-validity gate, whe
 | `real_instrs` | plugin, wabt | total real wasm instructions |
 | `per_body_instrs` | plugin, wabt | per-function real instruction count, aligned by body ordinal |
 | `opcode_histogram` | plugin, wabt | normalized mnemonic histogram |
+| `binaryen_nodes_per_body` | **binaryen only** | **REGRESSION PIN** (see below) |
 
-Binaryen is used **only** for function counts and validity: it is not byte-faithful
-(`IRBuilder` restructures the body and invents `$scratch` locals), so instruction counts are
-compared against WABT only (`REUSE_OPPORTUNITIES.md` section 4).
+Binaryen is not byte-faithful (`IRBuilder` restructures the body and invents `$scratch`
+locals), so instruction counts are compared against WABT only (`REUSE_OPPORTUNITIES.md`
+section 4). Binaryen contributes the two function counts above **and** one regression pin:
+
+**`binaryen_nodes_per_body` — a regression pin on binaryen's view, NOT an instruction count.**
+For each top-level `(func ...)` definition in the `wasm-dis` output (a `(func` whose opening
+paren sits directly inside `(module`, excluding `(func` inside `(type ...)` and
+`(import ... (func ...))`), the checker counts the number of `(` characters **outside string
+literals** from that opening paren through its matching close, aligned by body ordinal. This
+pins the per-function folded-AST node counts binaryen prints. It is documented in the baseline
+and the checker as a **regression pin only**: folded s-expressions are **not** flat
+instructions and binaryen invents `$scratch` locals, so this fact must **never** be compared
+for equality with `real_instrs` / `per_body_instrs` / `opcode_histogram`. (On `rust_plain` the
+node total is 8549 vs 8542 real instructions — close but deliberately *not* equal, which is
+exactly why the two metrics are kept separate.) Its purpose is to detect a change in binaryen's
+view of the module: a corpus module update, or a binaryen version change, moves these counts and
+fails the gate even though no instruction-level comparison involves binaryen.
 
 ### Normalization (WABT mnemonics differ from our SLEIGH listing text)
 
@@ -130,17 +145,19 @@ Observed (exit 0):
 
 ```
 == rust_plain (rust_plain.wasm) ==
-   bodies plugin=72 wabt=72 binaryen=72   real_instrs plugin=8542 wabt=8542
+   bodies plugin=72 wabt=72 binaryen=72   real_instrs plugin=8542 wabt=8542   binaryen_nodes bodies=72 total=8549
 == rust_simd128 (rust_simd128.wasm) ==
-   bodies plugin=2 wabt=2 binaryen=2   real_instrs plugin=26 wabt=26
+   bodies plugin=2 wabt=2 binaryen=2   real_instrs plugin=26 wabt=26   binaryen_nodes bodies=2 total=33
 
 OK: every module's decode matches the baseline and the engines agree (decode-oracle-baseline.json).
 DRIVER EXIT: 0
 ```
 
 Every compared fact agrees across the engines **and** matches the baseline: bodies (3-way),
-imports (3-way), total real instructions, the full per-body instruction-count vector, and the
-normalized opcode histogram (73 mnemonics on rust_plain, 11 on rust_simd128).
+imports (3-way), total real instructions, the full per-body instruction-count vector, the
+normalized opcode histogram (73 mnemonics on rust_plain, 11 on rust_simd128), **and** the
+binaryen node-count regression pin (72 entries / total 8549 on rust_plain; 2 entries /
+total 33 on rust_simd128).
 
 ### 3. Divergence demo (the oracle actually checks something)
 
@@ -165,6 +182,27 @@ DEMO RESULT: perturbed=1 restored=0 (want 1 then 0)
 
 The gate exits non-zero and prints the diff line when the decode does not match the baseline,
 and returns to green once restored.
+
+The same was demonstrated against the **binaryen node-count regression pin**: perturb one
+pinned node count in the baseline (`rust_simd128.binaryen_nodes_per_body[0]` 11 -> 12),
+re-run, then restore:
+
+```
+# baseline rust_simd128 binaryen_nodes_per_body[0] 11 -> 12
+python3 test-scripts/check-decode-oracle.py --artifacts <work> --wabt <wabt/bin> \
+    --binaryen <bin/bin> --baseline test-scripts/decode-oracle-baseline.json
+# ...
+1 divergence(s) - the decode oracle does not match the baseline:
+  rust_simd128.binaryen_nodes_per_body: baseline drift -> expected [12, 22], engines agree on [11, 22]
+CHECKER EXIT (perturbed): 1
+# restore baseline
+# OK: every module's decode matches the baseline and the engines agree (...).
+CHECKER EXIT (restored): 0
+DEMO RESULT: perturbed=1 restored=0 (want 1 then 0)
+```
+
+The pin is binaryen-only, so "engines agree on [11, 22]" is binaryen's own pinned value; a
+moved node count (module update or binaryen version change) fails the gate with the diff line.
 
 ### 4. Extra local evidence: the real reference module (not in the CI set)
 
@@ -199,21 +237,41 @@ all 398 per-body instruction counts and a 149-mnemonic opcode histogram matching
 stripped-module functions as `func[N]:` with no `<name>`, which the header regex initially
 required — fixed by making the name optional (see Normalization).
 
+The **binaryen node-count parser** was additionally validated on this module's saved
+`wasm-dis` output: it counts exactly 398 body `(func ...)` spans (`nodes_len == bodies == 398`),
+correctly **excluding** the 39 `(import ... (func ...))` forms (whose inner `(func` sits at
+paren-depth 2, not 1) and ignoring parentheses inside the import/export string literals
+(string-stripping). Node total 62194 vs 60556 real instructions — distinct, as documented for
+the regression pin.
+
 ## Baseline
 
 `test-scripts/decode-oracle-baseline.json` (recorded by `--update` from the green run):
 
 ```
 comparisons:
-  bodies           oracles=[plugin, wabt, binaryen]   defined-function count
-  imports          oracles=[plugin, wabt, binaryen]   imported-function count
-  real_instrs      oracles=[plugin, wabt]              total real wasm instructions
-  per_body_instrs  oracles=[plugin, wabt]              per-function real instruction count
-  opcode_histogram oracles=[plugin, wabt]              normalized mnemonic histogram
+  bodies                 oracles=[plugin, wabt, binaryen]   defined-function count
+  imports                oracles=[plugin, wabt, binaryen]   imported-function count
+  real_instrs            oracles=[plugin, wabt]              total real wasm instructions
+  per_body_instrs        oracles=[plugin, wabt]              per-function real instruction count
+  opcode_histogram       oracles=[plugin, wabt]              normalized mnemonic histogram
+  binaryen_nodes_per_body oracles=[binaryen]                 REGRESSION PIN: per-function folded-AST
+                                                               node count (NOT an instruction count)
 modules:
-  rust_plain:    bodies=72 imports=0 real_instrs=8542  per_body_instrs=[43,99,12,...] (72)  opcode_histogram (73 keys)  allow_list=[]
-  rust_simd128:  bodies=2  imports=0 real_instrs=26    per_body_instrs=[8,18]            opcode_histogram (11 keys)  allow_list=[]
+  rust_plain:    bodies=72 imports=0 real_instrs=8542  per_body_instrs=[43,99,12,...] (72)
+                 opcode_histogram (73 keys)  binaryen_nodes_per_body=[48,110,13,82,24,...] (72, total 8549)  allow_list=[]
+  rust_simd128:  bodies=2  imports=0 real_instrs=26    per_body_instrs=[8,18]
+                 opcode_histogram (11 keys)  binaryen_nodes_per_body=[11,22] (total 33)  allow_list=[]
 ```
+
+The `binaryen_nodes_per_body` baseline excerpt (rust_simd128), pinned by `--update`:
+
+```json
+"binaryen_nodes_per_body": [11, 22]
+```
+
+and rust_plain's first entries: `[48, 110, 13, 82, 24, ...]` (72 entries, total 8549). The
+allow-list is empty for every module — the node pin needs no divergence excusing.
 
 ## CI wiring
 
@@ -264,6 +322,11 @@ fixture-validity gate are untouched and must stay green; the numbers must match.
   `REUSE_OPPORTUNITIES.md` section 1) is stronger still but needs address alignment, which the
   SLEIGH listing does not expose in a directly comparable form; counts + histograms were chosen
   as the robust, cheap core.
+* `binaryen_nodes_per_body` is a **regression pin**, not a decode-equality check: it detects a
+  change in binaryen's view of the module (corpus module update, binaryen version change) and
+  is never compared to the instruction counts/histograms — folded AST nodes are not flat
+  instructions and binaryen invents `$scratch` locals (on `rust_plain` the node total 8549
+  differs from the 8542 real instructions for exactly this reason).
 * The oracle checks **decode agreement**, not decompiler output quality; decompile metrics stay
   covered by `expected-results.json` / `corpus-RESULTS.md`.
 * Only x86_64 Windows + Linux binaryen assets are pinned (the two CI runners); other hosts would
@@ -296,3 +359,18 @@ This matches the documented baseline (`MODERN_WASM_GAPS.md` 2.4): 210 probes (19
 expected import failures), the fixture, and the real module's `437/437/0/61658/156`. The
 fixture-validity gate (`check-fixture-validity.py`) is untouched and still enforced by wabt in
 CI. Nothing in this workstream changes gate semantics or the probe/fixture/real-module numbers.
+
+Re-confirmed **after** adding the `binaryen_nodes_per_body` pin (which does not touch the gate's
+code path): same clean `exit 0`, same numbers — `probes: 192 imported, 18 import failure(s);
+baseline has 210` / `OK: every probe matches the recorded baseline`, fixture
+`functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0`, real module
+`functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156`.
+
+Note on a false alarm during that re-run: the first re-run reported `200 problem(s)` / `MISSING`
+probes. That was **not** a regression — `check-local.ps1`'s default `-OutDir`
+(`$env:TEMP\wasm-probes-ci`) is a shared scratch path, and a concurrent agent's run
+(`ghidra-dwarf-nem`) overwrote `probe-run.log` in it, so `check-results.py` read the wrong log.
+Re-running with a private `-OutDir` (the run above) gave the clean, correct result; the private
+`probe-run.log` references only this worktree's pinned install (`ghidra-oracle-mistral`). The
+node-pin changes (`check-decode-oracle.py`, `decode-oracle-baseline.json`) are not on the gate's
+path, so the gate numbers are unchanged by construction and confirmed unchanged by the re-run.

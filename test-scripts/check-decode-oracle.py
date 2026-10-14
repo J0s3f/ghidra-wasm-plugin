@@ -10,14 +10,20 @@ corpus modules this script:
   2. runs WABT `wasm-objdump -d` (instruction listing) and `-x` (section counts) and Binaryen
      `wasm-dis` (timeout-guarded) on the same modules as reference decoders,
   3. compares normalized decode facts across the engines:
-       - bodies          : defined-function count        plugin == wabt == binaryen
-       - imports         : imported-function count       plugin == wabt == binaryen
-       - real_instrs     : total real wasm instructions   plugin == wabt
-       - per_body_instrs : per-function real instr count  plugin == wabt (aligned by body ordinal)
-       - opcode_histogram: normalized mnemonic histogram  plugin == wabt
-     Binaryen is used only for function counts and validity: it is not byte-faithful
-     (IRBuilder restructures the body and invents $scratch locals), so instruction counts are
-     compared against WABT only (REUSE_OPPORTUNITIES.md section 4).
+       - bodies                 : defined-function count        plugin == wabt == binaryen
+       - imports                : imported-function count       plugin == wabt == binaryen
+       - real_instrs            : total real wasm instructions   plugin == wabt
+       - per_body_instrs        : per-function real instr count  plugin == wabt (aligned by body ordinal)
+       - opcode_histogram       : normalized mnemonic histogram  plugin == wabt
+       - binaryen_nodes_per_body: per-function folded-AST node count, binaryen ONLY
+     Binaryen is used for function counts, validity, and one REGRESSION PIN: it is not
+     byte-faithful (IRBuilder restructures the body and invents $scratch locals), so instruction
+     counts are compared against WABT only (REUSE_OPPORTUNITIES.md section 4).
+     binaryen_nodes_per_body pins the per-function node counts (open parens outside strings in
+     each top-level `(func ...)` span of the wasm-dis output). It is a REGRESSION PIN ONLY: folded
+     s-expressions are NOT flat instructions, so it must NEVER be compared for equality with
+     real_instrs / per_body_instrs / opcode_histogram. Its purpose is to detect a change in
+     binaryen's view of the module (a corpus module update, or a binaryen version change).
   4. checks the agreed facts against the recorded baseline
      (test-scripts/decode-oracle-baseline.json) and exits non-zero on any divergence.
 
@@ -62,6 +68,13 @@ FACT_ORACLES = {
     "real_instrs": ("plugin", "wabt"),
     "per_body_instrs": ("plugin", "wabt"),
     "opcode_histogram": ("plugin", "wabt"),
+    # REGRESSION PIN ONLY (binaryen is the sole oracle): per-function folded-AST node count.
+    # This is NOT an instruction count. Folded s-expressions are not flat instructions and
+    # binaryen's IRBuilder invents $scratch locals, so this must NEVER be compared for equality
+    # with real_instrs / per_body_instrs / opcode_histogram. Its only purpose is to detect a
+    # change in binaryen's view of the module (a corpus module update, or a binaryen version
+    # change) by pinning the per-function node counts it prints.
+    "binaryen_nodes_per_body": ("binaryen",),
 }
 FACT_DESC = {
     "bodies": "defined-function count",
@@ -69,6 +82,13 @@ FACT_DESC = {
     "real_instrs": "total real wasm instructions (markers / locals-decl excluded)",
     "per_body_instrs": "per-function real instruction count, aligned by body ordinal",
     "opcode_histogram": "normalized mnemonic histogram (operands stripped, lower-cased)",
+    "binaryen_nodes_per_body": ("REGRESSION PIN ONLY (binaryen sole oracle): per-function folded-AST "
+                               "node count = number of '(' outside string literals in each top-level "
+                               "'(func ...)' span of the wasm-dis output, aligned by body ordinal. "
+                               "NOT an instruction count - folded s-expressions are not flat "
+                               "instructions and binaryen invents $scratch locals; never compare to "
+                               "real_instrs/per_body_instrs/opcode_histogram. Detects changes in "
+                               "binaryen's view of the module (module update, binaryen version change)."),
 }
 
 
@@ -173,10 +193,78 @@ BIN_FUNC_RE = re.compile(r"^\s*\(func\s")
 BIN_IMPORT_FUNC_RE = re.compile(r"^\s*\(import\s.*\(func\s")
 
 
+def strip_strings(s: str) -> str:
+    """Replace every double-quoted string literal with `""` so parentheses inside strings
+    (module/import/export names, stringref data, ...) can neither inflate the node count nor
+    corrupt paren-depth balancing. Handles backslash escapes (\\" and \\\\)."""
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == '"':
+            i += 1
+            while i < n:
+                if s[i] == "\\":
+                    i += 2
+                    continue
+                if s[i] == '"':
+                    i += 1
+                    break
+                i += 1
+            out.append('""')
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def parse_binaryen_nodes(text: str) -> list:
+    """Per-function folded-AST node counts (REGRESSION PIN - see FACT_DESC).
+
+    For each top-level `(func ...)` definition in the wasm-dis output (a `(func` whose opening
+    paren sits at paren-depth 1, i.e. directly inside `(module` - this excludes `(func` inside
+    `(type ...)` and `(import ... (func ...))`), count the number of `(` characters (string
+    literals stripped) from that opening paren through its matching close. The result is
+    aligned by body ordinal (order of appearance == code order == the plugin's address-sorted
+    body order == WABT's Code-Disassembly order)."""
+    s = strip_strings(text)
+    counts = []
+    i, n = 0, len(s)
+    depth = 0
+    while i < n:
+        c = s[i]
+        if c == "(":
+            if depth == 1 and s.startswith("(func", i):
+                # top-level function definition: count parens until depth returns to 1
+                node_count = 0
+                d = depth
+                j = i
+                while j < n:
+                    if s[j] == "(":
+                        node_count += 1
+                        d += 1
+                    elif s[j] == ")":
+                        d -= 1
+                        if d == 1:
+                            j += 1
+                            break
+                    j += 1
+                counts.append(node_count)
+                depth = 1
+                i = j
+                continue
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        i += 1
+    return counts
+
+
 def parse_binaryen(text: str) -> dict:
     bodies = sum(1 for l in text.splitlines() if BIN_FUNC_RE.match(l))
     imports = sum(1 for l in text.splitlines() if BIN_IMPORT_FUNC_RE.match(l))
-    return {"bodies": bodies, "imports": imports}
+    nodes = parse_binaryen_nodes(text)
+    return {"bodies": bodies, "imports": imports, "binaryen_nodes_per_body": nodes}
 
 
 # ---------------------------------------------------------------- oracle runners ---
@@ -376,6 +464,12 @@ def main() -> int:
         else:
             (mdir / "binaryen.wat").write_text(bin_text, encoding="utf-8")
             binaryen = parse_binaryen(bin_text)
+            # internal consistency: the node-count parser (paren-depth) and the line-based
+            # body counter must agree on the number of top-level function definitions
+            if len(binaryen["binaryen_nodes_per_body"]) != binaryen["bodies"]:
+                all_problems.append(f"{name}: binaryen internal mismatch: binaryen_nodes_per_body "
+                                    f"has {len(binaryen['binaryen_nodes_per_body'])} entries but "
+                                    f"bodies={binaryen['bodies']} (parser bug?)")
 
         eng = {"plugin": plugin}
         if wabt is not None:
@@ -387,9 +481,12 @@ def main() -> int:
         b = eng.get("plugin", {}).get("bodies")
         wb = eng.get("wabt", {}).get("bodies")
         bb = eng.get("binaryen", {}).get("bodies")
+        bnodes = eng.get("binaryen", {}).get("binaryen_nodes_per_body")
         print(f"   bodies plugin={b} wabt={wb} binaryen={bb}   "
               f"real_instrs plugin={eng.get('plugin',{}).get('real_instrs')} "
-              f"wabt={eng.get('wabt',{}).get('real_instrs')}")
+              f"wabt={eng.get('wabt',{}).get('real_instrs')}   "
+              f"binaryen_nodes bodies={len(bnodes) if bnodes is not None else None} "
+              f"total={sum(bnodes) if bnodes is not None else None}")
 
         problems = compare_module(name, eng, baseline, args.update)
         all_problems.extend(problems)
@@ -399,9 +496,16 @@ def main() -> int:
             rec = {"file": mod.get("file_name", wasm.name), "sha256": mod.get("sha256", ""),
                    "skip": baseline.get("modules", {}).get(name, {}).get("skip", []),
                    "allow_list": baseline.get("modules", {}).get(name, {}).get("allow_list", [])}
-            for fact in FACT_ORACLES:
-                if fact in eng.get("plugin", {}):
-                    rec[fact] = eng["plugin"][fact]
+            for fact, oracles in FACT_ORACLES.items():
+                # Record the agreed value from the first oracle that produces this fact. The
+                # engines agreed (any disagreement was reported above and refuses the
+                # recording), so any producing oracle carries the agreed value. This also
+                # records binaryen-only facts (binaryen_nodes_per_body), which the plugin
+                # does not produce.
+                for o in oracles:
+                    if o in eng and eng[o].get(fact) is not None:
+                        rec[fact] = eng[o][fact]
+                        break
             recorded[name] = rec
 
     if args.update:
