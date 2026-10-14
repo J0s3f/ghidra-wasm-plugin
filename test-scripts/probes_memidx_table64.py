@@ -159,27 +159,27 @@ write("B8_03_table64_then_table32.wasm", module(
 
 # B8_04: memory64 with an initial size above 4 GiB (70000 pages = 4,587,520,000 bytes = ~4.27 GiB).
 # Valid per memory64; must import with a clear diagnostic, no OOM, and the code must decode. The
-# load's address operand is i64 (the memory's index type).
+# load uses an i64 dynamic address above 4 GiB plus a static offset (EA 0x100000030).
 write("B8_04_mem64_over4g.wasm", module(
     type_section(functype([], [I32])),
     func_section([0]),
     memory_section([(0x04, 70000)]),                # 64-bit index, initial 70000 pages
     export_section([("f", 0, 0)]),
     code_section([
-        i64_const(0) + b"\x28" + memarg(2) +        # i32.load align=2 off=0 (i64 address)
+        i64_const(0x100000020) + b"\x28" + memarg(2, offset=0x10) +  # EA 0x100000030
         END
     ]),
 ))
 
 # B8_05: memory64 with an initial size just above 4 GiB (65537 pages = 4,295,032,832 bytes), the
-# smallest over-4-GiB declaration; pins the same behaviour as B8_04.
+# smallest over-4-GiB declaration; a large static offset exercises EA 0x100000010.
 write("B8_05_mem64_just_over4g.wasm", module(
     type_section(functype([], [I32])),
     func_section([0]),
     memory_section([(0x04, 65537)]),
     export_section([("f", 0, 0)]),
     code_section([
-        i64_const(0) + b"\x28" + memarg(2) +        # i32.load align=2 off=0 (i64 address)
+        i64_const(0) + b"\x28" + memarg(2, offset=0x100000010) +  # EA 0x100000010
         END
     ]),
 ))

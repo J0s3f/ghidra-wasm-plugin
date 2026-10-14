@@ -646,7 +646,7 @@ public final class ConstantExpression implements StructConverter {
 	 * <p>Unlike {@link #asI32()} this also reads an {@code i64} value, which is exactly what a
 	 * memory64 active data segment offset uses ({@code WasmDataSegment.getMemoryOffset()}). An
 	 * i64 value at or above 2^63 comes back as a negative long, which the loader treats as an
-	 * out-of-range address (clamped and logged by {@code WasmLoader.getMemoryAddress}) - never a
+	 * out-of-range address (reported by the loader when outside the materialized block) - never a
 	 * crash (see REPORT-N.md §7 item 8, REPORT-H1.md).
 	 */
 	public Long asConstValue() {

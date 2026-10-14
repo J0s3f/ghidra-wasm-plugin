@@ -69,7 +69,12 @@ public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 			 * would not link. Word granularity is more compact but the
 			 * address-table analyzer types the folded words as pointers.
 			 */
-			ops.emitUnrolledCopy(src, dst, nbytes, 1);
+			if (src.getSize() == 8 || dst.getSize() == 8) {
+				ops.emitUnrolledCopy64(src, dst, nbytes, 1,
+						con.inputlist.get(1).getOffset(), con.inputlist.get(0).getOffset());
+			} else {
+				ops.emitUnrolledCopy(src, dst, nbytes, 1);
+			}
 		} else {
 			int idx = memcpyIndex(program);
 			if (idx >= 0) {
