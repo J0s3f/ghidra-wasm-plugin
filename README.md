@@ -202,8 +202,11 @@ fix order. In summary, the still-open items are:
   mnemonics (the 0xFE atomic *memory* ops are implemented).
 - **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
   (core-module extraction only, by design).
-- **`br_table large` assertion cases**: 4 `assert_return` failures in the emulation harness are
-  the deliberate `MAX_BR_TABLE_CASES` bound (decode-side).
+- **`br_table large` assertion cases**: 1 remaining `assert_return` failure in the emulation
+  harness (the `large(10000)` case, whose target is a *case* past the modelled-case cap). The
+  `MAX_BR_TABLE_CASES` bound previously also dropped the DEFAULT target — production control flow,
+  not harness-only; it now models at most `MAX_BR_TABLE_CASES - 1` case targets and **always** the
+  default target (`REPORT-R5-BRTABLE.md`).
 - **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
   only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
 - **128 MiB materialisation cap**: memories larger than 128 MiB are clamped (with a warning).

@@ -70,8 +70,9 @@ and verified by:
 * **Fixture-validity gate**: 201 probes — 118 valid / 53 wabt-gap / 17
   unsupported / 13 invalid; 13 probes carry `oracle_skip: ["binaryen"]`.
 * **Emulation harness**: 33 `.wast` suites, 92/92 modules; assert_return
-  2511/4, assert_trap 183/0 (the 4 remaining are `br_table large` cases — the
-  deliberate `MAX_BR_TABLE_CASES` bound).
+  2514/1, assert_trap 183/0 (the 1 remaining is the `br_table large` `large(10000)`
+  case — a case target past the modelled-case cap; the DEFAULT target is now always
+  modelled, `REPORT-R5-BRTABLE.md`).
 
 The local gate is `test-scripts/check-local.ps1` (enforces the pinned install +
 build stamp); CI runs `.github/workflows/probes.yml` and

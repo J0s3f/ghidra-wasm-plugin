@@ -46,12 +46,16 @@ import wasm.format.sections.structures.WasmResizableLimits;
 public class WasmFunctionAnalysis {
 
 	/**
-	 * Upper bound on the number of br_table labels the pre-analyzer materialises as branch
-	 * instructions in one br_table. Each case is a separate basic block ending in a conditional
-	 * branch, and a pathological br_table (the spec suite's br_table.wast `large` function has
-	 * ~16k labels) makes the native decompiler process die. Past the cap the labels are still
-	 * consumed (by the byte-only `.case_ignored` directive) but contribute no control flow, and a
-	 * warning is logged. See REPORT-SF.md finding 3.
+	 * Upper bound on the number of br_table branches the pre-analyzer materialises for one
+	 * br_table. Each case is a separate basic block ending in a conditional branch, and a
+	 * pathological br_table (the spec suite's br_table.wast `large` function has ~16k labels)
+	 * makes the native decompiler process die. The bound applies to *case* targets only: at most
+	 * {@code MAX_BR_TABLE_CASES - 1} cases are modelled, and the default target is always modelled
+	 * (so one br_table emits at most {@code MAX_BR_TABLE_CASES} branch instructions). Case targets
+	 * past the bound are still consumed (by the byte-only `.case_ignored` directive) but contribute
+	 * no control flow, and a warning is logged. Residual limit: an input whose index equals a
+	 * dropped case index is modelled as taking the default target (see REPORT-R5-BRTABLE.md). This
+	 * is production behaviour, not harness-only. See also REPORT-SF.md finding 3.
 	 */
 	static final int MAX_BR_TABLE_CASES = 1024;
 
@@ -292,8 +296,9 @@ public class WasmFunctionAnalysis {
 		/**
 		 * Disassemble this br_table label as a byte-only directive: it consumes the label's
 		 * bytes (keeping the stream aligned) but emits no branch and no basic block. Used for the
-		 * labels past {@link #MAX_BR_TABLE_CASES} so that one pathological br_table cannot
-		 * explode the decompiler's control-flow graph.
+		 * *case* labels past the cap on modelled case targets ({@link #MAX_BR_TABLE_CASES} - 1) so
+		 * that one pathological br_table cannot explode the decompiler's control-flow graph. The
+		 * default label is never routed here.
 		 */
 		public void setBrTableCaseIgnored(Address address) {
 			setRegister(address, REG_IS_DIRECTIVE, 1);
@@ -1449,26 +1454,36 @@ public class WasmFunctionAnalysis {
 				Address caseAddress = func.getStartAddr().add(reader.getPointerIndex());
 				long labelidx = readLeb128(reader);
 
-				if (i >= MAX_BR_TABLE_CASES) {
+				/*
+				 * The last label (i == count) is the default target and is ALWAYS modelled, even
+				 * when the table is past the cap, so bounding the expansion can never change where
+				 * an input that misses every modelled case goes. Only *case* targets are dropped:
+				 * the first MAX_BR_TABLE_CASES-1 cases are modelled and every later case is decoded
+				 * without control flow (its bytes are still consumed). Residual limit: an input
+				 * equal to a dropped case index is modelled as taking the default target.
+				 */
+				boolean isDefault = (i == count);
+				if (!isDefault && i >= MAX_BR_TABLE_CASES - 1) {
 					// @@BRTABLE_CAP: bound the control-flow graph. The label bytes are consumed
 					// by a byte-only directive (no branch, no block) so the stream stays aligned,
 					// but we do not model the branch or touch the value stack.
-					if (i == MAX_BR_TABLE_CASES) {
+					if (i == MAX_BR_TABLE_CASES - 1) {
 						Msg.warn(this, "br_table at " + instAddress + " has " + (count + 1)
-								+ " labels; only the first " + MAX_BR_TABLE_CASES
-								+ " are modelled as branches (the rest are decoded without control flow)");
+								+ " labels; only the first " + (MAX_BR_TABLE_CASES - 1)
+								+ " case targets are modelled as branches (the default target is"
+								+ " always modelled; the remaining labels are decoded without control flow)");
 					}
 					contextreg.setBrTableCaseIgnored(caseAddress);
 					continue;
 				}
 
-				contextreg.setBrTableCase(caseAddress, (i < count) ? i : -1);
+				contextreg.setBrTableCase(caseAddress, isDefault ? -1 : i);
 				ControlFrame block = getBlock(caseAddress, labelidx);
 				ValType[] arguments = block.getBranchArguments();
 				ValType[] actualArgs = popValues(caseAddress, arguments);
 				setStackEffect(caseAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 				block.addBranch(caseAddress);
-				if (i < count) {
+				if (!isDefault) {
 					pushValues(caseAddress, actualArgs);
 				}
 			}
