@@ -307,9 +307,23 @@ public final class ConstantExpression implements StructConverter {
 	}
 
 	private byte[] readBlockType(BinaryReader reader) throws IOException {
-		/* blocktype is either a single value type byte or an s33 type index; both are LEB128, and
-		   the reader is positioned on the first byte, so read it as a signed LEB. */
-		return readSleb(reader);
+		/* blocktype is either the empty type 0x40, a single value type byte, a multi-byte
+		   (ref null ht)/(ref ht) value type (0x63/0x64 + s33), or a non-negative s33 type index.
+		   We need to consume the entire immediate to keep the reader positioned correctly. */
+		int b = reader.readNextUnsignedByte();
+		if (b == 0x63 || b == 0x64) {
+			// Multi-byte valtype: (ref null ht) or (ref ht) - read the following s33 heaptype
+			byte[] first = new byte[] { (byte) b };
+			byte[] rest = readSleb(reader);
+			byte[] result = new byte[first.length + rest.length];
+			System.arraycopy(first, 0, result, 0, first.length);
+			System.arraycopy(rest, 0, result, first.length, rest.length);
+			return result;
+		}
+		// Re-encode the first byte and decode the whole immediate as a signed LEB
+		long offset = reader.getPointerIndex() - 1;
+		LEB128Info info = reader.readNext(LEB128Info::signed);
+		return reader.clone(offset).readNextByteArray(info.getLength());
 	}
 
 	private byte[] readUleb(BinaryReader reader) throws IOException {

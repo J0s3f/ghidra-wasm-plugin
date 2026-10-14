@@ -135,7 +135,9 @@ public class EH2Ops {
 	 */
 	public static void analyzeTryTable(WasmFunctionAnalysis func, WasmAnalysis analysis, Address instAddress, BinaryReader reader) throws IOException {
 		Address functionStart = func.getSignature().getStartAddr();
-		long blocktype = readSignedLeb128(reader);
+		/* Read the block type via ValType.readBlockType so that multi-byte forms (a (ref null ht)/
+		   (ref ht) value type, or a type index >= 128) are fully consumed. */
+		ValType.BlockTypeInfo blockTypeInfo = ValType.readBlockType(reader);
 		long count = readLeb128(reader);
 
 		long handlerLabel = -1;
@@ -165,7 +167,7 @@ public class EH2Ops {
 				 */
 				Msg.warn(EH2Ops.class, "Invalid try_table catch clause kind " + String.format("0x%02x", kind)
 						+ " at " + clauseAddress);
-				func.ehEnterTryTable(instAddress, analysis, blocktype, handlerLabel, handlerValue(handlerValues, func.ehBlockTypeParamCount(analysis, blocktype)));
+				func.ehEnterTryTable(instAddress, analysis, blockTypeInfo, handlerLabel, handlerValue(handlerValues, func.ehBlockTypeParamCount(analysis, blockTypeInfo)));
 				return;
 			}
 
@@ -180,8 +182,8 @@ public class EH2Ops {
 			func.ehMarkClause(clauseAddress);
 		}
 
-		func.ehEnterTryTable(instAddress, analysis, blocktype, handlerLabel,
-			handlerValue(handlerValues, func.ehBlockTypeParamCount(analysis, blocktype)));
+		func.ehEnterTryTable(instAddress, analysis, blockTypeInfo, handlerLabel,
+			handlerValue(handlerValues, func.ehBlockTypeParamCount(analysis, blockTypeInfo)));
 	}
 
 	/**

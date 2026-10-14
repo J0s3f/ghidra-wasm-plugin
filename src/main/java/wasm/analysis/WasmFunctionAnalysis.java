@@ -794,6 +794,23 @@ public class WasmFunctionAnalysis {
 		return new BlockType(analysis, blocktype).params.length;
 	}
 
+	/** Convert a BlockTypeInfo (the reader-level form of a block type) into a BlockType. */
+	private static BlockType blockTypeFromInfo(WasmAnalysis analysis, ValType.BlockTypeInfo info) {
+		if (info.typeIndex >= 0) {
+			return new BlockType(analysis, info.typeIndex);
+		}
+		if (info.type == null) {
+			return new BlockType((ValType) null);
+		}
+		return new BlockType(info.type);
+	}
+
+	/** Multi-byte-aware overload: accepts a BlockTypeInfo so a (ref null ht)/(ref ht) block type
+	    (or a multi-byte type index) is handled without being collapsed to a single s33. */
+	int ehBlockTypeParamCount(WasmAnalysis analysis, ValType.BlockTypeInfo info) {
+		return blockTypeFromInfo(analysis, info).params.length;
+	}
+
 	/**
 	 * The types a catch clause must push to be valid: the branch arguments of the label it branches
 	 * to. Must be called while the control stack is still the one *outside* the try_table, because
@@ -829,6 +846,21 @@ public class WasmFunctionAnalysis {
 			}
 		}
 		BlockType type = new BlockType(analysis, blocktype);
+		popValues(instAddress, type.params);
+		pushBlock(instAddress, new ControlFrame(instAddress, BlockKind.BLOCK, type, valueStack));
+	}
+
+	/** Multi-byte-aware overload accepting a BlockTypeInfo. */
+	void ehEnterTryTable(Address instAddress, WasmAnalysis analysis, ValType.BlockTypeInfo info, long handlerLabel, ValType handlerValue) {
+		if (handlerLabel >= 0) {
+			ControlFrame target = getBlock(instAddress, handlerLabel);
+			target.addBranch(instAddress);
+			contextreg.setTryHandler(instAddress);
+			if (handlerValue != null && handlerValue.getSize() <= 8) {
+				contextreg.setOperandSize(instAddress, handlerValue);
+			}
+		}
+		BlockType type = blockTypeFromInfo(analysis, info);
 		popValues(instAddress, type.params);
 		pushBlock(instAddress, new ControlFrame(instAddress, BlockKind.BLOCK, type, valueStack));
 	}
@@ -1321,9 +1353,9 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 		case 0x06: /* try bt (legacy exception handling) */ {
-			/* Multi-byte block signatures are not decoded here: the SLEIGH :try constructors still
-			   read a single ULeb128, so both sides must stay on the single-s33 form. */
-			BlockType blocktype = new BlockType(analysis, readSignedLeb128(reader));
+			/* Mirror readBlockType for block/loop/if: a try block type may be a multi-byte (ref
+			   null ht)/(ref ht) value type (0x63/0x64), or a multi-byte s33 type index. */
+			BlockType blocktype = readBlockType(analysis, reader);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.TRY, blocktype, valueStack));
 			break;

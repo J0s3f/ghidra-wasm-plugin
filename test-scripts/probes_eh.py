@@ -68,9 +68,12 @@ def catch_all_ref_clause(label):
 def try_table(blocktype=0x40, clauses=(), body=b""):
     """try_table blocktype catch* instruction* end.
 
-    blocktype is 0x40 (empty), a valtype byte (0x69 = exnref included) or a type index.
+    blocktype is 0x40 (empty), a valtype byte (0x69 = exnref included), a multi-byte
+    valtype (bytes, e.g. b'\x63\x01' for ref null 1), or a type index.
     """
-    if blocktype in (0x40, I32, I64, F32, F64, V128, FUNCREF, EXTERNREF, HT_EXN):
+    if isinstance(blocktype, bytes):
+        bt = blocktype
+    elif blocktype in (0x40, I32, I64, F32, F64, V128, FUNCREF, EXTERNREF, HT_EXN):
         bt = bytes([blocktype])
     else:
         bt = sleb(blocktype)
@@ -230,4 +233,85 @@ write("39_eh2_try_table_multi_clause.wasm", module(
                   + END                                                   # end L1
                   + END                                                   # end L0
                   + END]),                                                # end function
+))
+
+# ---------------------------------------------------------------- (g) multi-byte block signatures on try_table
+
+def ftype(params, results) -> bytes:
+    """functype where params/results may mix int valtypes and encoded (ref ...) bytes."""
+    def _vt(t):
+        return bytes([t]) if isinstance(t, int) else t
+    return b"\x60" + vec([_vt(p) for p in params]) + vec([_vt(r) for r in results])
+
+# 40. try_table with multi-byte valtype blocktype: (ref null exn) = 0x63 0x69
+#     The try_table returns an exnref, body produces ref.null exn.
+write("40_eh2_try_table_ref_null_exn.wasm", module(
+    type_section(
+        functype([], []),  # type 0
+        ftype([], [ref_null(HT_EXN)]),  # type 1 = () -> (ref null exn)
+    ),
+    func_section([1]),
+    export_section([("f", 0, 0)]),
+    code_section([try_table(b"\x63" + sleb(HT_EXN - 0x80), [], ref_null_exn() + END)]),
+))
+
+# 41. try_table with multi-byte valtype blocktype: (ref null typeidx=1) = 0x63 0x01
+#     Type 1 = () -> i32, so (ref null 1) is a nullable func ref.
+#     The try_table returns (ref null 1), body produces ref.null 1.
+write("41_eh2_try_table_ref_null_typeidx1.wasm", module(
+    type_section(
+        functype([], []),  # type 0
+        functype([], [I32]),  # type 1 = () -> i32
+        ftype([], [ref_null(1)]),  # type 2 = () -> (ref null 1)
+    ),
+    func_section([2]),
+    export_section([("f", 0, 0)]),
+    code_section([try_table(b"\x63\x01", [], b"\xD0\x01" + END)]),
+))
+
+# 42. try_table with type index >= 128 (s33 needs 2 bytes: 0x80 0x01 = 128)
+#     Create 129 function types (indices 0-128), type 128 returns i32.
+types_129 = [functype([], [])] + [functype([], [I32]) for _ in range(128)]
+write("42_eh2_try_table_typeidx128.wasm", module(
+    type_section(*types_129),
+    func_section([128]),
+    export_section([("f", 0, 0)]),
+    code_section([try_table(sleb(128), [], i32_const(42) + END)]),
+))
+
+# ---------------------------------------------------------------- (h) multi-byte block signatures on legacy try
+
+# 43. legacy try with multi-byte valtype blocktype: (ref null exn) = 0x63 0x69
+write("43_eh_legacy_try_ref_null_exn.wasm", module(
+    type_section(
+        functype([], []),  # type 0
+        ftype([], [ref_null(HT_EXN)]),  # type 1 = () -> (ref null exn)
+    ),
+    tag_section([(0x00, 0)]),
+    func_section([1]),
+    export_section([("f", 0, 0)]),
+    code_section([b"\x06" + b"\x63" + sleb(HT_EXN - 0x80) + ref_null_exn() + END + END]),
+))
+
+# 44. legacy try with multi-byte valtype blocktype: (ref null typeidx=1) = 0x63 0x01
+write("44_eh_legacy_try_ref_null_typeidx1.wasm", module(
+    type_section(
+        functype([], []),  # type 0
+        functype([], [I32]),  # type 1 = () -> i32
+        ftype([], [ref_null(1)]),  # type 2 = () -> (ref null 1)
+    ),
+    tag_section([(0x00, 0)]),
+    func_section([2]),
+    export_section([("f", 0, 0)]),
+    code_section([b"\x06\x63\x01" + b"\xD0\x01" + END + END]),
+))
+
+# 45. legacy try with type index >= 128 (s33 needs 2 bytes: 0x80 0x01 = 128)
+types_129_legacy = [functype([], [])] + [functype([], [I32]) for _ in range(128)]
+write("45_eh_legacy_try_typeidx128.wasm", module(
+    type_section(*types_129_legacy),
+    tag_section([(0x00, 0)]),
+    func_section([128]),
+    export_section([("f", 0, 0)]),
+    code_section([b"\x06" + sleb(128) + i32_const(42) + END + END]),
 ))

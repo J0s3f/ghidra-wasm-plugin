@@ -61,6 +61,35 @@ eh_label: ULeb128 is ULeb128 {
 	goto br_target;
 }
 
+# @@TRY_MULTIBYTE: multi-byte block signatures for try_table (0x1f).
+# The plain ULeb128 forms above consume only the first byte of a (ref null ht)/(ref ht) valtype
+# or a multi-byte s33 type index, desynchronising the body. Add explicit multi-byte forms.
+:try_table "blocktype="^multi_blocktype "catches="^count is opc=0x1f; multi_blocktype; count; ctx_case_index=0; ctx_is_directive=0 {
+}
+
+:try_table "blocktype="^multi_blocktype br_target is opc=0x1f; multi_blocktype; count; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	goto br_target;
+}
+
+:try_table "blocktype="^multi_blocktype br_target is opc=0x1f; multi_blocktype; count; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	sp0_32 = wasm_exception_payload();
+	goto br_target;
+}
+
+:try_table "blocktype="^multi_blocktype br_target is opc=0x1f; multi_blocktype; count; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
+	nop();
+	local caught:1 = wasm_exception_caught();
+	if (caught == 0) goto inst_next;
+	sp0_64 = wasm_exception_payload();
+	goto br_target;
+}
+
 :.catch "tag="^eh_tag "label="^eh_label is opc=0x00; eh_tag; eh_label; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_EH_CLAUSE) {
 }
 

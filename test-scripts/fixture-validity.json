@@ -120,6 +120,26 @@
     "39_eh2_try_table_multi_clause.wasm": {
       "class": "valid"
     },
+    "40_eh2_try_table_ref_null_exn.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000013: error: Reference type is limited to func and extern: function result type"
+    },
+    "41_eh2_try_table_ref_null_typeidx1.wasm": {
+      "class": "valid"
+    },
+    "42_eh2_try_table_typeidx128.wasm": {
+      "class": "valid"
+    },
+    "43_eh_legacy_try_ref_null_exn.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000013: error: Reference type is limited to func and extern: function result type"
+    },
+    "44_eh_legacy_try_ref_null_typeidx1.wasm": {
+      "class": "valid"
+    },
+    "45_eh_legacy_try_typeidx128.wasm": {
+      "class": "valid"
+    },
     "A01_mm_scalar_memarg.wasm": {
       "class": "valid"
     },
