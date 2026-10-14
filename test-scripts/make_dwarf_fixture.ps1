@@ -68,6 +68,43 @@ pub extern "C" fn loopsum(n: i32) -> i32 {
     }
     acc
 }
+
+// Struct-typing ground truth for the DWARF type-recovery metric
+// (test-scripts/dwarf_type_metric.py): repr(C) structs passed by pointer so
+// that debuginfo=2 carries DW_TAG_structure_type DIEs with field offsets and
+// the bodies contain constant-offset accesses through the pointer parameter.
+#[repr(C)]
+pub struct Point {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[repr(C)]
+pub struct Rect {
+    pub origin: Point,
+    pub w: u32,
+    pub h: u32,
+    pub tag: u8,
+}
+
+#[no_mangle]
+pub extern "C" fn point_sum(p: *const Point) -> i32 {
+    let r = unsafe { &*p };
+    r.x + r.y
+}
+
+#[no_mangle]
+pub extern "C" fn rect_area(r: *const Rect) -> u32 {
+    let rr = unsafe { &*r };
+    rr.w * rr.h + (rr.origin.x as u32)
+}
+
+#[no_mangle]
+pub extern "C" fn move_point(p: *mut Point, dx: i32, dy: i32) {
+    let r = unsafe { &mut *p };
+    r.x += dx;
+    r.y += dy;
+}
 '@
 
 Set-Content -Path $src -Value $rs -Encoding UTF8
