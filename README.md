@@ -120,7 +120,7 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 | --- | --- |
 | `check-local.ps1` | The local gate: build + install, run the full probe suite, check the fixture decompile baseline and the real-module baseline. Enforces the pinned Ghidra install and build stamp. |
 | `run_probes.ps1` | Generates all probe modules (`gen_*.py` + `probes_*.py`), imports them headlessly, and reports per-program metrics. |
-| `gen_feature_probes.py` + `probes_*.py` | Byte-level probe generators for every supported feature (201 probes). |
+| `gen_feature_probes.py` + `probes_*.py` | Byte-level probe generators for every supported feature (223 probes). |
 | `check-results.py` | Compares probe-run metrics against `expected-results.json`; `--update` re-records. |
 | `check-fixture-validity.py` | External-oracle classification of every probe (wabt `wasm-validate`, optionally binaryen `wasm-dis`); supports `--timeout`, `--update`, `oracle_skip`. |
 | `spectest/run_spectest.ps1` | Runs the official WebAssembly spec testsuite (core subset) through the loader/decompiler headlessly. |
@@ -140,7 +140,7 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 | Workflow | What it enforces |
 | --- | --- |
 | `.github/workflows/build.yml` | Builds the extension against Ghidra 12.1.4 and 12.1.3. |
-| `.github/workflows/probes.yml` | Runs the 201-probe suite + fixture decompile baseline + fixture-validity gate (wabt). |
+| `.github/workflows/probes.yml` | Runs the 223-probe suite + fixture decompile baseline + fixture-validity gate (wabt). |
 | `.github/workflows/spectest.yml` | Runs the spec core subset (271 modules) and checks the decode/decompile baseline. |
 | `.github/workflows/release.yml` | Builds and publishes release assets on tag push (`v*`). |
 
@@ -196,8 +196,6 @@ See [MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) for a feature-by-feature inventor
 does and does not understand in modern WebAssembly, how each gap was measured, and the planned
 fix order. In summary, the still-open items are:
 
-- **Custom page sizes**: the page size is fixed at 64 KiB; a module that declares a custom page
-  size will have wrong block sizes/addresses.
 - **Shared-everything threads**: `global.atomic.*`, shared tables / `table.atomic.*` have no
   mnemonics (the 0xFE atomic *memory* ops are implemented).
 - **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
@@ -209,10 +207,12 @@ fix order. In summary, the still-open items are:
   default target (`REPORT-R5-BRTABLE.md`).
 - **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
   only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
-- **128 MiB materialisation cap**: memories larger than 128 MiB are clamped (with a warning).
-- **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`).
-- **Multi-byte block signatures** on `try`/`try_table` (single-s33 form kept).
-- **Extended-const `Data markup conflict`** warning lead.
+- **128 MiB materialisation cap / stride**: memories larger than 128 MiB are clamped (with a
+  warning); memories of the same index type can alias beyond a stride, and i32 memory indices above
+  31 exceed the legacy 32-bit space.
+- **Cosmetic listings**: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` and the `ht=`
+  operands of `ref.test`/`ref.cast`/`br_on_cast*` still print numerically (`ref.null` abstract heap
+  types now print by name).
 
 In addition:
 

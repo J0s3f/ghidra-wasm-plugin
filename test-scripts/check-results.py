@@ -45,6 +45,13 @@ PROBE_RE = re.compile(
     r"decompile_failed=(?P<decompile_failed>\d+)"
 )
 
+# PROBE-BLOCK <program name> <block name> size=<N>  (WasmFeatureReport.java)
+BLOCK_RE = re.compile(
+    r"\bPROBE-BLOCK\s+(?P<name>\S+)\s+"
+    r"(?P<block>\S+)\s+"
+    r"size=(?P<size>\d+)"
+)
+
 # Import-failure markers emitted by the headless analyzer / loader.
 IMPORT_FAIL_RES = (
     re.compile(r"Import failed for file:\s*(?P<ref>\S+)"),
@@ -87,17 +94,28 @@ def read_log(path: Path) -> str:
 
 
 def parse_probe_log(text: str):
-    """Return (results, import_failures, duplicates)."""
+    """Return (results, import_failures, duplicates, blocks).
+
+    `blocks` maps each probe name to a {block-name: size} dict parsed from its
+    `PROBE-BLOCK` lines, so materialised memory/table block extents can be pinned.
+    """
     results: dict[str, dict] = {}
     duplicates: list[str] = []
+    blocks: dict[str, dict[str, int]] = {}
     for line in text.splitlines():
         m = PROBE_RE.search(line)
-        if not m:
+        if m:
+            name = m.group("name")
+            if name in results:
+                duplicates.append(name)
+            results[name] = {k: int(m.group(k)) for k in METRIC_KEYS}
             continue
-        name = m.group("name")
-        if name in results:
-            duplicates.append(name)
-        results[name] = {k: int(m.group(k)) for k in METRIC_KEYS}
+        bm = BLOCK_RE.search(line)
+        if bm:
+            name = bm.group("name")
+            block = bm.group("block")
+            size = int(bm.group("size"))
+            blocks.setdefault(name, {})[block] = size
 
     import_failures: set[str] = set()
     for line in text.splitlines():
@@ -108,7 +126,7 @@ def parse_probe_log(text: str):
     # A module that both failed to import and produced metrics is contradictory; keep it as a probe
     # result (metrics win) and drop the stale failure so the diff stays honest.
     import_failures -= set(results)
-    return results, import_failures, duplicates
+    return results, import_failures, duplicates, blocks
 
 
 def parse_summary(text: str):
@@ -135,7 +153,7 @@ def summary_pairs(s: str) -> dict[str, int]:
 
 
 def check_probes(expected: dict, results: dict, failures: set[str], duplicates: list[str],
-                 allow_extra: bool) -> list[str]:
+                 allow_extra: bool, blocks: dict | None = None) -> list[str]:
     errors: list[str] = []
     for name in sorted(set(results) | set(failures)):
         if name not in expected:
@@ -167,6 +185,15 @@ def check_probes(expected: dict, results: dict, failures: set[str], duplicates: 
                     continue
                 if got[k] != want:
                     diff.append(f"{k} expected {want}, got {got[k]}")
+            exp_blocks = None
+            for key in ("blocks", "block_sizes", "block_extents", "extents"):
+                if key in exp:
+                    exp_blocks = exp[key]
+                    break
+            if exp_blocks is not None:
+                got_blocks = (blocks or {}).get(name, {})
+                if got_blocks != exp_blocks:
+                    diff.append(f"blocks expected {exp_blocks}, got {got_blocks}")
             if diff:
                 errors.append(f"DIFF {name}: " + "; ".join(diff))
         else:
@@ -242,7 +269,8 @@ def check_real_module(expected: dict, log_path: Path) -> list[str]:
 # ---------------------------------------------------------------- update
 
 def update_json(expected_path: Path, results: dict, failures: set[str],
-                fixture_log: Path | None, real_log: Path | None) -> dict:
+                fixture_log: Path | None, real_log: Path | None,
+                blocks: dict | None = None) -> dict:
     try:
         data = json.loads(expected_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -254,7 +282,10 @@ def update_json(expected_path: Path, results: dict, failures: set[str],
     probes = {}
     for name in sorted(set(results) | set(failures)):
         if name in results:
-            probes[name] = dict(results[name], import_ok=True)
+            entry = dict(results[name], import_ok=True)
+            if blocks and name in blocks:
+                entry["blocks"] = blocks[name]
+            probes[name] = entry
         else:
             probes[name] = {k: None for k in METRIC_KEYS}
             probes[name]["import_ok"] = False
@@ -323,10 +354,10 @@ def main(argv: list[str] | None = None) -> int:
     if not log_path.exists():
         print(f"error: probe log not found: {log_path}", file=sys.stderr)
         return 2
-    results, failures, duplicates = parse_probe_log(read_log(log_path))
+    results, failures, duplicates, blocks = parse_probe_log(read_log(log_path))
 
     if args.update:
-        data = update_json(expected_path, results, failures, fixture_log, real_log)
+        data = update_json(expected_path, results, failures, fixture_log, real_log, blocks=blocks)
         expected_path.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n",
                                  encoding="utf-8")
         print(f"updated {expected_path}: {len(results)} probe(s) with metrics, "
@@ -339,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     expected = json.loads(expected_path.read_text(encoding="utf-8"))
 
     errors = check_probes(expected.get("probes", {}), results, failures, duplicates,
-                          args.allow_extra)
+                          args.allow_extra, blocks=blocks)
     errors += check_fixture(expected, fixture_log, args.require_fixture) if fixture_log else []
     errors += check_real_module(expected, real_log)
 

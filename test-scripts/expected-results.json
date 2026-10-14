@@ -484,7 +484,10 @@
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
-      "import_ok": true
+      "import_ok": true,
+      "blocks": {
+        ".memory0": 65537
+      }
     },
     "B04_limits_shared_memory64.wasm": {
       "funcs": 1,
