@@ -5,7 +5,7 @@ import ghidra.app.script.GhidraScript;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeManager;
-import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.Pointer;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
@@ -47,8 +47,10 @@ public class DumpTypes extends GhidraScript {
 			Parameter[] params = f.getParameters();
 			boolean hasStructPtr = false;
 			for (Parameter p : params) {
-				if (p.getDataType() instanceof PointerDataType) {
-					DataType target = ((PointerDataType) p.getDataType()).getDataType();
+				// NOTE: retyped params surface as PointerDB, which implements the
+			// Pointer interface but is not a PointerDataType: test the interface.
+			if (p.getDataType() instanceof Pointer) {
+					DataType target = ((Pointer) p.getDataType()).getDataType();
 					if (target instanceof Structure && target.getName().startsWith("wasm_struct_")) {
 						hasStructPtr = true;
 						break;
