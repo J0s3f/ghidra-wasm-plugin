@@ -684,9 +684,16 @@ public final class ConstantExpression implements StructConverter {
 		if (rawBytes != null && rawBytes.length > 0) {
 			builder.add(BYTE, "opcode");
 			if (folded) {
-				/* the original byte sequence is an expression, not a single instruction */
-				if (rawBytes.length > 1) {
-					builder.addArray(BYTE, rawBytes.length - 1, "extended_const_expr");
+				/*
+				 * The original byte sequence is an expression, not a single instruction: show the
+				 * bytes between the leading opcode and the terminating `end`. rawBytes always ends
+				 * with 0x0B, which the separate `end_opcode` field below already represents, so the
+				 * array must hold rawBytes.length - 2 bytes. (Using length - 1 double-counted the
+				 * end byte, making this structure one byte too long; the overrun then collided with
+				 * the next section's markup - "Data markup conflict", REPORT-EXTCONST-MISTRAL.md.)
+				 */
+				if (rawBytes.length > 2) {
+					builder.addArray(BYTE, rawBytes.length - 2, "extended_const_expr");
 				}
 			}
 			else {
@@ -713,9 +720,13 @@ public final class ConstantExpression implements StructConverter {
 					break;
 				case UNKNOWN:
 				default:
-					// For unknown, just show the raw bytes as an array
-					if (rawBytes.length > 1) {
-						builder.addArray(BYTE, rawBytes.length - 1, "remaining_bytes");
+					/*
+					 * For unknown, just show the raw bytes as an array. As in the folded case, the
+					 * array holds the bytes between the leading opcode and the terminating `end`
+					 * (rawBytes.length - 2) so the `end_opcode` field below is not double-counted.
+					 */
+					if (rawBytes.length > 2) {
+						builder.addArray(BYTE, rawBytes.length - 2, "remaining_bytes");
 					}
 					break;
 				}
