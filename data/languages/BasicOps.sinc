@@ -3,35 +3,64 @@
 ##   memarg ::= align:u32 offset:u64                  if align < 2^6
 ##            | flags:u32 memidx:u32 offset:u64       if 2^6 <= flags < 2^7
 ## i.e. bit 6 of the *value* of the alignment field marks a memory index that precedes
-## the offset. In the flagged form the value is 64..127, so its LEB is a single byte
-## (0x40..0x7f): that is what memalign_mem matches. The unflagged forms cannot overlap
-## it (bit 6 clear for the single-byte form, bit 7 set for the multi-byte ones).
+## the offset. The u32 LEB rules allow non-minimal (padded) encodings of any value, so
+## BOTH forms exist in every length a u32 LEB permits (1..5 bytes):
+##   unflagged align: the decoded value keeps bit 6 clear, i.e. the FIRST byte has
+##                    mflag = 0 (its low 7 bits are value bits 0..6);
+##   flagged  flags:  the decoded value is 64..127 (bit 6 set, bits 7+ clear), i.e. the
+##                    FIRST byte has mflag = 1 and every following byte pads with zero
+##                    chunks (0x80 ... 0x00).
+## The two families are disjoint on the first byte's mflag, so the match is exact; the
+## exported val is the alignment *without* the flag in both forms. A multi-byte value
+## with bit 6 set and a non-zero higher chunk (>= 128) is spec-invalid (the spec allows
+## flags only in 64..127) and matches neither family.
 ##
 ## align, no memory index: single byte, bit 6 clear (align 0..63 - all real alignments)
 memalign: "align="^val is topbit = 0 & mflag = 0 & v0
 	[ val = (0 | v0); ]
 { export *[const]:8 val; }
 
-## ... or a multi-byte LEB (non-minimal align encodings; a u32 needs at most 5 bytes)
-memalign: "align="^val is topbit = 1 & v0; topbit = 0 & v1
+## ... or a multi-byte LEB (non-minimal align encodings; a u32 needs at most 5 bytes).
+## The decoded value must keep bit 6 clear, i.e. the FIRST byte has mflag = 0: a padded
+## encoding of a flagged value (64..127) belongs to memalign_mem below, not here.
+memalign: "align="^val is topbit = 1 & mflag = 0 & v0; topbit = 0 & v1
 	[ val = (0 | v0 | ( v1 << 7 )); ]
 { export *[const]:8 val; }
 
-memalign: "align="^val is topbit = 1 & v0; topbit = 1 & v1; topbit = 0 & v2
+memalign: "align="^val is topbit = 1 & mflag = 0 & v0; topbit = 1 & v1; topbit = 0 & v2
 	[ val = (0 | v0 | ( v1 << 7 ) | ( v2 << 14 )); ]
 { export *[const]:8 val; }
 
-memalign: "align="^val is topbit = 1 & v0; topbit = 1 & v1; topbit = 1 & v2; topbit = 0 & v3
+memalign: "align="^val is topbit = 1 & mflag = 0 & v0; topbit = 1 & v1; topbit = 1 & v2; topbit = 0 & v3
 	[ val = (0 | v0 | ( v1 << 7 ) | ( v2 << 14 ) | ( v3 << 21 )); ]
 { export *[const]:8 val; }
 
-memalign: "align="^val is topbit = 1 & v0; topbit = 1 & v1; topbit = 1 & v2; topbit = 1 & v3; topbit = 0 & v4
+memalign: "align="^val is topbit = 1 & mflag = 0 & v0; topbit = 1 & v1; topbit = 1 & v2; topbit = 1 & v3; topbit = 0 & v4
 	[ val = (0 | v0 | ( v1 << 7 ) | ( v2 << 14 ) | ( v3 << 21 ) | ( v4 << 28 )); ]
 { export *[const]:8 val; }
 
-## align with a memory index (bit 6 set, single byte 0x40..0x7f)
+## align with a memory index (flagged value 64..127: bit 6 set, bits 7+ clear). Single
+## byte 0x40..0x7f, or the same value padded to 2..5 bytes (first byte 0xc0..0xff, then
+## zero chunks); v0 is the first byte's low 7 bits = 0x40 | mlow, so val = v0 & 0x3f is
+## the alignment without the flag, exactly as in the single-byte form.
 memalign_mem: "align="^val is mflag = 1 & topbit = 0 & mlow
 	[ val = (0 | mlow); ]
+{ export *[const]:8 val; }
+
+memalign_mem: "align="^val is topbit = 1 & mflag = 1 & v0; topbit = 0 & v1 = 0
+	[ val = (0 | ( v0 & 0x3f )); ]
+{ export *[const]:8 val; }
+
+memalign_mem: "align="^val is topbit = 1 & mflag = 1 & v0; topbit = 1 & v1 = 0; topbit = 0 & v2 = 0
+	[ val = (0 | ( v0 & 0x3f )); ]
+{ export *[const]:8 val; }
+
+memalign_mem: "align="^val is topbit = 1 & mflag = 1 & v0; topbit = 1 & v1 = 0; topbit = 1 & v2 = 0; topbit = 0 & v3 = 0
+	[ val = (0 | ( v0 & 0x3f )); ]
+{ export *[const]:8 val; }
+
+memalign_mem: "align="^val is topbit = 1 & mflag = 1 & v0; topbit = 1 & v1 = 0; topbit = 1 & v2 = 0; topbit = 1 & v3 = 0; topbit = 0 & v4 = 0
+	[ val = (0 | ( v0 & 0x3f )); ]
 { export *[const]:8 val; }
 
 memoffset: "offset="^ULeb128 is ULeb128 {
