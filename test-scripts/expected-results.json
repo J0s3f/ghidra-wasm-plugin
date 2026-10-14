@@ -304,7 +304,7 @@
     },
     "40_eh2_try_table_ref_null_exn.wasm": {
       "funcs": 1,
-      "instrs": 6,
+      "instrs": 5,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -312,7 +312,7 @@
     },
     "41_eh2_try_table_ref_null_typeidx1.wasm": {
       "funcs": 1,
-      "instrs": 6,
+      "instrs": 5,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -328,7 +328,7 @@
     },
     "43_eh_legacy_try_ref_null_exn.wasm": {
       "funcs": 1,
-      "instrs": 6,
+      "instrs": 5,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
@@ -336,7 +336,7 @@
     },
     "44_eh_legacy_try_ref_null_typeidx1.wasm": {
       "funcs": 1,
-      "instrs": 6,
+      "instrs": 5,
       "undefined_bytes": 0,
       "decompiled": 1,
       "decompile_failed": 0,
