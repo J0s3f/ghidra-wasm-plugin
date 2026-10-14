@@ -95,6 +95,14 @@ configuration (`.github/`) and internal documentation (`REPORT-*.md`) are exclud
 * **2.6.0**: garbage collection, new exception handling, component-model unwrapping, memory/table
   limit flags, constant-expression decoding.
 
+## Upgrading from 2.7.0
+
+Projects saved with 2.7.0 reopen and analyze unchanged for i32 modules (verified byte-identical on
+the fixture and the reference Rust module). A saved memory64 project keeps its 2.7.0-era memory
+block in the 32-bit `memory` space; freshly imported memory64 modules use the new `memory64` space.
+Reimport a memory64 module if you want the full 64-bit addressing model
+(`REPORT-UPGRADE-COMPAT-2.md`).
+
 ## Known open items
 
 * **128 MiB materialisation cap**: memory blocks are capped at 128 MiB with a warning. Decoded
