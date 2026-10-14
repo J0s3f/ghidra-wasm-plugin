@@ -116,6 +116,35 @@ jobs:
           --probes "$RUNNER_TEMP/fixture-probes" \
           --wabt "$RUNNER_TEMP/spectest-tools/wabt-1.0.42/bin"
 
+    - name: Fetch binaryen (decode-oracle second engine)
+      run: |
+        set -euxo pipefail
+        # The decode oracle cross-checks our plugin against TWO reference decoders: wabt
+        # (wasm-objdump) and binaryen (wasm-dis). The fixture-validity gate above fetches wabt
+        # only; this adds the pinned, checksum-verified binaryen release version_133 to the
+        # same tools dir (wabt is already present and is skipped). Per-OS x86_64 tarball
+        # (Windows + Linux); the sha256 is hard-coded in fetch_spectest_tools.ps1.
+        pwsh -NoProfile -File test-scripts/spectest/fetch_spectest_tools.ps1 \
+          -ToolsDir "$RUNNER_TEMP/spectest-tools" -WabtOnly -Binaryen
+
+    - name: Decode oracle (plugin == wabt == binaryen)
+      run: |
+        set -euxo pipefail
+        # "Our decode matches a second engine on real modules" as a checked property
+        # (REUSE_OPPORTUNITIES.md section 1 / work order step 4). Imports the pinned, committed,
+        # valid corpus modules (rust_plain + rust_simd128) through the plugin headlessly, then
+        # runs WABT wasm-objdump -d/-x AND binaryen wasm-dis (timeout-guarded) and compares
+        # function counts, per-function instruction counts and normalized opcode histograms
+        # against the recorded baseline (test-scripts/decode-oracle-baseline.json). Exits
+        # non-zero on any divergence. Fully offline apart from the oracles fetched above.
+        export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:?setup-ghidra did not export GHIDRA_INSTALL_DIR}"
+        export GHIDRA_HEADLESS_MAXMEM=1500M
+        pwsh -NoProfile -File test-scripts/decode-oracle.ps1 \
+          -WabtDir "$RUNNER_TEMP/spectest-tools/wabt-1.0.42/bin" \
+          -BinaryenDir "$RUNNER_TEMP/spectest-tools/binaryen-version_133/bin" \
+          -CorpusDir "$RUNNER_TEMP/decode-corpus" \
+          -WorkDir "$RUNNER_TEMP/decode-oracle"
+
     - name: Harness capture regression test
       run: |
         set -euxo pipefail
