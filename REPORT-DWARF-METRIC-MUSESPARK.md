@@ -180,8 +180,12 @@ itself would be circular — deliberately excluded).
   appended after `loopsum` (existing line numbers stable); fixtures remain
   generated, uncommitted.
 - No plugin (`src/`) change. `check-local.ps1` unmodified.
-- Full gate run: `.\test-scripts\check-local.ps1` — result recorded below
-  after the run (build + 210 probes + fixture + real module).
+- Full gate run: `.\test-scripts\check-local.ps1` — result: **GREEN (exit 0)** — build OK; 210 probes (192 imported +
+  18 import failures) all match expected-results.json; fixture SUMMARY
+  functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0;
+  real module SUMMARY functions=437 decompiled=437 failed=0
+  instructions=61658 undefined_bytes=156 (matches the MODERN_WASM_GAPS
+  section 2.4 baseline exactly).
 
 ## 9. Files changed
 
