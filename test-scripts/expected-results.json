@@ -1470,6 +1470,102 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "RN01_refnull_exn.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN02_refnull_array.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN03_refnull_struct.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN04_refnull_i31.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN05_refnull_eq.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN06_refnull_any.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN07_refnull_extern.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN08_refnull_func.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN09_refnull_none.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN10_refnull_noextern.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN11_refnull_nofunc.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RN12_refnull_noexn.wasm": {
+      "funcs": 1,
+      "instrs": 3,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "S01_str_const_concat_eq.wasm": {
       "funcs": null,
       "instrs": null,
@@ -1687,7 +1783,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 210,
+  "probe_count": 222,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

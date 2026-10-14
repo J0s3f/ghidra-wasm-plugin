@@ -659,6 +659,51 @@
       "class": "wabt-gap",
       "why": "0000028: error: expected valid block signature type"
     },
+    "RN01_refnull_exn.wasm": {
+      "class": "valid"
+    },
+    "RN02_refnull_array.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0x16)"
+    },
+    "RN03_refnull_struct.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: unable to read i64 leb128: function result type"
+    },
+    "RN04_refnull_i31.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0x14)"
+    },
+    "RN05_refnull_eq.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0x13)"
+    },
+    "RN06_refnull_any.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0x12)"
+    },
+    "RN07_refnull_extern.wasm": {
+      "class": "valid"
+    },
+    "RN08_refnull_func.wasm": {
+      "class": "valid"
+    },
+    "RN09_refnull_none.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0xf)"
+    },
+    "RN10_refnull_noextern.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0xe)"
+    },
+    "RN11_refnull_nofunc.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0xd)"
+    },
+    "RN12_refnull_noexn.wasm": {
+      "class": "wabt-gap",
+      "why": "000000f: error: expected valid result type (got -0xc)"
+    },
     "S01_str_const_concat_eq.wasm": {
       "class": "unsupported",
       "why": "000001f: error: unexpected opcode: 0xfb"

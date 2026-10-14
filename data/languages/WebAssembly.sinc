@@ -505,10 +505,37 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 # to the *named* abstract heap types (0x69..0x74) by its names table, so a concrete type index
 # (e.g. `ref.null 0`) had no matching name and its bytes were left undefined. This operand
 # accepts any s33. (The abstract types therefore print as their numeric heap-type value.)
+#
+# @@REFNULL-NAMES (Mistral Large 4): named constructors per abstract heap type byte, alongside
+# the generic s33 form. The Wasm 3.0 spec binary encoding (verified against
+# https://webassembly.github.io/spec/core/binary/types.html) maps:
+#   0x69=exn  0x6A=array  0x6B=struct  0x6C=i31  0x6D=eq  0x6E=any  0x6F=extern
+#   0x70=func  0x71=none  0x72=noextern  0x73=nofunc  0x74=noexn
+# Each named variant constrains all 8 bits of the byte (bytev=0xNN), making it strictly more
+# specific than the generic single-byte SLeb128 variant (which constrains only bit 7 via
+# topbit=0), so SLEIGH's pattern disambiguation prefers the named constructor. Concrete type
+# indices (>= 0, possibly multi-byte s33) still decode via the generic path below,
+# byte-identically (the s33 fallback for concrete type indices is unchanged).
+ref_null_ht_named: "exn" is bytev=0x69 { }
+ref_null_ht_named: "array" is bytev=0x6a { }
+ref_null_ht_named: "struct" is bytev=0x6b { }
+ref_null_ht_named: "i31" is bytev=0x6c { }
+ref_null_ht_named: "eq" is bytev=0x6d { }
+ref_null_ht_named: "any" is bytev=0x6e { }
+ref_null_ht_named: "extern" is bytev=0x6f { }
+ref_null_ht_named: "func" is bytev=0x70 { }
+ref_null_ht_named: "none" is bytev=0x71 { }
+ref_null_ht_named: "noextern" is bytev=0x72 { }
+ref_null_ht_named: "nofunc" is bytev=0x73 { }
+ref_null_ht_named: "noexn" is bytev=0x74 { }
+
 ref_null_ht: SLeb128 is SLeb128 {
 	export SLeb128;
 }
 
+:ref.null ref_null_ht_named is opc=0xd0; ref_null_ht_named; sp0_32; ctx_is_directive=0 {
+	sp0_32 = 0;
+}
 :ref.null "heaptype="^ref_null_ht is opc=0xd0; ref_null_ht; sp0_32; ctx_is_directive=0 {
 	sp0_32 = 0;
 }
