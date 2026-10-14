@@ -98,7 +98,7 @@ for a in "$@"; do
   if [ "$PREV" = "-import" ]; then FIX="$a"; fi
   PREV="$a"
 done
-BASE=$(basename "$FIX")
+BASE=${FIX##*/}
 NAMES=""
 case "$BASE" in
   call32.wasm|call64.wasm) NAMES="store_after_call" ;;
