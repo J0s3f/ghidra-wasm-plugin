@@ -52,8 +52,13 @@ if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out
 
 $testScript = Join-Path $PSScriptRoot "CallStoreTest.java"
 $supportDir = Join-Path $GhidraDir "support"
-$analyzeHeadless = Join-Path $supportDir "analyzeHeadless.bat"
-if (-not (Test-Path $analyzeHeadless)) { $analyzeHeadless = Join-Path $supportDir "analyzeHeadless" }
+if ([Environment]::OSVersion.Platform -eq "Win32NT") {
+    $analyzeHeadless = Join-Path $supportDir "analyzeHeadless.bat"
+    if (-not (Test-Path $analyzeHeadless)) { $analyzeHeadless = Join-Path $supportDir "analyzeHeadless" }
+} else {
+    $analyzeHeadless = Join-Path $supportDir "analyzeHeadless"
+    if (-not (Test-Path $analyzeHeadless)) { $analyzeHeadless = Join-Path $supportDir "analyzeHeadless.bat" }
+}
 if (-not (Test-Path $analyzeHeadless)) { throw "analyzeHeadless not found under $supportDir" }
   # Discover the installed extension's script dir (the directory name depends on the build:
   # "Ghidra-WASM" for the integration checkout, the worktree name for a private install).

@@ -60,8 +60,13 @@ if (-not $SkipBuild) {
 }
 
 $supportDir = Join-Path $GhidraDir "support"
-$headless = Join-Path $supportDir "analyzeHeadless.bat"
-if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
+if ([Environment]::OSVersion.Platform -eq "Win32NT") {
+    $headless = Join-Path $supportDir "analyzeHeadless.bat"
+    if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
+} else {
+    $headless = Join-Path $supportDir "analyzeHeadless"
+    if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless.bat" }
+}
 if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $supportDir" }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
