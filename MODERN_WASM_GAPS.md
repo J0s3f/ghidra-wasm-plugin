@@ -36,7 +36,7 @@ WebAssembly (Wasm 3.0 + active proposals).
 | Call-graph struct synthesis | **merged** (`REPORT-STRUCTS.md`): 352 structs, 255 retyped parameters on the real module; 591 → 437 raw offset accesses |
 | Dedicated memory address space | **merged** (`REPORT-MEMSPACE.md`): 32-bit `memory` space, 128 MiB stride, ≥ 8 memories supported |
 | B9 warning | **merged** (`REPORT-HARD.md`): "Module accepted but nothing was decoded" when a module declares content but yields nothing |
-| Fixture-validity gate | **merged**: 210 probes — 125 valid / 55 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
+| Fixture-validity gate | **merged**: 222 probes — 128 valid / 64 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
 
 ## 1. How this inventory was produced
 
@@ -45,7 +45,7 @@ Two independent sources, so that a claim can always be re-checked:
 1. **Code inventory** — the SLEIGH opcode tables (`data/languages/*.sinc`, `WebAssembly.slaspec`), the
    module/section parsers (`src/main/java/wasm/format/**`) and the analyzers
    (`src/main/java/wasm/analysis/**`).
-2. **Empirical probes** — 210 hand-encoded modules, one per feature, imported headlessly into Ghidra
+2. **Empirical probes** — 222 hand-encoded modules, one per feature, imported headlessly into Ghidra
    and measured. `test-scripts/gen_feature_probes.py` + `test-scripts/probes_*.py` generate them;
    `test-scripts/WasmFeatureReport.java` reports `funcs/instrs/undefined_bytes/decompiled` per
    program, `ListProgram.java` prints the disassembly and `DumpAll.java` the decompiled C.
@@ -136,7 +136,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **`br_table large` assertion cases** - 4 `assert_return` failures in the emulation harness are the deliberate `MAX_BR_TABLE_CASES` bound (decode-side) | open (deliberate bound) |
 | **Struct-synthesis v1 limits** - `call_indirect` targets not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN` | open (v1 scope, documented in `REPORT-STRUCTS.md`) |
 | **128 MiB materialisation cap** - memories larger than 128 MiB are clamped (with a warning); the SLEIGH truncates effective addresses to 32 bits, so decoded accesses above 4 GiB wrap (hybrid option: item 11) | documented limitation |
-| **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | cosmetic, open |
+| **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | **fixed** (`REPORT-REFNULL-MISTRAL.md`): named constructors per Wasm 3.0 absheaptype byte (0x69=exn … 0x74=noexn) added alongside the generic s33 form; SLEIGH's specificity disambiguation prefers the 8-bit-constrained named variants over the 1-bit-constrained single-byte SLeb128, so `ref.null struct`/`ref.null exn`/`ref.null func`/etc. now print by name while concrete type indices still decode via the s33 path byte-identically (`ref.null heaptype=0x1`). 12 new probes `RN01`-`RN12` cover every abstract heap type in a function body. Residual: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` still prints numerically (the `multi_blocktype` immediate table was not extended - optional, cosmetic); `ref.test`/`ref.cast`/`br_on_cast*` `ht=` operands in GCOps.sinc also still print numerically (same pattern could apply there too) |
 | **Multi-byte block signatures on `try`/`try_table`** - decode multi-byte valtypes/type indices now (see 2.2); the typed `BlockTypeInfo` path (grafted from `feat/tryblocktype-catjam`) fully decodes the ref-typed cases (`undefined_bytes` 8 -> 0 on probes `40`/`41`) | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`) |
 | **Extended-const `Data markup conflict` warning** on probes `22`-`24`/`27` - `WasmLoader.createData` logs a warning worth investigating | open (low priority) |
 | **Emulation coverage** - 4 remaining `assert_return` gaps (all `br_table large`); the other 9 recorded spec-`assert_*` gaps are resolved | emulator coverage, not decoder gaps |
@@ -145,11 +145,11 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 
 The authoritative per-probe expectations are machine-checked data, not prose:
 
-* `test-scripts/expected-results.json` - the probe gate (**204 probes**: 186 probed-imported
+* `test-scripts/expected-results.json` - the probe gate (**222 probes**: 204 probed-imported
   + 18 expected import failures; `funcs`/`instrs`/`undefined_bytes`/`decompiled`/`decompile_failed`
   per probe), enforced by `.github/workflows/probes.yml` and locally by `test-scripts/check-local.ps1`.
 * `test-scripts/fixture-validity.json` - the external-oracle classification of every probe (see 6.5):
-  **121 valid / 53 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
+  **128 valid / 64 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
   `oracle_skip: ["binaryen"]`.
 * Real module `rasterbator_rs_bg.wasm`: `functions=437 decompiled=437 failed=0 instructions=61658
   undefined_bytes=156` - the 156 bytes are 39 import stubs x 4, i.e. **0 real decode gaps**; checked on
@@ -323,7 +323,7 @@ materialisation cap only (does not fix addressing).
 
 *Acceptance if implemented*: probes `B8_04_mem64_over4g` / `B8_05_mem64_just_over4g` list their
 >4 GiB effective addresses untruncated (evidence: `ListProgram.java` before/after plus a targeted
-emulation assert); all 210 probes and the real module (`437/437/0/61658/156`) unchanged; the
+emulation assert); all 222 probes and the real module (`437/437/0/61658/156`) unchanged; the
 fixture-validity gate unchanged.
 
 ## 5. Adding a probe (how to extend this document)
@@ -457,12 +457,12 @@ A probe that is not recorded, or whose verdict changes, fails the gate; `--updat
 both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
 silently.
 
-Classification of the **204 probes** (current state):
+Classification of the **222 probes** (current state):
 
 | class | count | meaning |
 | --- | --- | --- |
-| `valid` | 121 | accepted by both oracles |
-| `wabt-gap` | 53 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
+| `valid` | 128 | accepted by both oracles |
+| `wabt-gap` | 64 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
 | `unsupported` | 17 | neither oracle implements the feature (components, string builtins, `memory.discard`) |
 | `invalid` | 13 | deliberately invalid negative probes (malformed / overflowing bodies) |
 
