@@ -174,7 +174,7 @@ $scopedExpectation = [ordered]@{
 
 $versionDirNames = Get-GhidraSettingsVersionDirNames -GhidraDir $installA
 $appDirName = Get-GhidraAppDirName -GhidraDir $installA
-$nestedTargetDir = "$isolatedRoot\ghidra\$targetVersionDir"
+$nestedTargetDir = (Resolve-Path -LiteralPath "$isolatedRoot\ghidra\$targetVersionDir").Path
 
 # --- 1. the scope derived from the selected install -------------------------------------------
 Check "the selected install's version directory name is derived" `

@@ -141,15 +141,45 @@ jobs:
 
         # ------------------------------------------------------ overwrite permission
         # Uploading over an existing release replaces its assets, so it has to be asked for.
-        # A re-run of the SAME tag push stays idempotent: the tag is the commit that was built,
-        # and the same-revision check above already refuses a tag that was moved to other commits.
+        # Push runs are idempotent only when their tag has NOT moved: if the release already
+        # exists, its recorded target commit (release.targetCommitish, resolved to a commit)
+        # must still be the commit this push verified above; otherwise the maintainer must
+        # re-dispatch manually with allow_overwrite=true. Truth table:
+        #   event   release exists?   existing target == built commit?   allow_overwrite?  result
+        #   push    no               n/a                              n/a               create
+        #   push    yes              yes                              n/a               replace (clobber)
+        #   push    yes              no                               n/a               refuse, ask to re-dispatch
+        #   dispatch n/a (handled)   n/a                              true              replace (clobber)
+        #   dispatch n/a (handled)   n/a                              false             refuse if release exists
         OVERWRITE=0
         if [ "${INPUT_ALLOW_OVERWRITE:-false}" = "true" ]; then
           echo "allow_overwrite=true : replacing the assets of an existing release is permitted"
           OVERWRITE=1
         fi
         if [ "$EVENT_NAME" = "push" ]; then
-          OVERWRITE=1
+          if gh release view "$TAG" --repo "$REPOSITORY" --json tagName >/dev/null 2>&1; then
+            EXISTING_TARGET="$(gh release view "$TAG" --repo "$REPOSITORY" \
+              --json targetCommitish --jq '.targetCommitish // empty' 2>/dev/null || true)"
+            EXISTING_SHA="$EXISTING_TARGET"
+            case "$EXISTING_TARGET" in
+              ''|null) EXISTING_SHA="" ;;
+              *[!0-9a-fA-F]*) \
+                EXISTING_SHA="$(gh api "repos/$REPOSITORY/commits/${EXISTING_TARGET}" \
+                  --jq '.sha' 2>/dev/null || true)" ;;
+            esac
+            if [ -z "$EXISTING_SHA" ] || [ "$EXISTING_SHA" != "$TAG_SHA" ]; then
+              echo "::error::release '$TAG' already exists and its recorded target commit " \
+                "(${EXISTING_TARGET:-<empty>}, resolved to ${EXISTING_SHA:-<unresolved>}) differs " \
+                "from this push's verified tag commit $TAG_SHA (the tag appears to have moved). " \
+                "Refusing to overwrite without an explicit decision - re-dispatch this workflow " \
+                "manually with allow_overwrite=true to replace the existing release's assets."
+              exit 1
+            fi
+            echo "push: existing release '$TAG' targets the same commit $TAG_SHA - idempotent replace permitted"
+            OVERWRITE=1
+          else
+            echo "push: release '$TAG' does not yet exist - will create it"
+          fi
         fi
 
         # -------------------------------------------------------------------- publish
