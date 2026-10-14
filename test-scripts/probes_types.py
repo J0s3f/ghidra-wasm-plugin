@@ -125,6 +125,17 @@ write("B03d_custom_page_size_overrun.wasm", module(
     data_section([active_data(i32_const(0) + END, b"OVERFLOW")]),
 ))
 
+# B03e: 65537 1-byte pages = 65537 bytes. This used to be rejected by the legacy 32-bit
+# 65536-page limit (which assumed 64 KiB pages); with a 1-byte page size it stays inside
+# the 2^32-byte address space and must import successfully (review fixture).
+write("B03e_custom_page_size_65537_pages.wasm", module(
+    type_section(functype([], [])),
+    memory_section_custom([(0x08, 65537, None, 0)]),  # flags=8: custom page size, exponent=0 (1-byte pages)
+    func_section([0]),
+    export_section([("f", 0, 0)]),
+    code_section([END]),
+))
+
 # ---------------------------------------------------------------------------------------------
 # Constant expression probes: extended-const, v128.const, ref.null/ref.func, unknown opcode
 # ---------------------------------------------------------------------------------------------

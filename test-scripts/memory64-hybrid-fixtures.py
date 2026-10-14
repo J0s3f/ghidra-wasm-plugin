@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate auxiliary hybrid constructor/emulation checks (outside the 222-probe gate).
+"""Generate auxiliary hybrid constructor/emulation checks (outside the 223-probe gate).
 Usage: python test-scripts/memory64-hybrid-fixtures.py <private scratch directory>
 """
 import sys

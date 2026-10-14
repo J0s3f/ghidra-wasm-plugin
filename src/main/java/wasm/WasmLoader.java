@@ -548,19 +548,45 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 * @throws IOException when the declared limits are out of range; the caller lets this fail the
 	 *         import (a load failure must be visible, see {@link #load})
 	 */
+	/**
+	 * Page-count bound derived from the page size (custom-page-sizes: the bound is on the
+	 * byte size, not the page count). {@code maxPages = 2^(addressBits - pageSizeExponent)}.
+	 */
+	public static long maxMemoryPages(WasmResizableLimits memory) {
+		boolean is64 = memory.is64Bit();
+		int bits = is64 ? 64 : 32;
+		long exponent = memory.hasCustomPageSize() ? memory.getPageSizeExponent() : 16L;
+		if (exponent < 0) {
+			exponent = 16L;
+		}
+		long shift = (long) bits - exponent;
+		if (shift < 0) {
+			return 0L; // page size exceeds the address space: no positive page count is valid
+		}
+		if (is64 && shift >= 64) {
+			// exponent 0 gives a 2^64-page bound which does not fit in a signed long; saturate
+			// to the all-ones value (the maximum unsigned 64-bit page count).
+			return -1L;
+		}
+		if (is64 && shift == 63) {
+			return Long.MIN_VALUE; // 1L << 63 (unsigned 2^63) without sign concerns in comparisons
+		}
+		return 1L << (int) shift;
+	}
+
 	private static void validateMemoryLimits(int memidx, WasmResizableLimits memory) throws IOException {
 		long initial = memory.getInitial();
-		long limit = memory.is64Bit() ? MAX_MEMORY64_PAGES : MAX_MEMORY32_PAGES;
-		if (memory.hasMaximum() && initial > memory.getMaximum()) {
+		long limit = maxMemoryPages(memory);
+		if (memory.hasMaximum() && Long.compareUnsigned(initial, memory.getMaximum()) > 0) {
 			throw new IOException("Memory " + memidx + " is invalid: initial size " + initial
 					+ " page(s) exceeds the declared maximum " + memory.getMaximum() + " page(s)");
 		}
-		if (initial > limit) {
+		if (Long.compareUnsigned(initial, limit) > 0) {
 			throw new IOException("Memory " + memidx + " is invalid: initial size " + initial
 					+ " page(s) exceeds the " + (memory.is64Bit() ? "64-bit" : "32-bit") + " limit of "
 					+ limit + " page(s)");
 		}
-		if (memory.hasMaximum() && memory.getMaximum() > limit) {
+		if (memory.hasMaximum() && Long.compareUnsigned(memory.getMaximum(), limit) > 0) {
 			throw new IOException("Memory " + memidx + " is invalid: maximum size " + memory.getMaximum()
 					+ " page(s) exceeds the " + (memory.is64Bit() ? "64-bit" : "32-bit") + " limit of "
 					+ limit + " page(s)");

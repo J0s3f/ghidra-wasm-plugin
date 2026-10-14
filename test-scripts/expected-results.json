@@ -478,6 +478,14 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "B03e_custom_page_size_65537_pages.wasm": {
+      "funcs": 1,
+      "instrs": 2,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "B04_limits_shared_memory64.wasm": {
       "funcs": 1,
       "instrs": 2,
@@ -1783,7 +1791,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 222,
+  "probe_count": 223,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",
