@@ -52,7 +52,12 @@ if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out
 
 $testScript = Join-Path $PSScriptRoot "CallStoreTest.java"
 $analyzeHeadless = Join-Path $GhidraDir "support\analyzeHeadless.bat"
-$extScriptsDir = Join-Path $GhidraDir "Ghidra\Extensions\ghidra-wt-r1-callstore\ghidra_scripts"
+  # Discover the installed extension's script dir (the directory name depends on the build:
+  # "Ghidra-WASM" for the integration checkout, the worktree name for a private install).
+  $extRoot = Join-Path (Join-Path $GhidraDir "Ghidra") "Extensions"
+  $extDir = Get-ChildItem $extRoot -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName "ghidra_scripts") } | Select-Object -First 1
+  if (-not $extDir) { throw "No installed WebAssembly extension under $extRoot (build-install.ps1 must have run)" }
+  $extScriptsDir = Join-Path $extDir.FullName "ghidra_scripts"
 if (-not (Test-Path $extScriptsDir)) { throw "Extension scripts dir not found: $extScriptsDir (build-install.ps1 must have run)" }
 Copy-Item $testScript -Destination (Join-Path $extScriptsDir "CallStoreTest.java") -Force
 

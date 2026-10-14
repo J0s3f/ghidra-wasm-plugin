@@ -45,7 +45,7 @@ Two independent sources, so that a claim can always be re-checked:
 1. **Code inventory** — the SLEIGH opcode tables (`data/languages/*.sinc`, `WebAssembly.slaspec`), the
    module/section parsers (`src/main/java/wasm/format/**`) and the analyzers
    (`src/main/java/wasm/analysis/**`).
-2. **Empirical probes** - 223 hand-encoded modules, one per feature, imported headlessly into Ghidra
+2. **Empirical probes** — 223 hand-encoded modules, one per feature, imported headlessly into Ghidra
    and measured. `test-scripts/gen_feature_probes.py` + `test-scripts/probes_*.py` generate them;
    `test-scripts/WasmFeatureReport.java` reports `funcs/instrs/undefined_bytes/decompiled` per
    program, `ListProgram.java` prints the disassembly and `DumpAll.java` the decompiled C.
