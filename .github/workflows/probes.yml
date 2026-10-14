@@ -88,6 +88,7 @@ jobs:
         pwsh -NoProfile -File test-scripts/check-brtable-default.ps1 -SkipBuild -OutDir "$RUNNER_TEMP/semantics-brtable"
         pwsh -NoProfile -File test-scripts/check-memarg-padding.ps1 -OutDir "$RUNNER_TEMP/semantics-memarg"
         pwsh -NoProfile -File test-scripts/check-memory64-hybrid.ps1 -OutDir "$RUNNER_TEMP/semantics-hybrid"
+        pwsh -NoProfile -File test-scripts/test-call-store-gate.ps1 -OutDir "$RUNNER_TEMP/semantics-call-store-gate"
 
     - name: Fixture decompile baseline
       run: |

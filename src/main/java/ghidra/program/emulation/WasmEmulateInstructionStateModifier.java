@@ -372,6 +372,8 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			for(int i=numParams; i<numLocals; i++) {
 				memState.setChunk(zero, regSpace, localsOffset + i * WasmLoader.REG_SIZE, zero.length);
 			}
+			/* The copy/zeroing happened inside this behaviour; keep the slot cache current. */
+			syncRegisterSlots(memState, regSpace, localsOffset, numLocals);
 		}
 	}
 
@@ -396,6 +398,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			long stackOffset = helper.getStackOffset(stackEffect.getPopHeight());
 			int count = stackEffect.getToPop().length;
 			helper.copyRegisters(emu.getMemoryState(), stackOffset, baseOffset, count);
+			syncRegisterSlots(emu.getMemoryState(), registerSpace(emu), baseOffset, count);
 		}
 	}
 
@@ -420,6 +423,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			long stackOffset = helper.getStackOffset(stackEffect.getPushHeight());
 			int count = stackEffect.getToPush().length;
 			helper.copyRegisters(emu.getMemoryState(), baseOffset, stackOffset, count);
+			syncRegisterSlots(emu.getMemoryState(), registerSpace(emu), stackOffset, count);
 		}
 	}
 
@@ -448,6 +452,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			long stackOffset = helper.getStackOffset(stackEffect.getPopHeight());
 			int count = stackEffect.getToPop().length;
 			helper.copyRegisters(memState, stackOffset, baseOffset, count);
+			syncRegisterSlots(memState, registerSpace(emu), baseOffset, count);
 
 			// Push stack onto shadow stack
 			helper.pushShadowStackRegs(memState, helper.getStackOffset(0), stackEffect.getPopHeight());
@@ -478,15 +483,22 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			long stackOffset = helper.getStackOffset(stackEffect.getPopHeight());
 			int count = stackEffect.getToPop().length;
 			helper.copyRegisters(memState, stackOffset, baseOffset, count);
+			syncRegisterSlots(memState, registerSpace(emu), baseOffset, count);
 
 			// Pop stack from shadow stack
 			int stackHeight = helper.popShadowStackRegs(memState, helper.getStackOffset(0));
+			/* The restored caller stack slots now hold the caller's values again; refresh the
+			 * cache so a following load/RMW that overwrites its address slot uses the live
+			 * address rather than the callee's stale one. */
+			syncRegisterSlots(memState, registerSpace(emu), helper.getStackOffset(0), stackHeight);
 
 			// Push outputs onto stack
 			helper.copyRegisters(memState, baseOffset, helper.getStackOffset(stackHeight), count);
+			syncRegisterSlots(memState, registerSpace(emu), helper.getStackOffset(stackHeight), count);
 
 			// Pop locals from shadow stack
-			helper.popShadowStackRegs(memState, localsBase);
+			int localsCount = helper.popShadowStackRegs(memState, localsBase);
+			syncRegisterSlots(memState, registerSpace(emu), localsBase, localsCount);
 		}
 	}
 
@@ -536,6 +548,40 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 	private static long slotKey(long offset, int size) {
 		return (offset << 8) | (size & 0xff);
+	}
+
+	/*
+	 * The sizes under which an operand-stack slot is tracked. A behaviour that copies a
+	 * whole REG_SIZE-wide slot rewrites every view of it, so all of them are refreshed.
+	 */
+	private static final int[] SYNC_SIZES = { 1, 2, 4, 8, 16 };
+
+	/**
+	 * Refresh {@link #regSlotValues} for a contiguous run of register-space slots that a
+	 * CALLOTHER behaviour wrote directly through {@link MemoryState}.
+	 *
+	 * <p>The call prologue/epilogue and the branch stack moves write operand slots inside
+	 * {@link OpBehaviorOther#evaluate}, not through the instruction's pcode, so
+	 * {@link #recordRegisterWrites} never observes them. Without this the cache keeps the
+	 * callee's value for a slot the call epilogue restored (or a branch moved), and the
+	 * post-instruction unwrapped-EA check for an overwriting load/RMW takes that stale value:
+	 * a valid access falsely traps and a required overflow trap can be missed. Re-reading the
+	 * live slots keeps every tracked view (4- and 8-byte included) synchronized.
+	 */
+	private void syncRegisterSlots(MemoryState memState, AddressSpace register, long startOffset, int count) {
+		if (count <= 0) {
+			return;
+		}
+		for (int i = 0; i < count; i++) {
+			long slot = startOffset + (long) i * WasmLoader.REG_SIZE;
+			for (int size : SYNC_SIZES) {
+				regSlotValues.put(slotKey(slot, size), memState.getValue(register, slot, size));
+			}
+		}
+	}
+
+	private AddressSpace registerSpace(Emulate emulate) {
+		return emulate.getLanguage().getAddressFactory().getAddressSpace("register");
 	}
 
 	/**
