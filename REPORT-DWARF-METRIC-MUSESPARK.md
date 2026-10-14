@@ -17,12 +17,15 @@ Decompilation Wiki's variable-typing methodology (REUSE_OPPORTUNITIES.md §C).
 2. Subject: the generated fixture from `test-scripts/make_dwarf_fixture.ps1`
    (extended with `repr(C)` structs passed by pointer); any other
    `.debug_info`-carrying module (e.g. corpus `rust_debuginfo`) usable via
-   `--wasm`; offline after generation. — MET (fixture fully; `rust_debuginfo`
-   partially, see §7).
+   `--wasm`; offline after generation. — MET (fixture via the built-in
+   reader; `rust_debuginfo` via the secondary Ghidra-DWARF ground truth,
+   §6b).
 3. Ground truth read from the module's `.debug_info` (struct field
    offsets/sizes, function parameter types); llvm-dwarfdump checked first,
    absent → built-in minimal reader used instead, stated precisely; command
-   FAILS LOUDLY when ground truth is unavailable. — MET.
+   FAILS LOUDLY when ground truth is unavailable. — MET (plus a labelled
+   secondary mode reusing Ghidra-imported DWARF types where the reader
+   cannot parse; the mode is always stated in output + JSON).
 4. Recovered types read from the pinned install via headless `DumpTypes.java`
    (structures + retyped prototypes), `DumpAll.java` optional. — MET.
 5. Clear metric: DWARF structs/fields found; recovered structures;
@@ -40,9 +43,15 @@ Decompilation Wiki's variable-typing methodology (REUSE_OPPORTUNITIES.md §C).
 
 ```
 --run:  make_dwarf_fixture.ps1 → fixture_dwarf.wasm
-        → analyzeHeadless (DumpTypes.java [+ DumpAll.java]) on pinned install
+        → analyzeHeadless (DumpTypes.java [+ DumpAll.java] + DumpDwarfTypes.java)
         → dwarf_type_metric.py analyse → text report + --json
 ```
+
+Two ground-truth modes (`--ground-truth`, always stated in output + JSON):
+`dwarf-reader` (default) parses the module's `.debug_info` with the built-in
+reader — most independent; `ghidra-dwarf` reuses the DWARF types Ghidra
+itself imported (`/DWARF/` category via `DumpDwarfTypes.java`, secondary —
+see caveat in §6b).
 
 - **Ground truth** (`DwarfReader`, in-file): minimal DWARF v4 reader for the
   rustc/LLVM `.debug_info`/`.debug_abbrev`/`.debug_str` subset — structs,
@@ -130,24 +139,68 @@ What the metric does/does not measure: it measures whether the *synthesized
 anonymous* structures cover DWARF field offsets and whether pointer params
 were retyped to the covering struct. It does NOT compare field names or
 scalar field types (synth emits `undefinedN`), does not score locals/globals,
-and does not credit Ghidra's own DWARF type import (comparing that against
-itself would be circular — deliberately excluded).
+and in `dwarf-reader` mode does not credit Ghidra's own DWARF type import
+(comparing that against itself would be circular — deliberately excluded;
+that comparison is exactly what the secondary `ghidra-dwarf` mode does, with
+its caveat stated).
+
+## 6b. Baseline: real module `rust_debuginfo` (secondary ground truth)
+
+Scored binary (generated into scratch, NOT committed):
+`C:\Users\micro\AppData\Local\Temp\dwarf-metric-corpus\rust_debuginfo.wasm`,
+sha256 `FC0CDB5C9BBEF6CA0B9935F87B17DE51F6A91D656926FB963A91D5FF24A06C29`,
+286481 bytes (manifest `6FE0…` differs only via embedded absolute build
+paths; ground truth comes from the binary itself). Built with
+`test-scripts/corpus/rust-src/build.ps1` (this also rebuilt `rust_plain` and
+`rust_simd128` byte-identical to the manifest).
+
+Command:
+
+```powershell
+python3 test-scripts/dwarf_type_metric.py --run --wasm <above> --no-decomp `
+  --ground-truth ghidra-dwarf --out-dir <scratch> --json <scratch>\metric.json
+```
+
+Observed output (headless: 454 DWARF types imported, 71 structs created,
+75 parameters retyped across 51 functions):
+
+```text
+ground truth              : Ghidra-imported DWARF types (/DWARF/ category)
+dwarf structs w/ fields   : 239 (1076 fields, 0 subprograms, 0 struct-ptr params)
+recovered structures      : 71
+retyped functions         : 51 (with struct-typed params)
+field-offset recall       : micro 0.614  macro 0.831
+field-exact recall        : micro 0.335  macro 0.351
+parameter-type recovery   : n/a (Ghidra does not import DWARF function signatures)
+```
+
+Caveats (stated by the tool on every run): the ground truth is Ghidra's own
+DWARF import, so this measures the import against the synthesis rather than
+the module against it — less independent than §6. Param/focus scoring need
+DWARF subprogram signatures, which Ghidra does not import, so they are n/a
+here (the fixture covers them). `DWARFSTRUCT_COUNT` was 348 raw (25 on the
+fixture); dedupe + field-less filtering leaves the scored 239.
+
+Methodology check: on the fixture both modes agree — reader mode
+(19 structs, micro 0.895/macro 0.864) vs ghidra mode (21 structs, micro
+0.741/macro 0.879); `Point`/`Rect` resolve identically in both
+(size 8/20, same offsets, Jaccard-1.0 `wasm_struct_4` for Point).
 
 ## 7. Limitations and open items
 
-1. **`rust_debuginfo` (real module) not yet scored — reader hardening needed.**
-   Rebuilt locally (`rust_debuginfo.wasm`, 286481 bytes; sha differs from
-   `corpus/manifest.json` only via embedded absolute build paths).
-   Plugin side works: **454 DWARF types imported, 71 structs synthesized, 75
-   params retyped** (observed `RETYPED` lines, e.g. BTreeMap node functions
-   retyped to `wasm_struct_0/1/...`). Reader side aborts loudly (exit 2):
-   after 3041 clean DIEs it hits linker-dead DIEs (subprogram with
-   low_pc=206848 against a 19305-byte code section, 31 MB high_pc —
-   unrelocated addends from linking without `--gc-sections`) whose garbage
-   location-expr length desyncs the sequential walk (`abbrev code 519 not in
-   table` at CU0+29616). Hardening = dead-DIE-tolerant resync; deliberately
-   NOT attempted (heuristic resync risks silent misalignment, which the task
-   forbids). The fixture covers all acceptance bullets in the meantime.
+1. **Built-in reader hardened but still not enough for `rust_debuginfo`.**
+   Added: tolerant bad-strp substitution (positions authoritative, values
+   advisory), per-DIE validity (strings resolve, refs in range, addresses
+   sane), `DW_FORM_ref_sig8` consume, validation-gated resync (first
+   position starting 6 consecutive fully-valid DIEs; every skip reported;
+   per-CU exact-consumption still rejects misalignment), depth cap.
+   Fixture output is byte-identical with zero resyncs (regression proof).
+   On `rust_debuginfo` the resync fires past the dead cluster but resumes at
+   the wrong nesting depth (values validate, depth is unverifiable locally),
+   ending the top-level list early — still a loud abort, never a silent
+   number. Fixing that needs backtracking search (unbounded time); the
+   secondary ground-truth mode (§6b) was used instead. Resync machinery stays
+   (helps other modules, always reported).
 2. **`rect_area` miss is informative, not a failure**: its own struct
    (`wasm_struct_8`, covers 3/4 Rect offsets — `tag` is never accessed so no
    access-based synth can learn it) loses Jaccard-best to the bigger
@@ -169,13 +222,17 @@ itself would be circular — deliberately excluded).
   constant-offset accesses** — the proxy saturates precisely because struct
   synthesis retyped everything (`param1->field_0` instead of
   `*(int *)(param1+0)`), which is why the DWARF metric is needed.
-- `test-scripts/DumpTypes.java` fix (this workstream's only harness-code
-  change besides the fixture generator): retyped params surface as
+- `test-scripts/DumpTypes.java` fix (harness-code change): retyped params surface as
+  change: retyped params surface as
   `PointerDB`, not `PointerDataType`, so the old `instanceof` reported
   `RETYPED_COUNT 0` despite 3 retyped params. Now tests the `Pointer`
   interface (both implement it); output format unchanged, counts now truthful
   (`RETYPED_COUNT 3`, matching the analyzer's own `3 parameters retyped`
   log). No gate parses this script's output (verified by search).
+- `test-scripts/DumpDwarfTypes.java` (new): dumps Ghidra-imported `/DWARF/`
+  structures (offset/size/typename per field) plus a category survey; feeds
+  the secondary ground-truth mode. Also collected by `--run` (cheap, no
+  decompilation).
 - `test-scripts/make_dwarf_fixture.ps1`: additive struct/`repr(C)` functions
   appended after `loopsum` (existing line numbers stable); fixtures remain
   generated, uncommitted.
@@ -189,7 +246,10 @@ itself would be circular — deliberately excluded).
 
 ## 9. Files changed
 
-- `test-scripts/dwarf_type_metric.py` (new, ~1000 lines): the metric.
+- `test-scripts/dwarf_type_metric.py` (new, ~1400 lines): the metric, both
+  ground-truth modes, resync-hardened reader.
+- `test-scripts/DumpDwarfTypes.java` (new): `/DWARF/` type dump for the
+  secondary mode.
 - `test-scripts/make_dwarf_fixture.ps1` (extended): struct-bearing fixture source.
 - `test-scripts/DumpTypes.java` (1-condition fix): truthful RETYPED reporting.
 - `REPORT-DWARF-METRIC-MUSESPARK.md` (this file).

@@ -26,6 +26,12 @@ Usage (analyse already-collected logs)::
         --wasm <module.wasm> --types-log <dumptypes.log> \\
         [--decomp-log <dumpall.log>] [--json out.json]
 
+    python3 test-scripts/dwarf_type_metric.py --wasm <module.wasm>
+        --types-log <dumptypes.log> --ground-truth ghidra-dwarf
+        --dwarf-log <dumpdwarftypes.log>   (secondary ground truth: the
+        DWARF types Ghidra itself imported; for modules whose .debug_info
+        defeats the built-in reader)
+
 End-to-end (generate the struct-bearing fixture, run the plugin headlessly on
 the pinned Ghidra install, then score)::
 
@@ -45,9 +51,15 @@ DWARF reader: a minimal built-in DWARF version-4 reader for the
 typedef/const/pointer/base-type chains). ``llvm-dwarfdump`` (rustup
 ``llvm-tools`` component) is deliberately NOT required: it is not installed
 in this toolchain and the built-in reader keeps the command offline and
-dependency-free. The command FAILS LOUDLY (exit 2, no silent zeros) when
-ground truth is unavailable: no ``.debug_info`` section, an unsupported DWARF
-version, or no usable struct DIEs (e.g. a ``line-tables-only`` module).
+dependency-free. Real-world modules can carry linker-dead DIEs (unrelocated
+addends, garbage location expressions) that defeat sequential parsing; the
+reader skips such dead zones by resynchronising at the first position that
+starts several consecutive fully-validated DIEs (strings resolve, refs in
+range, addresses sane). Every skip is reported loudly (stdout + JSON); the
+per-CU exact-consumption check still rejects any misalignment. The command
+FAILS LOUDLY (exit 2, no silent zeros) when ground truth is unavailable: no
+``.debug_info`` section, an unsupported DWARF version, no usable struct DIEs
+(e.g. a ``line-tables-only`` module), or an unskippable corrupt region.
 """
 
 import argparse
@@ -131,6 +143,23 @@ def read_wasm_sections(path):
                     exports.append(name)
         pos += size
     return custom, exports
+
+
+def read_code_size(path):
+    """Return the code-section size of a wasm module (None if absent)."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    if data[:4] != b"\x00asm":
+        raise ValueError("not a wasm module: %s" % path)
+    pos = 8
+    while pos < len(data):
+        section_id = data[pos]
+        pos += 1
+        size, pos = read_uleb(data, pos)
+        if section_id == 10:
+            return size
+        pos += size
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +258,7 @@ class DwarfError(Exception):
 
 
 class DwarfReader:
-    def __init__(self, sections):
+    def __init__(self, sections, code_size=None):
         for name in DWARF_SECTIONS:
             if name not in sections:
                 raise DwarfError(
@@ -240,6 +269,12 @@ class DwarfReader:
         self.abbrev = sections[".debug_abbrev"]
         self.strings = sections[".debug_str"]
         self._abbrev_cache = {}
+        # Code-section size: subprogram low_pc values above it mark dead
+        # (gc'd, unrelocated) DIEs during resync validation. None disables.
+        self.code_size = code_size
+        # Resync events (dead zones skipped), reset per collect() call.
+        self.resyncs = []
+        self._resync_left = 0
 
     # -- abbrev tables ----------------------------------------------------
     def abbrev_table(self, offset):
@@ -300,6 +335,10 @@ class DwarfReader:
         if form == F_REF_UDATA:
             value, pos = read_uleb(buf, pos)
             return ("ref", value), pos
+        if form == F_REF_SIG8:
+            # Type-unit signature: no .debug_types here, so it can never
+            # resolve, but its size is known - consume and mark unresolvable.
+            return ("sig", int.from_bytes(buf[pos:pos + 8], "little")), pos + 8
         if form == F_SEC_OFFSET:
             return int.from_bytes(buf[pos:pos + 4], "little"), pos + 4
         if form == F_EXPRLOC:
@@ -345,57 +384,165 @@ class DwarfReader:
             # by the unit length, not by a null terminator: a single-CU
             # section simply ends after the root DIE's closing null.
             dies, pos = self._read_children(table, pos, end, addr_size,
-                                            require_terminator=False)
+                                            unit_length, self.code_size,
+                                            require_terminator=False,
+                                            resync_budget=8,
+                                            _events=self.resyncs)
             if pos != end:
                 raise DwarfError("unit at offset %d ends at %d, expected %d"
                                  % (cu_base, pos, end))
             yield cu_base, addr_size, dies
 
-    def _read_children(self, table, pos, end, addr_size,
-                         require_terminator=True):
+    # Upper bound for a plausible function length / address delta. Real
+    # code offsets in these modules are kilobytes; linker-dead DIEs carry
+    # unrelocated addends (megabytes+) that mark them during validation.
+    _ADDR_PLAUSIBLE = 1 << 26
+
+    # Consecutive fully-valid DIEs required to accept a resync position.
+    _RESYNC_PROOF = 6
+
+    def _die_valid(self, values, unit_length):
+        """Value-level validity: positions already consumed exactly."""
+        for value in values.values():
+            if isinstance(value, str) and value.startswith("<bad-strp"):
+                return False
+            if isinstance(value, tuple) and value[0] == "ref":
+                if unit_length is not None and not 0 <= value[1] < unit_length:
+                    return False
+        if self.code_size is not None:
+            low = values.get(A_LOW_PC)
+            if isinstance(low, int) and not isinstance(low, bool):
+                if low > self.code_size:
+                    return False
+        high = values.get(A_HIGH_PC)
+        if isinstance(high, int) and not isinstance(high, bool):
+            if high > self._ADDR_PLAUSIBLE:
+                return False
+        return True
+
+    @staticmethod
+    def _subtree_valid(dies):
+        return all(d["valid"] and DwarfReader._subtree_valid(d["children"])
+                   for d in dies)
+
+    def _read_children(self, table, pos, end, addr_size, unit_length=None,
+                       code_size=None, require_terminator=True,
+                       resync_budget=0, _depth=0, _events=None, max_dies=None):
+        if code_size is None:
+            code_size = self.code_size
         children = []
         while pos < end:
-            die_off = pos  # DIE offset: at the abbrev code (refs point here)
-            code, pos = read_uleb(self.info, pos)
-            if code == 0:
+            if max_dies is not None and len(children) >= max_dies:
                 return children, pos
+            die_off = pos  # DIE offset: abbrev code (refs point here)
             try:
-                tag, has_children, attrs = table[code]
-            except KeyError:
-                raise DwarfError("abbrev code %d not in table" % code)
-            values = {}
-            for attr, form in attrs:
-                values[attr], pos = self._read_attr(form, pos, addr_size)
-            die = {"off": die_off, "tag": tag, "attrs": values, "children": []}
-            if has_children:
-                die["children"], pos = self._read_children(table, pos, end, addr_size)
-            children.append(die)
+                code, pos = read_uleb(self.info, pos)
+                if code == 0:
+                    return children, pos
+                try:
+                    tag, has_children, attrs = table[code]
+                except KeyError:
+                    raise DwarfError("abbrev code %d not in table" % code)
+                if _depth > 64:
+                    raise DwarfError("DIE nesting exceeds 64 levels")
+                values = {}
+                for attr, form in attrs:
+                    values[attr], pos = self._read_attr(form, pos, addr_size)
+                die = {"off": die_off, "tag": tag, "attrs": values,
+                       "children": [],
+                       "valid": self._die_valid(values, unit_length)}
+                if has_children:
+                    die["children"], pos = self._read_children(
+                        table, pos, end, addr_size, unit_length, code_size,
+                        True, resync_budget, _depth + 1, _events, None)
+                children.append(die)
+            except (KeyError, ValueError, IndexError, DwarfError) as exc:
+                if max_dies is not None or resync_budget <= 0:
+                    raise
+                found = self._find_resync(table, die_off,
+                                          end, addr_size, unit_length,
+                                          code_size, _depth)
+                if found is None:
+                    raise DwarfError(
+                        "cannot parse .debug_info near offset %d (%s) and no "
+                        "resynchronisation position validates" % (die_off, exc))
+                rpos, rdies, rnew = found
+                if _events is not None:
+                    _events.append({"fail_off": die_off, "resume_off": rpos,
+                                    "skipped": rpos - die_off,
+                                    "depth": _depth})
+                children.extend(rdies)
+                pos = rnew
+                resync_budget -= 1
         if require_terminator:
             raise DwarfError("DIE list not terminated before end of unit")
         return children, pos
 
+    def _find_resync(self, table, pos, end, addr_size, unit_length,
+                     code_size, depth):
+        """First position that starts _RESYNC_PROOF fully-valid DIEs.
+
+        Dead (gc'd, unrelocated) DIE clusters defeat sequential parsing
+        when their garbage bytes mimic structural forms. Restarting at the
+        first position that yields several consecutive DIEs whose every
+        value validates (strings resolve, refs in range, addresses sane)
+        and continuing from there skips only the dead zone; the per-CU
+        exact-consumption check still rejects any misalignment loudly.
+        """
+        rpos = pos
+        info = self.info
+        while rpos < end:
+            first = info[rpos]
+            # Cheap filter: plausible single-byte abbrev codes dominate.
+            if first < 0x80 and first not in table:
+                rpos += 1
+                continue
+            try:
+                dies, npos = self._read_children(
+                    table, rpos, end, addr_size, unit_length, code_size,
+                    True, 0, depth, None, self._RESYNC_PROOF)
+                if len(dies) == self._RESYNC_PROOF and \
+                        self._subtree_valid(dies):
+                    return rpos, dies, npos
+            except Exception:
+                pass
+            rpos += 1
+        return None
+
     # -- type graph ---------------------------------------------------------
     def collect(self):
-        """Return (structs, subprograms).
+        """Return (structs, subprograms, stats).
 
         structs: list of dicts {name, size, fields:[{name, offset, size}]}.
         Only definitions (not declarations) with at least one member whose
-        offset is known are kept; duplicates across CUs collapse.
+        offset is known are kept; duplicates across CUs collapse. Structs
+        whose names did not resolve (dead-DIE corruption artifacts) are
+        excluded and counted in stats (they are not ground truth).
         subprograms: list of dicts {name, params:[{name, type_desc}]} where
         type_desc = (kind, struct_name_or_None) with kind in
         {"struct_ptr", "other_ptr", "by_value_struct", "scalar"}.
+        stats: {"resyncs": [...], "dropped_structs": int}.
         """
+        self.resyncs = []
         dies_by_off = {}
         structs = []
         subprograms = []
         seen_structs = set()
+        dropped = 0
         for cu_base, addr_size, tops in self.compilation_units():
             self._index(tops, cu_base, dies_by_off)
             for die in tops:
                 self._walk(die, cu_base, addr_size, dies_by_off,
                            structs, subprograms, seen_structs,
                            in_subprogram=None)
-        return structs, subprograms
+        kept = []
+        for struct in structs:
+            if struct["name"].startswith("<bad-strp"):
+                dropped += 1
+                continue
+            kept.append(struct)
+        return kept, subprograms, {"resyncs": self.resyncs,
+                                   "dropped_structs": dropped}
 
     def _index(self, dies, cu_base, index):
         for die in dies:
@@ -577,8 +724,10 @@ def parse_types_log(path):
     """Parse a DumpTypes.java log.
 
     Returns {"structs": {name: {"size": int, "fields": [(off, size)]}},
-    "retyped": {func: prototype}, "struct_count": int, "retyped_count": int}.
+    "retyped": {func: prototype}, "struct_count": int, "retyped_count": int,
+    "program": str-or-None}.
     """
+    program = None
     structs = {}
     retyped = {}
     struct_count = None
@@ -587,6 +736,10 @@ def parse_types_log(path):
     with open(path, encoding="utf-8", errors="replace") as fh:
         for raw in fh:
             line = strip_harness(raw).strip()
+            m = TYPES_PROG_RE.match(line)
+            if m:
+                program = m.group("prog").strip()
+                continue
             m = STRUCT_RE.match(line)
             if m:
                 current = m.group("name")
@@ -615,7 +768,63 @@ def parse_types_log(path):
                     retyped_count = None
                 continue
     return {"structs": structs, "retyped": retyped,
-            "struct_count": struct_count, "retyped_count": retyped_count}
+            "struct_count": struct_count, "retyped_count": retyped_count,
+            "program": program}
+
+
+DWARFSTRUCT_RE = re.compile(r"^DWARFSTRUCT\s+(?P<name>.+)\s+size=(?P<size>\d+)\s*$")
+DWARFFIELD_RE = re.compile(r"^DWARFFIELD\s+(?P<off>\d+)\s+\S+\s+.*\((?P<size>\d+) bytes\)\s*$")
+DWARDTYPES_RE = re.compile(r"^DWARDTYPES\s+(?P<prog>.*)$")
+TYPES_PROG_RE = re.compile(r"^TYPES\s+(?P<prog>.*)$")
+
+
+def parse_dwarf_log(path):
+    """Parse a DumpDwarfTypes.java log (Ghidra-imported /DWARF/ structs).
+
+    Returns {"structs": [{"name", "size", "fields": [{"offset", "size"}]}], ,
+    "program": str-or-None, "struct_count": int-or-None}. Identical
+    (name, size, fields) entries collapse (the importer repeats shared
+    types across categories).
+    """
+    structs = []
+    seen = set()
+    program = None
+    struct_count = None
+    current = None
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = strip_harness(raw).strip()
+            m = DWARDTYPES_RE.match(line)
+            if m:
+                program = m.group("prog").strip()
+                continue
+            m = DWARFSTRUCT_RE.match(line)
+            if m:
+                current = {"name": m.group("name").strip(),
+                           "size": int(m.group("size")), "fields": []}
+                structs.append(current)
+                continue
+            m = DWARFFIELD_RE.match(line)
+            if m and current is not None:
+                current["fields"].append({"offset": int(m.group("off")),
+                                          "size": int(m.group("size"))})
+                continue
+            if line.startswith("DWARFSTRUCT_COUNT"):
+                try:
+                    struct_count = int(line.split()[-1])
+                except ValueError:
+                    struct_count = None
+                current = None
+                continue
+    unique = []
+    for struct in structs:
+        key = (struct["name"], struct["size"],
+               tuple(sorted((f["offset"], f["size"]) for f in struct["fields"])))
+        if key not in seen:
+            seen.add(key)
+            unique.append(struct)
+    return {"structs": unique, "program": program,
+            "struct_count": struct_count}
 
 
 def parse_decomp_log(path):
@@ -894,23 +1103,42 @@ def print_report(report, metric, dwarf_subprograms, decomp):
     print("dwarf type-recovery metric")
     print("  subject module            : %s" % report["subject"])
     print("  DWARF reader              : %s" % report["dwarf_reader"])
+    print("  ground truth              : %s" % report["ground_truth_source"])
     print("  dwarf structs w/ fields   : %d (%d fields, %d subprograms, "
           "%d struct-ptr params)" % (
               metric["dwarf_structs"], metric["dwarf_fields"],
               len(dwarf_subprograms),
               sum(1 for s in dwarf_subprograms for p in s["params"]
                   if p["kind"] == "struct_ptr")))
+    resyncs = report.get("ground_truth", {}).get("resyncs", [])
+    dropped = report.get("ground_truth", {}).get("dropped_structs", 0)
+    if resyncs or dropped:
+        skipped = sum(e["skipped"] for e in resyncs)
+        print("  ground-truth resyncs       : %d dead zone(s) skipped (%d bytes), "
+              "%d corrupt struct(s) dropped" % (len(resyncs), skipped, dropped))
+        for e in resyncs[:10]:
+            print("    dead zone: .debug_info+%d -> +%d (%d bytes, depth %d)" % (
+                e["fail_off"], e["resume_off"], e["skipped"], e["depth"]))
     print("  recovered structures      : %d" % metric["recovered_structures"])
+    if report["recovered"]["retyped_count"] is not None:
+        print("  retyped functions         : %d (with struct-typed params)" % (
+            report["recovered"]["retyped_count"]))
     print("  field-offset recall       : micro %.3f  macro %.3f" % (
         metric["field_offset_recall_micro"], metric["field_offset_recall_macro"]))
     print("  field-exact recall        : micro %.3f  macro %.3f" % (
         metric["field_exact_recall_micro"], metric["field_exact_recall_macro"]))
+    if metric["focus_field_offset_recall"] is None and not dwarf_subprograms:
+        print("  focus structs             : n/a (ghidra-dwarf mode: no subprograms)")
     if metric["focus_field_offset_recall"] is not None:
         print("  focus structs %s: offset %.3f exact %.3f" % (
             metric["focus_structs"], metric["focus_field_offset_recall"],
             metric["focus_field_exact_recall"]))
     if metric["param_struct_recall"] is None:
-        print("  parameter-type recovery   : n/a (no scorable struct-ptr params)")
+        if not dwarf_subprograms:
+            print("  parameter-type recovery   : n/a (ghidra-dwarf mode: Ghidra "
+                  "does not import DWARF function signatures)")
+        else:
+            print("  parameter-type recovery   : n/a (no scorable struct-ptr params)")
     else:
         print("  parameter-type recovery   : %d/%d = %.3f (%d unscored)" % (
             metric["param_struct_hits"], metric["param_struct_total"],
@@ -964,11 +1192,45 @@ def cmd_analyze(args):
         return die_loud("subject module has no %s; it carries no DWARF type "
                         "ground truth (rebuild with -C debuginfo=2)"
                         % ", ".join(missing))
-    try:
-        reader = DwarfReader(custom)
-        dwarf_structs, dwarf_subprograms = reader.collect()
-    except (DwarfError, ValueError, IndexError) as exc:
-        return die_loud("cannot parse .debug_info: %s" % exc)
+    mode = args.ground_truth
+    ground = {"resyncs": [], "dropped_structs": 0}
+    if mode == "ghidra-dwarf":
+        # Secondary ground truth: the DWARF types Ghidra itself imported
+        # (/DWARF/ category via DumpDwarfTypes.java). Complete even when the
+        # built-in reader cannot parse the module, but less independent (it
+        # measures Ghidra's DWARF import against the plugin's synthesis, not
+        # the module's DWARF against it). CAVEAT recorded in the report.
+        if not args.dwarf_log or not os.path.isfile(args.dwarf_log):
+            return die_loud("--ground-truth ghidra-dwarf needs --dwarf-log "
+                            "with a DumpDwarfTypes.java log")
+        dwarf = parse_dwarf_log(args.dwarf_log)
+        if not dwarf["structs"] and dwarf["struct_count"] is None:
+            return die_loud("DumpDwarfTypes log %s has no DWARFSTRUCT lines; "
+                            "rerun DumpDwarfTypes.java on the subject module"
+                            % args.dwarf_log)
+        types_probe = parse_types_log(args.types_log)
+        if (dwarf["program"] and types_probe["program"]
+                and dwarf["program"] != types_probe["program"]):
+            return die_loud("log/module mismatch: dwarf log is for %r but "
+                            "types log is for %r"
+                            % (dwarf["program"], types_probe["program"]))
+        dwarf_structs = [{"name": st["name"], "size": st["size"],
+                          "fields": [{"offset": f["offset"], "size": f["size"],
+                                      "type": None} for f in st["fields"]]}
+                         for st in dwarf["structs"]]
+        dwarf_structs = [st for st in dwarf_structs if st["fields"]]
+        if not dwarf_structs:
+            return die_loud("no DWARF-imported structs with fields in %s"
+                            % args.dwarf_log)
+        dwarf_subprograms = []
+        ground_source = "Ghidra-imported DWARF types (/DWARF/ category)"
+    else:
+        try:
+            reader = DwarfReader(custom, read_code_size(args.wasm))
+            dwarf_structs, dwarf_subprograms, ground = reader.collect()
+        except (DwarfError, ValueError, IndexError) as exc:
+            return die_loud("cannot parse .debug_info: %s" % exc)
+        ground_source = "built-in DWARF4 reader (.debug_info)"
     if not dwarf_structs:
         return die_loud("no struct/class/union DIEs with known field offsets "
                         "in .debug_info (module built without type debuginfo, "
@@ -986,6 +1248,11 @@ def cmd_analyze(args):
         "dwarf_reader": ("built-in DWARF4 reader (primary; llvm-dwarfdump %s)"
                          % reason),
         "llvm_dwarfdump": dwarfdump,
+        "ground_truth_source": ground_source,
+        "ground_truth": {
+            "resyncs": ground["resyncs"],
+            "dropped_structs": ground["dropped_structs"],
+        },
         "exports": export_names,
         "dwarf_subprograms": [
             {"name": s["name"],
@@ -1019,7 +1286,8 @@ def run_headless(ghidra_dir, script_path, wasm, out_dir, with_decomp):
     shutil.rmtree(project_dir, ignore_errors=True)
     os.makedirs(project_dir, exist_ok=True)
     log_path = os.path.join(out_dir, "headless.log")
-    scripts = ["DumpTypes.java"] + (["DumpAll.java"] if with_decomp else [])
+    scripts = ["DumpTypes.java", "DumpDwarfTypes.java"] + \
+        (["DumpAll.java"] if with_decomp else [])
     cmd = [headless, project_dir, "Reg", "-import", os.path.abspath(wasm),
            "-scriptPath", os.path.abspath(script_path)]
     for script in scripts:
@@ -1074,6 +1342,7 @@ def cmd_run(args):
     args.wasm = wasm
     args.types_log = log_path
     args.decomp_log = log_path if not args.no_decomp else None
+    args.dwarf_log = log_path
     return cmd_analyze(args)
 
 
@@ -1083,6 +1352,15 @@ def main():
     ap.add_argument("--wasm", default=None, help="subject module WITH .debug_info")
     ap.add_argument("--types-log", default=None, help="DumpTypes.java log")
     ap.add_argument("--decomp-log", default=None, help="DumpAll.java log (optional)")
+    ap.add_argument("--ground-truth", default="dwarf-reader",
+                    choices=("dwarf-reader", "ghidra-dwarf"),
+                    help="ground-truth source: parse the module's .debug_info "
+                         "with the built-in reader (default, most independent) "
+                         "or reuse the DWARF types Ghidra itself imported "
+                         "(needs --dwarf-log; secondary, see report)")
+    ap.add_argument("--dwarf-log", default=None,
+                    help="DumpDwarfTypes.java log (required for "
+                         "--ground-truth ghidra-dwarf)")
     ap.add_argument("--json", default=None, help="write the report as JSON here")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--run", action="store_true",
