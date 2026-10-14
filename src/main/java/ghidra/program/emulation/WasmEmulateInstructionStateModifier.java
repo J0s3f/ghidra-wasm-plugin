@@ -236,6 +236,16 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	 */
 	private static final long REG_STACK_BASE = 0x50000000L;
 
+	/*
+	 * Longest prefix of a load/store instruction the emulator re-parses from the
+	 * instruction stream: the opcode byte (0x28..0x3e, or 0xfd/0xfe), a padded u32
+	 * sub-opcode LEB after 0xfd/0xfe (at most 5 bytes), the padded u32 flags/align LEB
+	 * (at most 5), the padded u32 memidx LEB (at most 5) and the padded u64 offset LEB
+	 * (at most 10). A fully padded SIMD/atomic memarg instruction is 26 bytes long; a
+	 * shorter buffer truncates the offset LEB, which decodeULEB then reports as -1.
+	 */
+	private static final int MAX_MEMARG_INSTRUCTION_BYTES = 26;
+
 	public WasmEmulateInstructionStateModifier(Emulate emu) {
 		super(emu);
 
@@ -615,7 +625,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 	/** Decode the memory index from a scalar, SIMD, or atomic memarg. */
 	private int accessedMemoryIndex(Emulate emulate, Address instructionAddress) {
-		byte[] bytes = readBytes(emulate, instructionAddress, 24);
+		byte[] bytes = readBytes(emulate, instructionAddress, MAX_MEMARG_INSTRUCTION_BYTES);
 		if (bytes == null || bytes.length < 2) {
 			return -1;
 		}
@@ -896,7 +906,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		if (analysisProvider == null || analysisProvider.getMemoryCount() == 0) {
 			return;
 		}
-		byte[] bytes = readBytes(emulate, instructionAddress, 24);
+		byte[] bytes = readBytes(emulate, instructionAddress, MAX_MEMARG_INSTRUCTION_BYTES);
 		if (bytes == null || bytes.length < 2) {
 			return;
 		}
