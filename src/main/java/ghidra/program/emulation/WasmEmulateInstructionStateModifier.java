@@ -129,7 +129,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 				memoryPageSize[i] = WasmLoader.getMemoryPageSize(limits);
 				memoryPages[i] = limits.getInitial();
 				memoryMaxPages[i] = limits.hasMaximum() ? limits.getMaximum()
-						: (limits.is64Bit() ? (1L << 48) : WasmLoader.MAX_MEMORY32_PAGES);
+						: WasmLoader.maxMemoryPages(limits);
 			}
 
 			funcidxByAddress = new HashMap<>();

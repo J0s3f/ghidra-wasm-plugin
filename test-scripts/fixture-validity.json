@@ -193,6 +193,9 @@
     "B03d_custom_page_size_overrun.wasm": {
       "class": "valid"
     },
+    "B03e_custom_page_size_65537_pages.wasm": {
+      "class": "valid"
+    },
     "B04_limits_shared_memory64.wasm": {
       "class": "valid"
     },
