@@ -28,32 +28,41 @@
 
 .EXAMPLE
     # full oracle run (fetch the oracles first with fetch_spectest_tools.ps1 -WabtOnly -Binaryen)
-    .\test-scripts\decode-oracle.ps1 `
-        -WabtDir "$env:TEMP\spectest-tools\wabt-1.0.42\bin" `
-        -BinaryenDir "$env:TEMP\spectest-tools\binaryen-version_133\bin"
+    ./test-scripts/decode-oracle.ps1 `
+        -WabtDir "$env:TEMP/spectest-tools/wabt-1.0.42/bin" `
+        -BinaryenDir "$env:TEMP/spectest-tools/binaryen-version_133/bin"
 
 .EXAMPLE
     # re-record the baseline after an intentional decode change
-    .\test-scripts\decode-oracle.ps1 -WabtDir <bin> -BinaryenDir <bin> -Update
+    ./test-scripts/decode-oracle.ps1 -WabtDir <bin> -BinaryenDir <bin> -Update
 #>
 param(
     [string]$GhidraDir = "",
-    [string]$CorpusDir = "$env:TEMP\corpus",
-    [string]$Manifest  = "$PSScriptRoot\corpus\manifest.json",
+    [string]$CorpusDir = "",                                           # default: <temp>/corpus (computed below)
+    [string]$Manifest  = "$PSScriptRoot/corpus/manifest.json",         # forward slashes: cross-platform
     [string]$ScriptDir = "$PSScriptRoot",
-    [string]$WorkDir   = "$env:TEMP\wasm-decode-oracle",
+    [string]$WorkDir   = "",                                           # default: <temp>/wasm-decode-oracle (below)
     [string]$WabtDir,                 # directory containing wasm-objdump
     [string]$BinaryenDir,             # directory containing wasm-dis
     [string[]]$Modules = @("rust_plain", "rust_simd128"),  # pinned valid committed set
     [int]$MaxCpu = 2,
     [string]$MaxMem = "1500M",
     [int]$TimeoutSec = 1500,
-    [string]$Baseline = "$PSScriptRoot\decode-oracle-baseline.json",
+    [string]$Baseline  = "$PSScriptRoot/decode-oracle-baseline.json",  # forward slashes: python3 consumes this
     [switch]$Update,
     [switch]$KeepProjects
 )
 
 $ErrorActionPreference = "Stop"
+
+# --- cross-platform path defaults --------------------------------------------------------------
+# $CorpusDir/$WorkDir default to a per-user temp dir via [IO.Path]::GetTempPath() rather than an
+# $env:TEMP-based literal, because $env:TEMP is empty on Linux (it would yield a relative path),
+# and Join-Path so the separator is always the platform's - a backslash must never reach a
+# non-PowerShell tool (python3, analyzeHeadless). $Manifest/$Baseline above use forward slashes
+# in their string literals, which PowerShell cmdlets AND python3 accept on both Windows and Linux.
+if (-not $CorpusDir) { $CorpusDir = Join-Path ([IO.Path]::GetTempPath()) "corpus" }
+if (-not $WorkDir)   { $WorkDir   = Join-Path ([IO.Path]::GetTempPath()) "wasm-decode-oracle" }
 
 # --- Ghidra install ----------------------------------------------------------------------------
 # Prefer an explicit -GhidraDir, then GHIDRA_INSTALL_DIR (what CI exports), then the worktree's

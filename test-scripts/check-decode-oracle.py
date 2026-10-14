@@ -48,7 +48,7 @@ Usage:
 
 Exit codes: 0 = every module's decode matches the baseline and the engines agree,
             1 = a divergence (cross-engine disagreement or drift from the baseline),
-            2 = setup problem (missing tool / artifact / malformed baseline).
+            2 = setup problem (missing tool / artifact / missing-or-malformed baseline).
 Stdlib only.
 """
 import argparse
@@ -400,6 +400,13 @@ def main() -> int:
         return 2
 
     baseline_path = pathlib.Path(args.baseline)
+    # A missing baseline is a setup error, not an empty baseline: without --update the checker
+    # would otherwise treat every module as "not recorded in baseline" and report a confusing
+    # wall of per-fact divergences (this is exactly how a wrong --baseline path surfaced in CI).
+    if not baseline_path.exists() and not args.update:
+        print(f"ERROR: baseline not found: {baseline_path} "
+              f"(pass --update to record it, or fix the --baseline path)")
+        return 2
     baseline = {"modules": {}}
     if baseline_path.exists():
         try:

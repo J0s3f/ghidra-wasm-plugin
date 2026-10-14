@@ -288,6 +288,34 @@ allow-list is empty for every module — the node pin needs no divergence excusi
 CI runtime: the two oracle downloads (wabt ~5 MB, binaryen ~111 MB) plus two small headless
 imports and three oracle invocations per module. No other downloads; the modules are committed.
 
+### CI portability fix (follow-up after a Linux CI failure)
+
+The first Linux CI run of this step failed: the driver's path **defaults** used backslashes and
+`$env:TEMP` (`"$PSScriptRoot\decode-oracle-baseline.json"`, `"$env:TEMP\corpus"`, ...). PowerShell
+normalizes backslashes in provider paths, so local Windows runs passed, but `$Baseline` is passed
+**verbatim to python3**, where a backslash is not a separator on Linux - the baseline was not
+found, the checker started empty, and every fact reported "not recorded in baseline" (exit 1).
+(The engine comparisons themselves all agreed on Linux: bodies 72/72/72, real_instrs
+8542/8542, simd128 26/26, binaryen nodes present.)
+
+Fixes (this branch):
+- `decode-oracle.ps1`: `$Manifest`/`$Baseline` defaults now use forward slashes
+  (`"$PSScriptRoot/corpus/manifest.json"`, `"$PSScriptRoot/decode-oracle-baseline.json"`), which
+  PowerShell cmdlets **and** python3 accept on both Windows and Linux; `$CorpusDir`/`$WorkDir`
+  default via `[IO.Path]::GetTempPath()` + `Join-Path` (never an `$env:TEMP` literal, which is empty
+  on Linux) so the separator is always the platform's. A grep audit confirms no path default or
+  path string handed to a non-PowerShell tool contains a backslash (only regex escapes remain).
+- `check-decode-oracle.py`: a missing `--baseline` without `--update` now exits **2** with
+  `ERROR: baseline not found: <path> (pass --update to record it, or fix the --baseline path)`
+  instead of silently treating it as empty - this makes the CI failure self-explanatory.
+  `--update` against a missing baseline still records a new one (unchanged).
+
+Re-verified after the fix: (a) a defaults run (no `-Baseline`/`-CorpusDir`/`-WorkDir`/`-Manifest`)
+is green (exit 0); (b) a nonexistent `--baseline` exits 2 with the new message; (c) grep shows no
+backslash path defaults; (d) the **exact CI invocation** from `probes.yml` (forward-slash paths,
+`GHIDRA_INSTALL_DIR` exported, no `-Baseline`/`-Manifest`) is green (exit 0); (e) the gate smoke is
+unchanged (210 probes, fixture 4/4, real module 437/437/0/61658/156, exit 0).
+
 ## Robustness
 
 * `wasm-dis` is run **only** on the pinned, valid, committed modules (never on malformed
