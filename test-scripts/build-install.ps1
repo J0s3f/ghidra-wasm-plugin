@@ -92,6 +92,35 @@ try {
         Write-Host ("installed: {0}  jar: {1}  ({2} bytes)" -f $_.Name, $jar.Name, $jar.Length)
     }
 
+    # Ghidra also loads extensions from its per-user settings directory (an isolated test install
+    # keeps that directory inside itself, see new-test-install.ps1). A second copy there - e.g. one
+    # installed through Ghidra's GUI - shadows the freshly built extension: in particular it
+    # silently supplies a STALE compiled language, because the zip's source files carry 1980
+    # timestamps and a previously compiled .sla therefore always looks newer than the sources.
+    # Remove every such copy so the freshly installed extension is the only one Ghidra can see.
+    $settingsRoots = @()
+    if ($env:APPDATA) { $settingsRoots += (Join-Path $env:APPDATA "ghidra") }
+    if ($env:XDG_CONFIG_HOME) { $settingsRoots += (Join-Path $env:XDG_CONFIG_HOME "ghidra") }
+    if ($HOME) { $settingsRoots += (Join-Path $HOME ".config/ghidra"); $settingsRoots += (Join-Path $HOME ".ghidra") }
+    $settingsRoots += (Join-Path $GhidraDir "settings")
+    foreach ($root in $settingsRoots) {
+        if (-not (Test-Path $root)) { continue }
+        Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $extRoot = Join-Path $_.FullName "Extensions"
+            if (-not (Test-Path $extRoot)) { return }
+            Get-ChildItem $extRoot -Directory -ErrorAction SilentlyContinue | Where-Object {
+                Test-Path (Join-Path $_.FullName "data\languages\WebAssembly.slaspec")
+            } | ForEach-Object {
+                try {
+                    Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop
+                    Write-Host ("removed shadowing extension copy: {0}" -f $_.FullName) -ForegroundColor Yellow
+                } catch {
+                    Write-Warning ("could not remove shadowing extension copy {0}: {1}" -f $_.FullName, $_.Exception.Message)
+                }
+            }
+        }
+    }
+
     # Record which checkout this install now holds, so a later measurement can prove the extension
     # under test is the one that was built here (see the freshness guard in run_probes.ps1).
     $stampFile = Join-Path $GhidraDir "ghidra-wasm-install-stamp.json"
