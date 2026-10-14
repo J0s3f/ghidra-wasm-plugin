@@ -7,13 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (created at this commit if it does not exist)"
+        description: "Existing release tag to publish to. No default: it has to be typed deliberately, it must already exist, and it must resolve to the same commit as this run."
         required: true
-        default: "v2.5.0"
       ghidra_versions:
         description: "JSON array of Ghidra versions to build against"
         required: true
         default: '["12.1.4","12.1.3"]'
+      allow_overwrite:
+        description: "Allow replacing the assets of a release that already exists (default: false)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -31,6 +34,10 @@ jobs:
     steps:
     - name: Clone Repository
       uses: actions/checkout@v7
+      with:
+        # Always build exactly the commit that triggered this run. The tag input of a manual
+        # dispatch must never decide what gets built - only where the build is published.
+        ref: ${{ github.sha }}
 
     - name: Install Java
       uses: actions/setup-java@v6
@@ -67,6 +74,10 @@ jobs:
     steps:
     - name: Clone Repository
       uses: actions/checkout@v7
+      with:
+        # The commit being published is the one that triggered the run - not the tag input, and
+        # not the tip of whatever branch a dispatch was started from.
+        ref: ${{ github.sha }}
 
     - name: Download built extensions
       uses: actions/download-artifact@v8
@@ -74,23 +85,89 @@ jobs:
         path: dist
         merge-multiple: true
 
-    - name: Create release and attach extensions
+    - name: Verify the tag, then create or update the release
       env:
         GH_TOKEN: ${{ github.token }}
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_TAG: ${{ inputs.tag }}
+        INPUT_ALLOW_OVERWRITE: ${{ inputs.allow_overwrite }}
+        REF_NAME: ${{ github.ref_name }}
+        TARGET_SHA: ${{ github.sha }}
+        REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-        TAG="${{ github.event_name == 'push' && github.ref_name || inputs.tag }}"
-        echo "Releasing $TAG"
-        ls -l dist
-        if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-          echo "Release $TAG already exists - uploading assets"
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" dist/*.zip --clobber
+
+        # ------------------------------------------------------------- target tag
+        #   push/tag  : the tag itself triggered this run.
+        #   dispatch  : the tag is operator input. It has NO default, so an accidental dispatch
+        #               cannot fall back to some stale tag (this workflow used to default it to
+        #               v2.5.0, which let any branch publish over the 2.5.0 assets).
+        if [ "${EVENT_NAME:-}" = "push" ]; then
+          TAG="$REF_NAME"
         else
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+          TAG="$(printf '%s' "${INPUT_TAG:-}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          if [ -z "$TAG" ]; then
+            echo "::error::no release tag given (event=$EVENT_NAME, inputs.tag='${INPUT_TAG:-}'). The tag input is required and has no default - pass an existing tag."
+            exit 1
+          fi
+        fi
+        echo "target tag   : $TAG"
+        echo "built commit : $TARGET_SHA"
+        echo "event        : $EVENT_NAME"
+
+        # ------------------------------- the tag must exist and must be the commit we built
+        # A dispatch checks out the dispatched ref - usually a branch - while the tag input only
+        # selects the destination. So the tag is resolved through the API and compared with the
+        # commit that was actually built. Without this, a dispatch from any branch could replace
+        # the assets of an older release.
+        if ! TAG_SHA="$(gh api "repos/$REPOSITORY/commits/$TAG" --jq '.sha' 2>/dev/null)"; then
+          echo "::error::cannot read tag '$TAG' in $REPOSITORY (does it exist?). This workflow never creates a tag - refusing to publish."
+          exit 1
+        fi
+        if [ -z "$TAG_SHA" ] || [ "$TAG_SHA" = "null" ]; then
+          echo "::error::tag '$TAG' does not resolve to a commit in $REPOSITORY. Create and push the tag first."
+          exit 1
+        fi
+        if [ "$TAG_SHA" != "$TARGET_SHA" ]; then
+          echo "::error::tag '$TAG' resolves to $TAG_SHA but this run built $TARGET_SHA - refusing to publish artifacts of a different revision to '$TAG'."
+          exit 1
+        fi
+        HEAD_SHA="$(git rev-parse HEAD)"
+        if [ "$HEAD_SHA" != "$TARGET_SHA" ]; then
+          echo "::error::the checkout is $HEAD_SHA, expected $TARGET_SHA - refusing to publish a build that is not the tag's commit."
+          exit 1
+        fi
+        echo "verified      : tag '$TAG' -> $TAG_SHA == the built commit"
+
+        # ------------------------------------------------------ overwrite permission
+        # Uploading over an existing release replaces its assets, so it has to be asked for.
+        # A re-run of the SAME tag push stays idempotent: the tag is the commit that was built,
+        # and the same-revision check above already refuses a tag that was moved to other commits.
+        OVERWRITE=0
+        if [ "${INPUT_ALLOW_OVERWRITE:-false}" = "true" ]; then
+          echo "allow_overwrite=true : replacing the assets of an existing release is permitted"
+          OVERWRITE=1
+        fi
+        if [ "$EVENT_NAME" = "push" ]; then
+          OVERWRITE=1
+        fi
+
+        # -------------------------------------------------------------------- publish
+        ls -l dist
+        if gh release view "$TAG" --repo "$REPOSITORY" --json tagName >/dev/null 2>&1; then
+          if [ "$OVERWRITE" -ne 1 ]; then
+            echo "::error::release '$TAG' already exists. Re-publishing would replace its assets - re-dispatch with allow_overwrite=true to confirm, or delete the release '$TAG' first."
+            exit 1
+          fi
+          echo "Release $TAG already exists - uploading assets (overwrite permitted)"
+          gh release upload "$TAG" --repo "$REPOSITORY" dist/*.zip --clobber
+        else
+          echo "Creating release $TAG"
+          gh release create "$TAG" --repo "$REPOSITORY" \
             --title "Version ${TAG#v}" \
             --notes-file RELEASE_NOTES.md \
-            --target "$GITHUB_SHA" \
+            --target "$TARGET_SHA" \
             dist/*.zip
         fi
-        gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,assets \
+        gh release view "$TAG" --repo "$REPOSITORY" --json tagName,assets \
           --template '{{.tagName}}{{range .assets}} -> {{.name}}{{end}}{{"\n"}}'
