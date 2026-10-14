@@ -1,11 +1,11 @@
-# Ghidra-WASM 2.7.0
+# Ghidra-WASM 2.8.0
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
 
 ## Download
 
-Use the asset that matches your Ghidra version — the name begins with `ghidra_12.1.4_PUBLIC_` for
+Use the asset that matches your Ghidra version - the name begins with `ghidra_12.1.4_PUBLIC_` for
 Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 **File → Install Extensions → +** and restart Ghidra. You do not need to unzip the file.
 
@@ -13,97 +13,105 @@ The release assets are *cleaned* zips: the development harness (`test-scripts/`)
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
 
-## New in 2.7.0 (since 2.6.1)
+## New in 2.8.0 (since 2.7.0)
 
-### Decoder / loader
+### memory64: hybrid address spaces (full 64-bit effective addresses)
 
-* **Dedicated 32-bit `memory` address space** with a 128 MiB stride between memory indices
-  (memory 0 at offset 0, memory N at `N * 0x08000000`). This supports **≥ 8 memories** without
-  colliding with the module image in `ram` at `CODE_BASE`. All 32-bit memory address arithmetic
-  stays in 32 bits, so decompiled C has no ZEXT noise. memory64 addresses above 4 GiB wrap
-  (documented).
-* **Section diagnostics + 64-bit data offsets**: out-of-range and duplicate sections are rejected
-  with a clear diagnostic naming the section, id and file offset. 64-bit (memory64) data-segment
-  offsets are placed; offsets ≥ 4 GiB are clamped with a log.
-* **Reference typing + `cont` types**: precise `(ref null ht)` / `(ref ht)` type model with
-  subtype-aware validation. `ref.null` types match precisely. `cont` types (`0x5D cont <s33
-  typeidx>`) parse in the type section and resolve to the referenced function type.
-* **B9 warning**: a module that declares content but yields no functions, memories or tables
-  logs "Module accepted but nothing was decoded" with the declared/loaded counts.
-* **128 MiB materialisation cap**: every memory block is capped at 128 MiB (`MAX_MEMORY_BLOCK_BYTES
-  = MEMORY_STRIDE`). A larger declared memory is clamped with a warning rather than rejected, so a
-  spec-valid module with a very large memory still imports — just with a bounded block.
+* The dedicated 32-bit `memory` space and its i32 arithmetic are **unchanged**; a second,
+  64-bit-indexed `memory64` space now carries full i64 effective addresses, so decoded accesses
+  above 4 GiB no longer truncate. Per-instruction selection uses the memory declaration's index
+  type (`ctx_mem64`), including modules that mix i32- and i64-indexed memories.
+* All memory-access constructor families have i64 variants (23 scalar + 22 SIMD + 66 atomic, plus
+  string builtins and `memory.discard`), the loader places blocks/data/name labels in the matching
+  space, and the emulator decodes each instruction's real `memidx` (instead of inferring it from
+  the address) with unsigned bounds math.
+* The i32 path is byte-identical - verified by before/after pcode fingerprints over the fixture,
+  the hybrid matrix (1588 ops) and the reference Rust module (93594 ops).
 
-### New feature coverage
+### Custom page sizes
 
-* **Stack switching / JSPI**: `cont.new`, `cont.bind`, `resume`, `suspend`, `switch` all decode;
-  `cont` types parse. (Semantics are not emulated — decode only.)
-* **JS string builtins** (stringref, `0xFB` ≥ 0x80): decoded. Unassigned sub-opcodes render as
-  `unimplemented (reserved)`.
-* **Wide arithmetic** (`0xFC` 0x13–0x16): `i64.add128`, `i64.sub128`, `i64.mul_wide_s`,
-  `i64.mul_wide_u`.
-* **`memory.discard`** (`0xFC` 0x12): decoded.
-* **`.name` label targets**: label names from `.name` subsection 3 become real label symbols at
-  the branch targets (not just comments).
+* The limits flag `0x08` (page-size exponent) sizes the memory block by the declared page size,
+  and the addressable **page-count bound now follows the page size** (a 1-byte-page memory with
+  65537 pages imports; previously rejected by the legacy 65536-page bound). Exotic exponents are
+  honoured leniently; the external oracles only exercise 1 B / 64 KiB.
 
-### Decompiler quality
+### Decoder fixes and additions
 
-* **Stack-as-aggregate SROA**: `WasmStackVariableAnalyzer` models each function frame as one
-  aggregate and splits it by (width, offset) access, so Ghidra's VSA can propagate types through
-  stack slots. This eliminates the previous `Index 0 out of bounds` / `GenericAddress cannot be
-  cast to Register` failures.
-* **Call-graph-aware struct synthesis**: `WasmStructSynthAnalyzer` clusters constant-offset
-  accesses per pointer class across the call graph, synthesizes Ghidra structs, and retypes
-  parameters. On the reference Rust module: **352 structs** created, **255 parameters** retyped,
-  cutting raw constant-offset accesses **591 → 437 (−26 %)**.
+* **Padded LEB memargs** (review fix): non-minimal u32 encodings of the multi-memory flags value
+  now decode correctly - the flagged/unflagged memarg families are disjoint on the first byte, in
+  every permitted LEB length. A related emulator buffer (26-byte fully padded instruction) was
+  fixed with it.
+* **`try`/`try_table` multi-byte block signatures**: `(ref null ht)` / `(ref ht)` value types and
+  multi-byte s33 type indices decode on both instructions (probes `40`-`45`).
+* **Extended-const markup**: the `Data markup conflict` warning is fixed
+  (`ConstantExpression.toDataType()` double-counted the terminating `end` byte, sizing the
+  enclosing `.module` structure one byte too long). The warning had fired on probes
+  `19`, `22`, `27`, `B07`-`B09`, `B14`, `B25`; placed bytes were always correct.
+* **`ref.null` abstract heap types** now print by name (`ref.null exn`, `ref.null struct`, ...)
+  for all 12 Wasm 3.0 abstract heap-type bytes, with concrete type indices unchanged; 12 new
+  probes (`RN01`-`RN12`) pin every abstract type.
+
+### Emulator correctness (semantic gates, enforced in CI)
+
+* **Valid store after a call** no longer falsely traps out of bounds (the unwrapped-EA check used
+  a stale cached stack-slot value after the shadow-stack restore; stores now read the live
+  register).
+* **`br_table` default target**: the `MAX_BR_TABLE_CASES` expansion bound applied to *all* labels
+  including the default, so a table with 1024 explicit cases silently lost its default target.
+  The bound now covers case targets only and the default is always modelled; the `br_table`
+  spec-emulation suite went **145/4 → 148/1**.
+* These fixes - and the memory64 hybrid matrix - are pinned by semantic regression checks that run
+  in the probes workflow.
 
 ### Verification infrastructure
 
-* **201-probe CI gate** (up from 136): `probes.yml` enforces the committed fixture and a
-  real-module decompile baseline. A metric drift, a new probe without a baseline, an unexpected
-  import result or a decompiler regression fails the build.
-* **Fixture-validity gate**: every probe is validated by wabt `wasm-validate` (CI) and optionally
-  binaryen `wasm-dis` (local). The recorded classification (`fixture-validity.json`) is:
-  **118 valid / 53 wabt-gap / 17 unsupported / 13 invalid**. 13 probes carry
-  `oracle_skip: ["binaryen"]` (binaryen's `wasm-dis` runs away on the malformed J03 family).
-  The checker supports `--timeout`.
-* **Spec-suite CI gate** (`spectest.yml`): 271 core modules imported, **2747/2747 functions
-  decompiled**, 33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures.
+* **223-probe CI gate**: `probes.yml` enforces every probe's `funcs`/`instrs`/`undefined_bytes`/
+  `decompiled` metrics plus the fixture and real-module decompile baselines, and now also runs the
+  semantic checks above.
+* **Fixture-validity gate**: wabt `wasm-validate` (CI) and binaryen `wasm-dis` (local) classify
+  every probe; recorded state: **129 valid / 64 wabt-gap / 17 unsupported / 13 invalid**
+  (13 probes carry `oracle_skip: ["binaryen"]`).
+* **Spec-suite CI gate** (`spectest.yml`): 271 core modules, **2747/2747 functions decompiled**,
+  33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures.
 * **Emulation assertion harness**: 33 `.wast` suites, 92/92 modules; **assert_return 2514/1**,
-  **assert_trap 183/0**. The 1 remaining `assert_return` failure is the `br_table large`
-  `large(10000)` case (a case target past the modelled-case cap). The `MAX_BR_TABLE_CASES` bound no
-  longer drops the DEFAULT target — `br_table` alone went 145/4 → 148/1 (`REPORT-R5-BRTABLE.md`).
-  Needs a PyGhidra venv (provisioned automatically by `run_emulate.ps1`).
-* **Type-recovery proxy metric** (`test-scripts/type_recovery_metric.py`): counts
-  constant-offset field accesses in decompiled C, grouped by base — the signal a type-recovery
-  pass would type.
-* The test tooling pins each checkout to one Ghidra install and refuses to measure a stale build.
+  **assert_trap 183/0**. The single remaining failure is the `br_table large` `large(10000)` case
+  (a case index at or past the modelled-case cap).
+* **Tooling hardening**: the build helper's settings sweep is scoped to the selected Ghidra
+  version's settings directory (other versions' extension copies are kept and reported;
+  `-CleanAllVersions` opts into the old cross-version sweep), and the release workflow verifies
+  that a manual dispatch's tag resolves to the exact commit being published (no default tag,
+  explicit overwrite).
 
 ## Also included in earlier releases
 
-* **2.6.1**: graceful degradation for unknown opcodes, multi-memory, memory64, function-references
-  instructions, spec-suite fixes (`select` after terminator, stack-variable crashes, oversized
-  `br_table`), multi-value returns, `.name` extras, DWARF source line info, loader hardening.
+* **2.7.0**: dedicated 32-bit `memory` address space with a 128 MiB stride (≥ 8 memories), section
+  diagnostics, 64-bit data-segment offsets, precise `(ref null ht)` typing and `cont` types,
+  the "nothing was decoded" warning, stack-switching/JSPI and JS-string-builtin decoding, wide
+  arithmetic, `memory.discard`, `.name` label targets, stack-as-aggregate SROA and call-graph
+  struct synthesis (352 structs, 255 parameters retyped on the reference module).
+* **2.6.1**: graceful degradation for unknown opcodes, multi-memory, memory64 index-type
+  propagation, function-references instructions, spec-suite fixes, multi-value returns, `.name`
+  extras, DWARF source line info, loader hardening.
 * **2.6.0**: garbage collection, new exception handling, component-model unwrapping, memory/table
   limit flags, constant-expression decoding.
 
 ## Known open items
 
-* **Custom page sizes**: the page size is fixed at 64 KiB.
-* **Shared-everything threads**: `global.atomic.*`, shared tables / `table.atomic.*` have no
+* **128 MiB materialisation cap**: memory blocks are capped at 128 MiB with a warning. Decoded
+  addressing is exact (memory64 hybrid); data outside the materialised prefix is reported, not
+  materialised. The 128 MiB stride means memories of the same index type can alias beyond a
+  stride, and i32 memory indices above 31 exceed the legacy 32-bit space.
+* **`br_table large`**: one remaining `assert_return` failure in the emulation harness - the
+  `large(10000)` case (a case index at or past the modelled-case cap is modelled as taking the
+  default). Decoding is complete; the bound affects modelled control flow for pathological tables.
+* **Shared-everything threads**: `global.atomic.*` and shared tables / `table.atomic.*` have no
   mnemonics (the `0xFE` atomic *memory* ops are implemented).
-* **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
+* **Component-model semantics**: canonical ABI, `canon` ops and component types are not modelled
   (core-module extraction only, by design).
-* **`br_table large` assertion cases**: 1 remaining `assert_return` failure in the emulation
-  harness (the `large(10000)` case, a case target past the modelled-case cap). The bound no longer
-  drops the DEFAULT target (`REPORT-R5-BRTABLE.md`).
 * **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
   only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
-* **128 MiB materialisation cap**: memories larger than 128 MiB are clamped (with a warning);
-  memory64 addresses above 4 GiB wrap.
-* **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`).
-* **Multi-byte block signatures** on `try`/`try_table` (single-s33 form kept).
-* **Extended-const `Data markup conflict`** warning lead.
+* **Cosmetic listings**: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` and the
+  `ht=` operands of `ref.test`/`ref.cast`/`br_on_cast*` still print numerically.
 
 All are documented in
 [MODERN_WASM_GAPS.md](https://github.com/J0s3f/ghidra-wasm-plugin/blob/main/MODERN_WASM_GAPS.md).
