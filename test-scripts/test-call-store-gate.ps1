@@ -83,7 +83,40 @@ exit /b 1
 for %%n in (!NAMES!) do echo INFO  CallStoreTest.java^> PASS: %%n returned=0x12345678 steps=9 (GhidraScript)
 exit /b 0
 '@
-Set-Content -Path (Join-Path $mock "support\analyzeHeadless.bat") -Value $mockBat -Encoding ascii
+if ($env:OS -eq 'Windows_NT') {
+    Set-Content -Path (Join-Path $mock "support\analyzeHeadless.bat") -Value $mockBat -Encoding ascii
+} else {
+    # The wrapper prefers the platform's launcher (extensionless on non-Windows); a .bat-only
+    # mock would fall back to the Windows batch file and fail on Linux. Mirror the same
+    # MOCK_MODE behaviour with a POSIX shell launcher.
+    $mockSh = @'
+#!/bin/sh
+# Mock analyzeHeadless for the call-store gate negative tests (non-Windows hosts).
+FIX=""
+PREV=""
+for a in "$@"; do
+  if [ "$PREV" = "-import" ]; then FIX="$a"; fi
+  PREV="$a"
+done
+BASE=$(basename "$FIX")
+NAMES=""
+case "$BASE" in
+  call32.wasm|call64.wasm) NAMES="store_after_call" ;;
+  cache32.wasm|cache64.wasm) NAMES="load_after_call simd_after_call rmw_after_call overflow_after_call" ;;
+  cache32_controls.wasm|cache64_controls.wasm) NAMES="direct_load direct_simd direct_rmw direct_overflow" ;;
+esac
+case "${MOCK_MODE:-}" in
+  A) echo "INFO  CallStoreTest.java> FAIL: emulation did not return (steps=8, error=out of bounds memory access) (GhidraScript)"; exit 1 ;;
+  B) echo "INFO  Headless startup complete (AnalyzeHeadless)"; exit 0 ;;
+  C) for n in $NAMES; do echo "INFO  CallStoreTest.java> PASS: $n returned=0x12345678 steps=9 (GhidraScript)"; done; exit 1 ;;
+  D) for n in $NAMES; do echo "INFO  CallStoreTest.java> PASS: $n returned=0x12345678 steps=9 (GhidraScript)"; done; exit 0 ;;
+  *) echo "MOCK_MODE not set or invalid: ${MOCK_MODE:-}"; exit 2 ;;
+esac
+'@
+    $shPath = Join-Path $mock "support/analyzeHeadless"
+    Set-Content -Path $shPath -Value $mockSh -Encoding ascii
+    & chmod +x $shPath
+}
 
 # Mirror test-scripts (the wrapper resolves fixtures via <mirror>/test-scripts/fixtures).
 Copy-Item $wrapperSrc (Join-Path $mirrorTs $wrapperName) -Force
