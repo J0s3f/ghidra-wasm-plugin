@@ -9,11 +9,17 @@ param(
     [string]$GhidraDir = ""
 )
 $ErrorActionPreference = "Stop"
-$pin = (Get-Content (Join-Path $PSScriptRoot ".ghidra-install") -Raw).Trim()
-if (-not $GhidraDir) { $GhidraDir = $pin }
-if ((Resolve-Path -LiteralPath $GhidraDir).Path -ne (Resolve-Path -LiteralPath $pin).Path) {
-    throw "REFUSED: use this worktree's pinned Ghidra install: $pin"
+$pinFile = Join-Path $PSScriptRoot ".ghidra-install"
+if (Test-Path $pinFile) {
+    $pin = (Get-Content $pinFile -Raw).Trim()
+    if (-not $GhidraDir) { $GhidraDir = $pin }
+    if ((Resolve-Path -LiteralPath $GhidraDir).Path -ne (Resolve-Path -LiteralPath $pin).Path) {
+        throw "REFUSED: use this worktree's pinned Ghidra install: $pin"
+    }
 }
+if (-not $GhidraDir) { $GhidraDir = $env:GHIDRA_INSTALL_DIR }
+if (-not $GhidraDir) { throw "Set GHIDRA_INSTALL_DIR or pass -GhidraDir" }
+if (-not (Test-Path $GhidraDir)) { throw "Ghidra install not found: $GhidraDir" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $fixtures = Join-Path $OutDir "fixtures"
 & python (Join-Path $PSScriptRoot "memory64-hybrid-fixtures.py") $fixtures
