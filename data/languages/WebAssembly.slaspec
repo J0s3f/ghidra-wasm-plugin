@@ -27,6 +27,7 @@ define space table   type=ram_space		 size=8;
 define space global  type=ram_space		 size=4;
 define space memory  type=ram_space      size=4;
 define space register type=register_space size=4;
+define space memory64 type=ram_space      size=8;
 
 # PC is the program counter
 # SP is the C stack pointer if present
@@ -1911,7 +1912,8 @@ define context contextreg
 	ctx_directive_type = (3, 5) noflow
 	ctx_operand_size = (6, 13) noflow
 	# @@M64: memory index / address-operand width code, set by WasmFunctionAnalysis for every
-	# memory instruction (memory64). 0 = i32 index (default), 3 = i64 index,
+	# memory instruction. 0 = i32 index / memory space (default),
+	# 3 = i64 index / memory64 space,
 	# 1/2 = memory.copy with an i64 destination / i64 source (length is the min, i32).
 	ctx_mem64 = (14, 15) noflow
 	# @@SS/@@STR: shape code for the stack-switching / stringref callother variants, set by

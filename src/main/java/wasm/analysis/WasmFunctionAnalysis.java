@@ -686,7 +686,8 @@ public class WasmFunctionAnalysis {
 	// of the instruction, so the decoder (SLEIGH) cannot see it. The walker therefore
 	// looks the memory up in the module's memory declarations and records the operand
 	// width in the context register (ctx_mem64, see WebAssembly.slaspec) at the address
-	// of every memory instruction. SLEIGH then has one constructor per width code.
+	// of every memory instruction. This also selects memory versus memory64 for
+	// direct accesses; memory.copy retains its separate destination/source codes.
 	//
 	// The codes mirror the validation rules in the core spec (valid/instructions.html):
 	//   load/store          : [at] -> [t]                    at = index type
@@ -1181,17 +1182,17 @@ public class WasmFunctionAnalysis {
 		switch (sub) {
 		/* [ptr:address i32] -> [stringref] */
 		case 0x80: case 0x81: case 0x8B: case 0x8C:
-			readLeb128(reader); /* memidx */
+			ValType newIndexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader));
 			markProposalOp();
 			popValue(instAddress, ValType.i32); /* byte/code-unit count */
-			popValue(instAddress, ValType.i32); /* memory pointer */
+			popValue(instAddress, newIndexType); /* memory pointer */
 			pushValue(instAddress, ValType.stringref);
 			return true;
 		/* [stringref ptr:address] -> [i32] */
 		case 0x86: case 0x87: case 0x8D: case 0x8E:
-			readLeb128(reader); /* memidx */
+			ValType encodeIndexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader));
 			markProposalOp();
-			popValue(instAddress, ValType.i32); /* memory pointer */
+			popValue(instAddress, encodeIndexType); /* memory pointer */
 			popValue(instAddress); /* stringref */
 			pushValue(instAddress, ValType.i32);
 			return true;
@@ -1244,11 +1245,11 @@ public class WasmFunctionAnalysis {
 			return true;
 		/* [view ptr:address i32 i32] -> [i32 i32] */
 		case 0x92: case 0x94: case 0x95:
-			readLeb128(reader); /* memidx */
+			ValType view8IndexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader));
 			markProposalOp();
 			popValue(instAddress, ValType.i32);
 			popValue(instAddress, ValType.i32);
-			popValue(instAddress, ValType.i32);
+			popValue(instAddress, view8IndexType);
 			popValue(instAddress);
 			pushValue(instAddress, ValType.i32);
 			pushValue(instAddress, ValType.i32);
@@ -1275,11 +1276,11 @@ public class WasmFunctionAnalysis {
 			return true;
 		/* [view ptr:address i32 i32] -> [i32] */
 		case 0x9B:
-			readLeb128(reader); /* memidx */
+			ValType view16IndexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader));
 			markProposalOp();
 			popValue(instAddress, ValType.i32);
 			popValue(instAddress, ValType.i32);
-			popValue(instAddress, ValType.i32);
+			popValue(instAddress, view16IndexType);
 			popValue(instAddress);
 			pushValue(instAddress, ValType.i32);
 			return true;
@@ -2133,14 +2134,10 @@ public class WasmFunctionAnalysis {
 			}
 			// @@WA: memory.discard and wide arithmetic.
 			case 0x12: /* memory.discard $mem: [at(addr) at(size)] -> [] */ {
-				readLeb128(reader); /* memidx (a bare index, not a memarg) */
+				ValType indexType = setMemoryIndexContext(analysis, instAddress, readLeb128(reader));
 				markProposalOp();
-				/*
-				 * The address/size operands are the memory's index type; they are modelled as
-				 * i32 (a memory64 index degrades to 32-bit - see WideArithOps.sinc).
-				 */
-				popValue(instAddress, ValType.i32); /* size */
-				popValue(instAddress, ValType.i32); /* address */
+				popValue(instAddress, indexType); /* size */
+				popValue(instAddress, indexType); /* address */
 				break;
 			}
 			case 0x13: /* i64.add128: [i64 i64 i64 i64] -> [i64 i64] */

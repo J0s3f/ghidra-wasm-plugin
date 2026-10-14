@@ -14,7 +14,7 @@
 # The encoding of memory.discard was re-checked against the reference implementation
 # (wasmparser `visit_0xfc_operator`: `0x12 => read_var_u32()`): the immediate is a BARE memidx,
 # not a memarg. Its two operands are the memory's index type (address, size); this plugin
-# models them as i32 (a memory64 index degrades to 32-bit here - see REPORT-H5.md).
+# selects i32 or i64 per memory using ctx_mem64.
 #
 # Each instruction is one callother whose declared inputs/outputs mirror the stack effect, so
 # the decompiler shows the operation and its result. SLEIGH cannot assign two outputs from one
@@ -28,8 +28,12 @@ define pcodeop i64_mul_wide_s;
 define pcodeop i64_mul_wide_u;
 
 # [at(addr) at(size)] -> []
-:memory.discard memidx_label is opc=0xFC; opc2_18; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:memory.discard memidx_label is opc=0xFC; opc2_18; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	memory_discard(memidx_label:4, sp2_32, sp1_32);
+}
+
+:memory.discard memidx_label " (i64 index)" is opc=0xFC; opc2_18; memidx_label; sp1_64; sp2_64; ctx_mem64=3; ctx_is_directive=0 {
+	memory_discard(memidx_label:4, sp2_64, sp1_64);
 }
 
 # [c1 c2 c3 c4] (c1 = low lhs, c2 = high lhs, c3 = low rhs, c4 = high rhs) -> [r_lo r_hi]

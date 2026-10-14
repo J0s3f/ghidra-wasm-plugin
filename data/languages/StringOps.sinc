@@ -7,8 +7,8 @@
 # range is left undefined - the pre-analyzer consumes the same two prefix bytes.
 #
 # Stack effects (stringref proposal). `$mem` operands are bare memidx immediates; address-typed
-# operands are modelled as i32 (a memory64 index degrades to 32-bit for these instructions - see
-# REPORT-H5.md). Strings and stringviews are opaque 4-byte references.
+# operands use the declared memory index width (ctx_mem64). Callothers carry memidx
+# and the full pointer; strings and stringviews are opaque 4-byte references.
 #
 #   string.new_utf8 $mem           [ptr i32]        -> [stringref]
 #   string.new_wtf16 $mem          [ptr i32]        -> [stringref]
@@ -95,17 +95,29 @@ define pcodeop string_encode_lossy_utf8_array;
 define pcodeop string_encode_wtf8_array;
 
 # ---------------------------------------------------------------- create from memory
-:string.new_utf8 memidx_label is opc=0xFB; opc2_128; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.new_utf8 memidx_label is opc=0xFB; opc2_128; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_new_utf8(memidx_label:4, sp2_32, sp1_32);
 }
-:string.new_wtf16 memidx_label is opc=0xFB; opc2_129; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.new_utf8 memidx_label " (i64 index)" is opc=0xFB; opc2_128; memidx_label; sp1_32; sp2_32; sp2_64; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_new_utf8(memidx_label:4, sp2_64, sp1_32);
+}
+:string.new_wtf16 memidx_label is opc=0xFB; opc2_129; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_new_wtf16(memidx_label:4, sp2_32, sp1_32);
 }
-:string.new_lossy_utf8 memidx_label is opc=0xFB; opc2_139; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.new_wtf16 memidx_label " (i64 index)" is opc=0xFB; opc2_129; memidx_label; sp1_32; sp2_32; sp2_64; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_new_wtf16(memidx_label:4, sp2_64, sp1_32);
+}
+:string.new_lossy_utf8 memidx_label is opc=0xFB; opc2_139; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_new_lossy_utf8(memidx_label:4, sp2_32, sp1_32);
 }
-:string.new_wtf8 memidx_label is opc=0xFB; opc2_140; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.new_lossy_utf8 memidx_label " (i64 index)" is opc=0xFB; opc2_139; memidx_label; sp1_32; sp2_32; sp2_64; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_new_lossy_utf8(memidx_label:4, sp2_64, sp1_32);
+}
+:string.new_wtf8 memidx_label is opc=0xFB; opc2_140; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_new_wtf8(memidx_label:4, sp2_32, sp1_32);
+}
+:string.new_wtf8 memidx_label " (i64 index)" is opc=0xFB; opc2_140; memidx_label; sp1_32; sp2_32; sp2_64; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_new_wtf8(memidx_label:4, sp2_64, sp1_32);
 }
 
 # ---------------------------------------------------------------- literals
@@ -128,17 +140,29 @@ define pcodeop string_encode_wtf8_array;
 }
 
 # ---------------------------------------------------------------- encode to memory
-:string.encode_utf8 memidx_label is opc=0xFB; opc2_134; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.encode_utf8 memidx_label is opc=0xFB; opc2_134; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_encode_utf8(memidx_label:4, sp2_32, sp1_32);
 }
-:string.encode_wtf16 memidx_label is opc=0xFB; opc2_135; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.encode_utf8 memidx_label " (i64 index)" is opc=0xFB; opc2_134; memidx_label; sp1_32; sp1_64; sp2_32; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_encode_utf8(memidx_label:4, sp2_32, sp1_64);
+}
+:string.encode_wtf16 memidx_label is opc=0xFB; opc2_135; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_encode_wtf16(memidx_label:4, sp2_32, sp1_32);
 }
-:string.encode_lossy_utf8 memidx_label is opc=0xFB; opc2_141; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.encode_wtf16 memidx_label " (i64 index)" is opc=0xFB; opc2_135; memidx_label; sp1_32; sp1_64; sp2_32; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_encode_wtf16(memidx_label:4, sp2_32, sp1_64);
+}
+:string.encode_lossy_utf8 memidx_label is opc=0xFB; opc2_141; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_encode_lossy_utf8(memidx_label:4, sp2_32, sp1_32);
 }
-:string.encode_wtf8 memidx_label is opc=0xFB; opc2_142; memidx_label; sp1_32; sp2_32; ctx_is_directive=0 {
+:string.encode_lossy_utf8 memidx_label " (i64 index)" is opc=0xFB; opc2_141; memidx_label; sp1_32; sp1_64; sp2_32; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_encode_lossy_utf8(memidx_label:4, sp2_32, sp1_64);
+}
+:string.encode_wtf8 memidx_label is opc=0xFB; opc2_142; memidx_label; sp1_32; sp2_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp2_32 = string_encode_wtf8(memidx_label:4, sp2_32, sp1_32);
+}
+:string.encode_wtf8 memidx_label " (i64 index)" is opc=0xFB; opc2_142; memidx_label; sp1_32; sp1_64; sp2_32; ctx_mem64=3; ctx_is_directive=0 {
+	sp2_32 = string_encode_wtf8(memidx_label:4, sp2_32, sp1_64);
 }
 
 # ---------------------------------------------------------------- concat / compare
@@ -159,20 +183,38 @@ define pcodeop string_encode_wtf8_array;
 :stringview_wtf8.slice is opc=0xFB; opc2_147; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
 	sp3_32 = sv_wtf8_slice(sp3_32, sp2_32, sp1_32);
 }
-:stringview_wtf8.encode_utf8 memidx_label is opc=0xFB; opc2_146; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+:stringview_wtf8.encode_utf8 memidx_label is opc=0xFB; opc2_146; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_mem64=0; ctx_is_directive=0 {
 	local r:8 = sv_wtf8_encode_utf8(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
 	local rhigh:8 = r >> 32;
 	sp4_32 = r:4;
 	sp3_32 = rhigh:4;
 }
-:stringview_wtf8.encode_lossy_utf8 memidx_label is opc=0xFB; opc2_148; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+:stringview_wtf8.encode_utf8 memidx_label " (i64 index)" is opc=0xFB; opc2_146; memidx_label; sp1_32; sp2_32; sp3_32; sp3_64; sp4_32; ctx_mem64=3; ctx_is_directive=0 {
+	local r:8 = sv_wtf8_encode_utf8(memidx_label:4, sp4_32, sp3_64, sp2_32, sp1_32);
+	local rhigh:8 = r >> 32;
+	sp4_32 = r:4;
+	sp3_32 = rhigh:4;
+}
+:stringview_wtf8.encode_lossy_utf8 memidx_label is opc=0xFB; opc2_148; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_mem64=0; ctx_is_directive=0 {
 	local r:8 = sv_wtf8_encode_lossy_utf8(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
 	local rhigh:8 = r >> 32;
 	sp4_32 = r:4;
 	sp3_32 = rhigh:4;
 }
-:stringview_wtf8.encode_wtf8 memidx_label is opc=0xFB; opc2_149; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+:stringview_wtf8.encode_lossy_utf8 memidx_label " (i64 index)" is opc=0xFB; opc2_148; memidx_label; sp1_32; sp2_32; sp3_32; sp3_64; sp4_32; ctx_mem64=3; ctx_is_directive=0 {
+	local r:8 = sv_wtf8_encode_lossy_utf8(memidx_label:4, sp4_32, sp3_64, sp2_32, sp1_32);
+	local rhigh:8 = r >> 32;
+	sp4_32 = r:4;
+	sp3_32 = rhigh:4;
+}
+:stringview_wtf8.encode_wtf8 memidx_label is opc=0xFB; opc2_149; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_mem64=0; ctx_is_directive=0 {
 	local r:8 = sv_wtf8_encode_wtf8(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
+	local rhigh:8 = r >> 32;
+	sp4_32 = r:4;
+	sp3_32 = rhigh:4;
+}
+:stringview_wtf8.encode_wtf8 memidx_label " (i64 index)" is opc=0xFB; opc2_149; memidx_label; sp1_32; sp2_32; sp3_32; sp3_64; sp4_32; ctx_mem64=3; ctx_is_directive=0 {
+	local r:8 = sv_wtf8_encode_wtf8(memidx_label:4, sp4_32, sp3_64, sp2_32, sp1_32);
 	local rhigh:8 = r >> 32;
 	sp4_32 = r:4;
 	sp3_32 = rhigh:4;
@@ -188,8 +230,11 @@ define pcodeop string_encode_wtf8_array;
 :stringview_wtf16.get_codeunit is opc=0xFB; opc2_154; sp1_32; sp2_32; ctx_is_directive=0 {
 	sp2_32 = sv_wtf16_get_codeunit(sp2_32, sp1_32);
 }
-:stringview_wtf16.encode memidx_label is opc=0xFB; opc2_155; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+:stringview_wtf16.encode memidx_label is opc=0xFB; opc2_155; memidx_label; sp1_32; sp2_32; sp3_32; sp4_32; ctx_mem64=0; ctx_is_directive=0 {
 	sp4_32 = sv_wtf16_encode(memidx_label:4, sp4_32, sp3_32, sp2_32, sp1_32);
+}
+:stringview_wtf16.encode memidx_label " (i64 index)" is opc=0xFB; opc2_155; memidx_label; sp1_32; sp2_32; sp3_32; sp3_64; sp4_32; ctx_mem64=3; ctx_is_directive=0 {
+	sp4_32 = sv_wtf16_encode(memidx_label:4, sp4_32, sp3_64, sp2_32, sp1_32);
 }
 :stringview_wtf16.slice is opc=0xFB; opc2_156; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
 	sp3_32 = sv_wtf16_slice(sp3_32, sp2_32, sp1_32);

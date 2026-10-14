@@ -104,8 +104,8 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 			Msg.error(this, "Failed to apply module name comment", e);
 		}
 
-		applyMapNames(program, nameSection, WasmNameSubsectionId.NAME_TABLE, "table", monitor);
-		applyMapNames(program, nameSection, WasmNameSubsectionId.NAME_MEMORY, "memory", monitor);
+		applyMapNames(program, module, nameSection, WasmNameSubsectionId.NAME_TABLE, "table", monitor);
+		applyMapNames(program, module, nameSection, WasmNameSubsectionId.NAME_MEMORY, "memory", monitor);
 		applyElemNames(program, module, nameSection, monitor);
 		applyDataNames(program, module, nameSection, monitor);
 		applyTypeFieldTagComment(program, nameSection, addressFactory, monitor);
@@ -174,7 +174,7 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 	}
 
 	/** table/memory names -> a label at the block start. */
-	private void applyMapNames(Program program, WasmNameSection nameSection, WasmNameSubsectionId id,
+	private void applyMapNames(Program program, WasmModule module, WasmNameSection nameSection, WasmNameSubsectionId id,
 			String kind, TaskMonitor monitor) {
 		Map<Long, String> map = nameSection.getNameMap(id);
 		if (map == null || map.isEmpty()) {
@@ -191,7 +191,7 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 			}
 			Address address = kind.equals("table")
 					? WasmLoader.getTableAddress(addressFactory, (int) idx, 0)
-					: WasmLoader.getMemoryAddress(addressFactory, (int) idx, 0);
+					: WasmLoader.getMemoryAddress(addressFactory, module, (int) idx, 0);
 			applyLabel(program, address, entry.getValue(), kind + idx);
 		}
 	}
@@ -247,7 +247,7 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 				continue;
 			}
 			int memidx = (int) segment.getIndex();
-			applyLabel(program, WasmLoader.getMemoryAddress(addressFactory, memidx, offset),
+			applyLabel(program, WasmLoader.getMemoryAddress(addressFactory, module, memidx, offset),
 				entry.getValue(), "data" + idx);
 		}
 	}

@@ -15,7 +15,7 @@ WebAssembly (Wasm 3.0 + active proposals).
 | spec-suite findings (select after terminator, stack-variable crashes, oversized br_table) | **merged** (`REPORT-SF.md`; spec core suite now has 0 real undefined bytes and 0 decompiler failures) |
 | function-references instructions (`call_ref`, `return_call_ref`, `ref.as_non_null`, `br_on_null`, `br_on_non_null`) | **merged** (`REPORT-FR.md`; probe `12` reaches 0 undefined bytes) |
 | 0/1/2 unknown-opcode degradation + multi-memory | **merged** (`REPORT-A-DS.md`; probe 06 decodes `memidx`, probe 18 creates both memory blocks) |
-| 8. memory64 | **merged** (`REPORT-N.md`): index-type propagation, `ctx_mem64` widths, 64-bit address computation truncated into `ram` (exact below 4 GiB, documented), loader bounds; probe `05` decodes, 8 new `M64_*` probes |
+| 8. memory64 | **implemented**: index-type propagation and hybrid `memory`/`memory64` spaces selected per instruction; full i64 effective addresses, including >4 GiB (item 11; `REPORT-MEM64-HYBRID-CODEX.md`) |
 | 9. `.name` extras + application | **merged** (`REPORT-D.md`; subsections 3/10/11 parsed, `WasmNameApplyAnalyzer` applies table/memory/elem/data labels + module/type/field/tag and label-name comments; malformed name sections no longer break imports) |
 | 4. negative spec tests (`assert_invalid`/`assert_malformed`) | **merged** (`REPORT-NS.md` + §6.4) |
 | loader hardening (locals/memory/table bounds, honest failures) | **merged** (`REPORT-HARD.md` + §6.2; B1/B2/B3/B5 fixed, B4 documented) |
@@ -26,7 +26,7 @@ WebAssembly (Wasm 3.0 + active proposals).
 | 4. real-world corpus sweep | **merged** (`REPORT-H.md`; 15/15 modules import, 5591/5591 functions decompile - see §6.1) |
 | 4. robustness sweep (malformed inputs) | **merged** (`REPORT-J.md`; 56-module corpus - see §6.2; two real bugs found and reproduced) |
 | 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
-| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): out-of-range/duplicate sections rejected with a diagnostic; i64 offsets placed, ≥ 4 GiB clamped with a log |
+| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are diagnosed |
 | Spec-suite gates (positive + negative) | **merged** (`REPORT-G.md`, `REPORT-NS.md`): 271 core modules, 0 real undefined bytes, 0 decompile failures; 2948 negative modules classified |
 | Spec assert emulation | **merged** (`REPORT-H3.md`): 33 `.wast` suites, 92/92 modules; assert_return 2511/4, assert_trap 183/0 (4 `br_table large` cases are the deliberate `MAX_BR_TABLE_CASES` bound) |
 | Stack switching / strings / wide arith / `memory.discard` | **merged** (`REPORT-H5.md`): all decode; `cont` types parse (`REPORT-CT.md`) |
@@ -90,7 +90,7 @@ not (fully) disassembled at all, which is worse than a wrong mnemonic.
 | GC: `rec`/`sub`/`struct`/`array` types, `0xFB` instructions (`struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`), GC initializers | `08`, `09`, `E01`-`E20` |
 | Typed function references: `call_ref`, `return_call_ref`, `ref.as_non_null`, `br_on_null`, `br_on_non_null` | `12`, `F01`-`F07` |
 | Multi-memory (memarg `memidx`, several memories, dedicated `memory` address space) | `06`, `18`, `A01`-`A04`, `B05`, `MEM_*` |
-| memory64 (index-type propagation, 64-bit pcode truncated into 32-bit `memory` space) | `05`, `M64_01`-`M64_08` |
+| memory64 (per-instruction hybrid `memory`/`memory64` spaces, full 64-bit effective addresses) | `05`, `M64_01`-`M64_08` |
 | Extended-const (`i32`/`i64` `add`/`sub`/`mul`) and GC constant expressions | `19`, `20`, `22`-`27`, `B07`-`B15` |
 | Stack switching / JSPI (`cont.new`/`cont.bind`/`resume`/`suspend`/`switch`) + `cont` types | `H01`-`H10`, `CT01`-`CT05` |
 | JS string builtins / stringref (`0xFB` ≥ 0x80) | `S01`-`S10` |
@@ -107,7 +107,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | Feature | Status |
 | --- | --- |
 | Multi-memory (memarg `memidx`, several memories, loading) | fixed (`REPORT-A-DS`/`REPORT-N`): alignment bit 6 consumed, `memidx` exposed, one block per memory; probes `06`, `A01`-`A04`, `B05`, `18` |
-| memory64 | fixed (`REPORT-N`): index type propagates, 64-bit address pcode truncated into `ram` (exact below 4 GiB); probes `05`, `M64_01`-`M64_08` |
+| memory64 | fixed (item 11; `REPORT-MEM64-HYBRID-CODEX.md`): i32 uses unchanged `memory`, i64 uses `memory64`; probes `05`, `M64_01`-`M64_08`, `B8_04`/`B8_05` |
 | Shared / 64-bit / custom-page-size limits | fixed (`REPORT-B`): flags decoded fully, following limits entries stay aligned |
 | Custom memory page sizes (block sizing) | fixed (`REPORT-PAGESIZE-MUSESPARK.md`): the declared page size (limits flag `0x08`, log2 exponent) sizes the memory block as pages x page_size, with page-aware cap/overrun diagnostics; probes `B03b`-`B03d` |
 | Multi-byte block signatures on `try`/`try_table` | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`): `(ref null ht)`/`(ref ht)` value types and multi-byte s33 type indices decode on both `try` and `try_table`; probes `40`-`45` |
@@ -124,7 +124,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | Component model binaries | fixed (`REPORT-C2`): header recognised, embedded core modules import as real programs |
 | DWARF line info | fixed (`REPORT-DW`) |
 | Loader hardening (locals/memory/table bounds, honest failures) | fixed (`REPORT-HARD`, see 6.2) |
-| Section id/order/duplicate diagnostics, 64-bit data-segment offsets | fixed (`REPORT-H1`): out-of-range/duplicate sections are rejected with a diagnostic; i64 offsets are placed, `>= 4 GiB` clamped with a log |
+| Section id/order/duplicate diagnostics, 64-bit data-segment offsets | fixed (`REPORT-H1`): out-of-range/duplicate sections are rejected with a diagnostic; i64 offsets use memory64 (item 11); data outside the materialised prefix is diagnosed |
 
 ### 2.3 Still open
 
@@ -135,7 +135,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
 | **`br_table large` assertion cases** - 4 `assert_return` failures in the emulation harness are the deliberate `MAX_BR_TABLE_CASES` bound (decode-side) | open (deliberate bound) |
 | **Struct-synthesis v1 limits** - `call_indirect` targets not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN` | open (v1 scope, documented in `REPORT-STRUCTS.md`) |
-| **128 MiB materialisation cap** - memories larger than 128 MiB are clamped (with a warning); the SLEIGH truncates effective addresses to 32 bits, so decoded accesses above 4 GiB wrap (hybrid option: item 11) | documented limitation |
+| **128 MiB materialisation cap** - blocks remain capped with a warning; i64 decoded accesses now retain full 64-bit addresses in `memory64` (item 11). Both spaces use a 128 MiB stride, so large ranges of memories in the same space can alias beyond that stride. High data segments outside the materialised prefix are reported, not materialised. | addressing truncation fixed; cap/stride isolation remain documented limits |
 | **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | **fixed** (`REPORT-REFNULL-MISTRAL.md`): named constructors per Wasm 3.0 absheaptype byte (0x69=exn … 0x74=noexn) added alongside the generic s33 form; SLEIGH's specificity disambiguation prefers the 8-bit-constrained named variants over the 1-bit-constrained single-byte SLeb128, so `ref.null struct`/`ref.null exn`/`ref.null func`/etc. now print by name while concrete type indices still decode via the s33 path byte-identically (`ref.null heaptype=0x1`). 12 new probes `RN01`-`RN12` cover every abstract heap type in a function body. Residual: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` still prints numerically (the `multi_blocktype` immediate table was not extended - optional, cosmetic); `ref.test`/`ref.cast`/`br_on_cast*` `ht=` operands in GCOps.sinc also still print numerically (same pattern could apply there too) |
 | **Multi-byte block signatures on `try`/`try_table`** - decode multi-byte valtypes/type indices now (see 2.2); the typed `BlockTypeInfo` path (grafted from `feat/tryblocktype-catjam`) fully decodes the ref-typed cases (`undefined_bytes` 8 -> 0 on probes `40`/`41`) | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`) |
 | **Extended-const `Data markup conflict` warning** - `WasmLoader.createData` logged "Data markup conflict" on probes `19`, `22`, `27`, `B07`-`B09`, `B14`, `B25` (the row originally named `22`-`24`/`27`; measurement shows it fires on every probe whose global/data initializer is a multi-instruction constant expression, not on the single-instruction const probes `23`/`24`) | fixed (`REPORT-EXTCONST-MISTRAL.md`): `ConstantExpression.toDataType()` double-counted the terminating `end` byte for folded extended-const and unparsed initializers, sizing the enclosing section's `.module` structure one byte too long so it collided with the next section's markup (or overran the `.module` block when the section was last) and left a whole section undissected; the raw-byte array now excludes the trailing `end` byte. Placed bytes/offsets were already correct - only the `.module` structural markup was wrong |
@@ -176,14 +176,14 @@ Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.loc
   `(ref null ht)` model).
 * **Clang/LLVM ≥ 19** — emits the **new EH** (`try_table`): covered (plus `throw_ref`, `exnref`).
 * **Emscripten `-pthread`** — works; shared-memory limits flags decode fully.
-* **Emscripten `MEMORY64` / wasm64 targets** — covered below 4 GiB (exact); above 4 GiB the
-  `memory` space truncates (documented).
+* **Emscripten `MEMORY64` / wasm64 targets** — full i64 decoded addresses in `memory64`,
+  including above 4 GiB; materialisation/stride limits remain (item 11).
 * **Emscripten `-sASYNCIFY=2` (JSPI)** — stack switching decodes (`cont.new`/`resume`/`switch`);
   `cont` types parse.
 
 ## 4. Roadmap
 
-**Status: items 0-10 below were implemented by the modern-WASM waves (see 2.2). What remains open is listed in 2.3; this section is kept as the original task breakdown and acceptance criteria.**
+**Status: items 0-11 below were implemented by the modern-WASM waves (see 2.2). What remains open is listed in 2.3; this section is kept as the original task breakdown and acceptance criteria.**
 
 Ordered by leverage. "Effort" is a rough size estimate (S ≈ hours, M ≈ a day, L ≈ several days).
 
@@ -290,41 +290,44 @@ threads, and the component model.~~ Most of these are now implemented (see 2.1/2
 shared-everything threads (unimplemented fallback), component-model semantics (by design —
 core-module extraction only), and custom page sizes (see 2.3).
 
-### 11. memory64 above 4 GiB: the hybrid address-space option (effort L)
+### 11. memory64 above 4 GiB: hybrid address spaces — implemented
 
-*Where*: the `memory` space definition in `WebAssembly.slaspec`, every memory-access constructor
-(`BasicOps.sinc`, `VectorOps.sinc`, `AtomicOps.sinc`, `StringOps.sinc`), the loader's block placement
-(`WasmLoader.getMemoryAddress` / `MEMORY_STRIDE`), and the per-instruction context assignment in the
-analysis (`ctx_mem64`, already set for 64-bit operand widths since `REPORT-N`).
+The authoritative design is now implemented: preserve the 32-bit `memory` space (`size=4`) and
+its i32 arithmetic, and add a separate `memory64` space (`size=8`). The per-instruction
+`ctx_mem64` code selects the memory declaration's index type, including mixed-index modules.
+Code, registers, tables and default pointer sizes retain their existing definitions.
 
-*Problem*: the dedicated `memory` space is 32-bit (`size=4`), so decoded accesses into a
-64-bit-indexed memory truncate above 4 GiB (exact below). A full 64-bit space was tried and rejected
-during the memory-space work: it reintroduced ZEXT noise across every access in every module — a
-common-case decompiler-quality regression traded for a rare addressing edge (see `REPORT-MEMSPACE`).
+* `BasicOps.sinc`, `VectorOps.sinc`, `AtomicOps.sinc`: 23 scalar, 22 SIMD and 66 atomic
+  constructors each have an i32 variant with the original body and an i64 variant using full-width
+  `loadaddr64`/`storeaddr64`/`loadaddr2_64`/`atomicaddr3_64` into `memory64`. Atomic wait/notify
+  keep callothers with full-width addresses. No i64 helper truncates to 32 bits. Numeric and
+  relaxed SIMD roots carry an explicit default context guard to preserve precedence over
+  memory constructors sharing a LEB opcode prefix; their pcode bodies are unchanged.
+* `StringOps.sinc`: 12 memory-taking callothers select the address operand's width per memory;
+  references and counts/results remain i32. `memory.discard` also selects address/count widths.
+  Existing bulk `memory.init/fill/copy` width variants remain; constant-copy injection selects
+  source/destination spaces and pointer widths separately when either memory is i64.
+* `WasmLoader.getMemoryAddress`: module-aware and explicit-index-type overloads place blocks,
+  active/passive data and name labels in the matching space at `memidx * 0x08000000 + offset`.
+  The legacy three-argument overload retains the original i32 arithmetic and clamp. Unsigned
+  i64 address bit patterns are preserved; an overflowing stride addition is rejected.
+* The emulator reads each scalar/SIMD/atomic instruction's memidx, checks LOAD/STORE ranges in
+  their actual space, and reconstructs EAs from saved operand slots to detect lost carries.
+  High addresses do not select another memory by dividing the address by the stride.
 
-*Hybrid design*: keep the 32-bit `memory` space for i32-indexed memories and add a second,
-64-bit-indexed space (`size=8`, same 128 MiB stride scheme). Per instruction:
+The materialisation cap is **still 128 MiB per memory**. This change fixes decoded addressing;
+it does not allocate multi-GiB blocks. Data outside the capped prefix cannot be placed and produces
+an import diagnostic. The **128 MiB stride** is retained in both spaces: references in different memories
+of the same index type can alias beyond a stride, and adding a nonzero memory base reduces the available u64
+coordinate range. i32 memory indices above 31 still exceed the legacy space. Bulk/string/atomic
+wait callothers retain the existing emulator support limits; the hybrid does not implement missing
+callother behaviors or provide a complete large-memory runtime.
 
-1. the loader/analysis knows each memory's index type and each instruction's `memidx` (multi-memory
-   allows mixed index types in one module, so this must be per instruction, not per module) and sets
-   `ctx_mem64` for accesses to 64-bit-indexed memories;
-2. each memory-access constructor gains a second variant gated on that bit that emits into the
-   `memory64` space with the full effective address (no truncation);
-3. blocks are placed into the matching space; the emulator's bounds checks (which already compute
-   64-bit effective addresses) target the same block content.
-
-*Cost*: two variants of every memory-access constructor, the context assignment, dual block
-placement, and a decompiler-quality re-check. The i32 path must stay byte-identical — that is the
-point of the hybrid.
-
-*Alternatives*: (a) keep the documented truncation (status quo; the 128 MiB materialisation cap
-bounds blocks anyway); (b) a full 64-bit space (rejected — ZEXT regression); (c) raise the
-materialisation cap only (does not fix addressing).
-
-*Acceptance if implemented*: probes `B8_04_mem64_over4g` / `B8_05_mem64_just_over4g` list their
->4 GiB effective addresses untruncated (evidence: `ListProgram.java` before/after plus a targeted
-emulation assert); all 222 probes and the real module (`437/437/0/61658/156`) unchanged; the
-fixture-validity gate unchanged.
+`B8_04_mem64_over4g` and `B8_05_mem64_just_over4g` originally loaded address zero despite their
+large declarations. Their operands now exercise EAs `0x100000030` and `0x100000010` respectively.
+Before/after listings, regression numbers, constructor/emulation assertions and exact commands
+are in `REPORT-MEM64-HYBRID-CODEX.md`; the 222-probe expectations and validity classifications
+remain the acceptance baseline.
 
 ## 5. Adding a probe (how to extend this document)
 

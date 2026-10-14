@@ -138,6 +138,35 @@ public class PcodeOpEmitter {
 		}
 	}
 
+	/** Hybrid bulk-copy expansion. Keep the legacy i32 expansion above unchanged. */
+	public void emitUnrolledCopy64(Varnode src, Varnode dst, int count, int gran,
+			long srcMemidx, long dstMemidx) {
+		AddressSpace srcSpace = language.getAddressFactory().getAddressSpace(src.getSize() == 8 ? "memory64" : "memory");
+		AddressSpace dstSpace = language.getAddressFactory().getAddressSpace(dst.getSize() == 8 ? "memory64" : "memory");
+		for (int i = 0; i < count; i++) {
+			long offset = (long) i * gran;
+			Varnode sp = newUnique(src.getSize());
+			PcodeOp addSrc = newOp(PcodeOp.INT_ADD);
+			addSrc.setInput(src, 0);
+			addSrc.setInput(constVn(srcMemidx * wasm.WasmLoader.MEMORY_STRIDE + offset, src.getSize()), 1);
+			addSrc.setOutput(sp);
+			Varnode value = newUnique(gran);
+			PcodeOp load = newOp(PcodeOp.LOAD);
+			load.setInput(constVn(srcSpace.getSpaceID(), 4), 0);
+			load.setInput(sp, 1);
+			load.setOutput(value);
+			Varnode dp = newUnique(dst.getSize());
+			PcodeOp addDst = newOp(PcodeOp.INT_ADD);
+			addDst.setInput(dst, 0);
+			addDst.setInput(constVn(dstMemidx * wasm.WasmLoader.MEMORY_STRIDE + offset, dst.getSize()), 1);
+			addDst.setOutput(dp);
+			PcodeOp store = newOp(PcodeOp.STORE);
+			store.setInput(constVn(dstSpace.getSpaceID(), 4), 0);
+			store.setInput(dp, 1);
+			store.setInput(value, 2);
+		}
+	}
+
 	/** Emit a CALLOTHER to the named pcodeop with the given inputs (no output). */
 	public void emitCallOther(int pcodeopIndex, Varnode... inputs) {
 		PcodeOp op = newOp(PcodeOp.CALLOTHER);

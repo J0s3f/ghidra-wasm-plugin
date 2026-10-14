@@ -31,15 +31,14 @@ define token I64 (64)
 ;
 
 # @@MM: multi-memory. Linear memory N is addressed at offset N * MEMORY_STRIDE in the
-# dedicated `memory` address space, in both the memarg decoders below and the loader
+# `memory` (i32) or `memory64` (i64) address space, in the memarg decoders and loader
 # (WasmLoader.getMemoryAddress / WasmLoader.MEMORY_STRIDE - keep the two in sync).
 # Memory 0 therefore keeps its old offset 0. The `memory` space is 32-bit (size=4),
 # so the stride is chosen so that many memory indices fit: with 128 MiB per memory,
 # indices 0..31 fit in 32 bits (memory 31 = 0xF8000000), and memory index >= 8 no
 # longer collides with the module image in `ram` at WasmLoader.CODE_BASE (0x80000000).
 # All 32-bit memory address arithmetic stays in 32 bits (addr:4), so the decompiled C
-# has no ZEXT noise. memory64 addresses above 4 GiB wrap (same as the pre-memory-space
-# behaviour; see REPORT-N.md).
+# has no ZEXT noise. The separate memory64 path preserves 64-bit effective addresses.
 @define MEMORY_STRIDE 0x08000000
 
 attach names valtype [
