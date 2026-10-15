@@ -89,6 +89,10 @@ write('label_names_repeat.wasm',module(type_section(functype([],[])),func_sectio
     code_section([b'\x02@\x0b'+END,b'\x02@\x0b'+END]),
     custom_section('name',name_subsection(3,vec([uleb(0)+vec([uleb(0)+uleb(4)+b'exit']),uleb(1)+vec([uleb(0)+uleb(4)+b'exit'])])))))
 
+# Several exports of one function: the indexed export lookup must keep the first one.
+write('export_lookup.wasm',module(type_section(functype([],[])),func_section([0,0]),
+    export_section([('first',0,0),('second',0,0),('other',0,1)]),code_section([END,END])))
+
 write('mutable_memory.wasm',module(type_section(functype([I32,I32],[]),functype([],[I32])),func_section([0,1]),
     memory_section([(0,1)]),export_section([('setter',0,0),('read_mutable',0,1)]),code_section([
         local_get(0)+local_get(1)+b'\x36\x02\x00'+END,

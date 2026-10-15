@@ -2773,7 +2773,10 @@ public class WasmFunctionAnalysis {
 				pushValue(instAddress, ValType.v128);
 				break;
 			default:
-				Msg.warn(this, "Illegal opcode 0xfd " + String.format("0x%02x", opcode2) + " at " + instAddress);
+				/* @@UNIMP: like 0xFC, an unknown sub-opcode has no known length or stack effect. */
+				markUnimplemented();
+				Msg.warn(this, "Illegal opcode 0xfd " + String.format("0x%02x", opcode2) + " at " + instAddress
+						+ " (operand length unknown; not consuming following bytes)");
 				break;
 			}
 			break;
@@ -2782,6 +2785,13 @@ public class WasmFunctionAnalysis {
 			int opcode2 = reader.readNextUnsignedVarIntExact(LEB128::unsigned);
 			if (opcode2 == 0x03) { /* atomic.fence 0x00 */
 				reader.readNextUnsignedByte();
+				break;
+			}
+			if (opcode2 > 0x4E || (opcode2 > 0x02 && opcode2 < 0x10)) {
+				/* @@UNIMP: only the assigned sub-opcodes are known to carry a memarg. */
+				markUnimplemented();
+				Msg.warn(this, "Illegal opcode 0xfe " + String.format("0x%02x", opcode2) + " at " + instAddress
+						+ " (operand length unknown; not consuming following bytes)");
 				break;
 			}
 			/* @@MM: memarg (may carry a memidx); @@M64: the address is the index type. */
@@ -2812,8 +2822,6 @@ public class WasmFunctionAnalysis {
 				popValue(instAddress, type);
 				popValue(instAddress, indexType);
 				pushValue(instAddress, type);
-			} else {
-				Msg.warn(this, "Illegal opcode 0xfe " + String.format("0x%02x", opcode2) + " at " + instAddress);
 			}
 			break;
 		}

@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +35,8 @@ public class WasmExportSection extends WasmSection {
 	private LEB128Info count;
 	private List<WasmExportEntry> exportList = new ArrayList<>();
 	private Map<WasmExternalKind, List<WasmExportEntry>> exports = new EnumMap<>(WasmExternalKind.class);
+	/* First export of each (kind, index): the loader looks one up per function/global. */
+	private Map<WasmExternalKind, Map<Integer, WasmExportEntry>> exportsByIndex = new EnumMap<>(WasmExternalKind.class);
 
 	public WasmExportSection(BinaryReader reader) throws IOException {
 		super(reader);
@@ -45,6 +48,7 @@ public class WasmExportSection extends WasmSection {
 				exports.put(kind, new ArrayList<WasmExportEntry>());
 			}
 			exports.get(kind).add(entry);
+			exportsByIndex.computeIfAbsent(kind, k -> new HashMap<>()).putIfAbsent(entry.getIndex(), entry);
 			exportList.add(entry);
 		}
 	}
@@ -54,12 +58,8 @@ public class WasmExportSection extends WasmSection {
 	}
 
 	public WasmExportEntry findEntry(WasmExternalKind kind, int id) {
-		for (WasmExportEntry entry : getExports(kind)) {
-			if (entry.getIndex() == id) {
-				return entry;
-			}
-		}
-		return null;
+		Map<Integer, WasmExportEntry> byIndex = exportsByIndex.get(kind);
+		return byIndex == null ? null : byIndex.get(id);
 	}
 
 	@Override

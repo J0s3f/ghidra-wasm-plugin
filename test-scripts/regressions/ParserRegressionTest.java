@@ -71,6 +71,25 @@ public class ParserRegressionTest {
     validate.setAccessible(true);
     validate.invoke(null,0,table.getTableType(0));
     check(table.getTableType(0).is64Bit(),"table64 maximum above 2^63 is accepted");
+    // Export lookup is indexed by (kind, index) and keeps the first export of an index.
+    var exports=new WasmModule(reader(Files.readAllBytes(fixtures.resolve("export_lookup.wasm"))));
+    check("first".equals(exports.findExport(WasmEnums.WasmExternalKind.EXT_FUNCTION,0).getName()),"First export of a function wins");
+    check("other".equals(exports.findExport(WasmEnums.WasmExternalKind.EXT_FUNCTION,1).getName()),"Export of second function");
+    check(exports.findExport(WasmEnums.WasmExternalKind.EXT_FUNCTION,2)==null && exports.findExport(WasmEnums.WasmExternalKind.EXT_GLOBAL,0)==null,"Missing export is null");
+    // Unknown 0xFD/0xFE sub-opcodes relax validation like 0xFC and consume no guessed memarg:
+    // the following drop must not fail the function, and the final end must still be analysed.
+    for(byte[] unknown:List.of(new byte[]{(byte)0xfd,(byte)0x80,0x04},new byte[]{(byte)0xfe,0x60})) {
+      var bodyBytes=new java.io.ByteArrayOutputStream();bodyBytes.write(0);bodyBytes.writeBytes(unknown);bodyBytes.write(0x1a);bodyBytes.write(0x0b);
+      byte[] body=bodyBytes.toByteArray();
+      var bytes=new java.io.ByteArrayOutputStream();
+      bytes.writeBytes(new byte[]{0,0x61,0x73,0x6d,1,0,0,0, 1,4,1,0x60,0,0, 3,2,1,0, 10,(byte)(body.length+2),1,(byte)body.length});
+      bytes.writeBytes(body);
+      var analysis=new wasm.analysis.WasmAnalysis(new ghidra.program.model.address.DefaultAddressFactory(new ghidra.program.model.address.AddressSpace[]{
+        new ghidra.program.model.address.GenericAddressSpace("ram",32,ghidra.program.model.address.AddressSpace.TYPE_RAM,0)}),new WasmModule(reader(bytes.toByteArray())));
+      var start=analysis.getFunction(0).getStartAddr();
+      var walk=analysis.getFunctionAnalysis(start);
+      check(walk.getStackEffect(start.add(body.length-1))!=null,String.format("Unknown 0x%02x sub-opcode keeps the rest of the body analysable",unknown[0]&0xff));
+    }
     System.out.println("Parser regression assertions: "+assertions);
   }
 }

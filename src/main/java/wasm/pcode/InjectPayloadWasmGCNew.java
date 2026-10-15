@@ -32,7 +32,7 @@ public final class InjectPayloadWasmGCNew extends InjectPayloadCallother {
 		int type = (int) context.inputlist.get(0).getOffset();
 		var declared = WasmAnalysis.getState(program).getModule().getType(type);
 		WasmGCType definition = declared instanceof WasmGCType gc ? gc : null;
-		int count = array ? Math.toIntExact(context.inputlist.get(1).getOffset()) : definition == null ? 0 : definition.getFieldCount();
+		int count = array ? modelledArrayCount(program, context) : definition == null ? 0 : definition.getFieldCount();
 		long base = context.inputlist.get(array ? 2 : 1).getOffset();
 		String name = array ? "wasm_array_new_fixed" : "wasm_struct_new";
 		int userop = 0;
@@ -46,5 +46,23 @@ public final class InjectPayloadWasmGCNew extends InjectPayloadCallother {
 			inputs.add(new Varnode(program.getAddressFactory().getRegisterSpace().getAddress(base + (long) i * WasmLoader.REG_SIZE), size));
 		}
 		return new PcodeOp[]{new PcodeOp(context.baseAddr, 0, PcodeOp.CALLOTHER, inputs.toArray(Varnode[]::new), context.output.get(0))};
+	}
+
+	/**
+	 * array.new_fixed's immediate is an unbounded u32 (valid in unreachable code), so expose only
+	 * the operands pre-analysis modelled: its input count (ctx_case_index, bits 32..63), which
+	 * also positions the first operand slot.
+	 */
+	private static int modelledArrayCount(Program program, InjectContext context) {
+		long declared = context.inputlist.get(1).getOffset() & 0xffffffffL;
+		try {
+			var function = program.getFunctionManager().getFunctionContaining(context.baseAddr);
+			var analysis = function == null ? null : WasmAnalysis.getState(program).getFunctionAnalysis(function.getEntryPoint());
+			var value = analysis == null ? null : analysis.getContext(context.baseAddr);
+			if (value == null) { return 0; }
+			return (int) Math.min(Math.min(declared, value.shiftRight(64).longValue() & 0xffffffffL), Integer.MAX_VALUE);
+		} catch (java.io.IOException | RuntimeException e) {
+			return 0;
+		}
 	}
 }

@@ -157,6 +157,20 @@ public class RegressionTest {
             check(ins!=null,"Undefined instruction at "+pc+" in "+p.getName());
             pc=pc.add(ins.getLength());
           }
+          if(p.getName().equals("unreachable_array_new_fixed.wasm")) {
+            // The constructor injection exposes only the operands pre-analysis modelled, not the u32 immediate.
+            boolean injected=false;
+            for(var ins:p.getListing().getInstructions(set,true)) for(var op:ins.getPcode()) {
+              if(op.getOpcode()!=ghidra.program.model.pcode.PcodeOp.CALLOTHER || !lang.getUserDefinedOpName((int)op.getInput(0).getOffset()).equals("array_new_fixed")) continue;
+              var context=new InjectContext();context.baseAddr=ins.getAddress();
+              context.inputlist=new ArrayList<>(Arrays.asList(op.getInputs()).subList(1,op.getNumInputs()));
+              context.output=new ArrayList<>(List.of(op.getOutput()));
+              var ops=new wasm.pcode.InjectPayloadWasmGCNew("regression",true).getPcode(p,context);
+              check(ops.length==1 && ops[0].getNumInputs()==2,"Unreachable array.new_fixed injects no phantom operands");
+              injected=true;
+            }
+            check(injected,"array.new_fixed constructor present for injection");
+          }
           for(var ins:p.getListing().getInstructions(set,true)) {
             if(ins.getMnemonicString().startsWith("br_on")) {
               var effect=fa.getStackEffect(ins.getAddress());
@@ -328,6 +342,29 @@ public class RegressionTest {
       } finally {emu.dispose();}
     }
   }
+  static void loadComponent(ProgramDB p,byte[] bytes) throws Exception {
+    var settings=new ghidra.app.util.opinion.Loader.ImporterSettings(new ByteArrayProvider(bytes),"component",null,null,false,null,List.of(),owner,new MessageLog(),monitor);
+    var m=WasmComponentLoader.class.getDeclaredMethod("load",Program.class,ghidra.app.util.opinion.Loader.ImporterSettings.class);
+    m.setAccessible(true);
+    try {m.invoke(new WasmComponentLoader(),p,settings);}
+    catch(java.lang.reflect.InvocationTargetException e) {throw (Exception)e.getCause();}
+  }
+  static void componentLoaderTests() throws Exception {
+    byte[] header={0,0x61,0x73,0x6d,0x0d,0,1,0};
+    byte[] core={0,0x61,0x73,0x6d,1,0,0,0, 1,4,1,0x60,0,0, 3,2,1,0, 10,4,1,2,0,0x0b};
+    var good=new java.io.ByteArrayOutputStream();good.writeBytes(header);good.write(1);good.write(core.length);good.writeBytes(core);
+    var empty=new java.io.ByteArrayOutputStream();empty.writeBytes(header);empty.writeBytes(new byte[]{2,0});
+    for(boolean valid:new boolean[]{true,false}) {
+      var p=new ProgramDB("component",lang,lang.getCompilerSpecByID(new CompilerSpecID("default")),owner);
+      int tx=p.startTransaction("component");
+      try {
+        boolean failed=false;
+        try {loadComponent(p,(valid?good:empty).toByteArray());} catch(java.io.IOException e) {failed=true;}
+        if(valid) check(!failed && p.getFunctionManager().getFunctionCount()==1,"Component loads its core module");
+        else check(failed,"Component without a core module fails the import instead of returning an empty program");
+      } finally {p.endTransaction(tx,true);p.release(owner);}
+    }
+  }
   public static void main(String[] args) throws Exception {
     init();
     for(String row:Files.readAllLines(Path.of(args[0]).getParent().resolve("numeric-expected.tsv"))) {
@@ -335,6 +372,9 @@ public class RegressionTest {
     }
     int failures=0;
     try {ReleasedCoreRegressionTest.invalid(Path.of(args[0]).getParent());} catch(Throwable e) {failures++;e.printStackTrace(System.out);}
+    try {componentLoaderTests();} catch(Throwable e) {failures++;e.printStackTrace(System.out);}
+    // The DWARF analyzer must be able to restrict the stock import to data types on this Ghidra.
+    check(wasm.analysis.WasmDWARFAnalyzer.constrainImportOptions(new wasm.analysis.WasmDWARFAnalyzer()),"DWARF import options can be restricted");
     for (String arg:args) {
       System.out.println("REVIEW FILE "+arg);
       ProgramDB p=null;

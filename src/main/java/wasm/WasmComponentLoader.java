@@ -136,18 +136,20 @@ public class WasmComponentLoader extends AbstractLibrarySupportLoader {
 		settings.monitor().setMessage("Wasm component: locating embedded core module");
 
 		ByteProvider provider = settings.provider();
+		/*
+		 * Like WasmLoader (B3), a failure must fail the import: returning here would report an
+		 * empty program as a successful load.
+		 */
 		List<CoreModule> modules;
 		try {
 			modules = findCoreModules(provider);
 		}
-		catch (Exception e) {
-			Msg.error(this, "WasmComponentLoader: failed to parse component sections", e);
-			return;
+		catch (IOException | RuntimeException e) {
+			throw new IOException("WasmComponentLoader: failed to parse component sections: " + e.getMessage(), e);
 		}
 
 		if (modules.isEmpty()) {
-			Msg.info(this, "WasmComponentLoader: no core module sections found; nothing to load.");
-			return;
+			throw new IOException("WasmComponentLoader: no core module sections found; nothing to load");
 		}
 
 		CoreModule module = modules.get(0);

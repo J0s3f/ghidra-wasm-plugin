@@ -102,17 +102,15 @@ public class WasmDWARFAnalyzer extends DWARFAnalyzer {
 		 * importSourceLineInfo() below, which supplies the address fixup the wasm
 		 * line table needs.
 		 */
-		try {
-			Field f = DWARFAnalyzer.class.getDeclaredField("importOptions");
-			f.setAccessible(true);
-			DWARFImportOptions opts = (DWARFImportOptions) f.get(this);
-			if (opts != null) {
-				opts.setImportDataTypes(true);
-				opts.setImportFuncs(false);
-				opts.setOutputSourceLineInfo(false);
-			}
-		} catch (Exception e) {
-			Msg.warn(this, "Could not constrain DWARF import options: " + e);
+		if (!constrainImportOptions(this)) {
+			/*
+			 * The defaults import functions and variables at untranslated addresses, so running
+			 * the stock import unconstrained would corrupt the program: skip DWARF instead.
+			 */
+			Msg.warn(this, "WASM DWARF: import skipped; the DWARF import options of this Ghidra "
+					+ "version cannot be restricted to data types");
+			log.appendMsg("WASM DWARF: import skipped (cannot restrict import options to data types)");
+			return false;
 		}
 
 		/*
@@ -136,6 +134,29 @@ public class WasmDWARFAnalyzer extends DWARFAnalyzer {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * Restrict the stock analyzer's private import options to data types. Returns false when
+	 * this Ghidra version no longer exposes them, in which case the caller must not run the
+	 * stock import. Public so the regression suite can detect that drift.
+	 */
+	public static boolean constrainImportOptions(DWARFAnalyzer analyzer) {
+		try {
+			Field f = DWARFAnalyzer.class.getDeclaredField("importOptions");
+			f.setAccessible(true);
+			DWARFImportOptions opts = (DWARFImportOptions) f.get(analyzer);
+			if (opts == null) {
+				return false;
+			}
+			opts.setImportDataTypes(true);
+			opts.setImportFuncs(false);
+			opts.setOutputSourceLineInfo(false);
+			return true;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			Msg.warn(WasmDWARFAnalyzer.class, "Could not constrain DWARF import options: " + e);
+			return false;
+		}
 	}
 
 	/**
