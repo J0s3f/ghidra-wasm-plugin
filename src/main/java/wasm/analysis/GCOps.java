@@ -31,7 +31,7 @@ import wasm.format.sections.structures.WasmGCType;
  *
  * <p>This class owns the opcode, the immediate/operand byte lengths and the
  * pre-analysis stack effects for every 0xFB instruction. All references are
- * modelled as opaque 32-bit values ({@link ValType#anyref}); no real GC heap
+ * modelled as opaque 32-bit values in their abstract reference family; no real GC heap
  * semantics are attempted. Composite/struct/array field types are read from the
  * parsed type section ({@link WasmGCType}) so that e.g. a struct field of type
  * i64 leaves the correct value type on the stack. When the referenced type is
@@ -81,12 +81,12 @@ public final class GCOps {
 				for (int i = 0; i < n; i++) {
 					owner.gcPop(instAddress);
 				}
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.structref);
 				break;
 			}
 			case 0x01: // struct.new_default t: [] -> [(ref t)]
 				readLeb(reader);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.structref);
 				break;
 			case 0x02: // struct.get t f: [(ref null t)] -> [field]
 			case 0x03: // struct.get_s t f: [(ref null t)] -> [i32]
@@ -114,14 +114,14 @@ public final class GCOps {
 				ValType elem = elemValType(analysis, t);
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPop(instAddress);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.arrayref);
 				owner.gcSetOperandSize(instAddress, elem);
 				break;
 			}
 			case 0x07: // array.new_default t: [i32] -> [(ref t)]
 				readLeb(reader);
 				owner.gcPop(instAddress, ValType.i32);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.arrayref);
 				break;
 			case 0x08: { // array.new_fixed t n: [field^n] -> [(ref t)]
 				long t = readLeb(reader);
@@ -129,7 +129,7 @@ public final class GCOps {
 				for (long i = 0; i < n; i++) {
 					owner.gcPop(instAddress);
 				}
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.arrayref);
 				owner.gcSetOperandSize(instAddress, elemValType(analysis, t));
 				break;
 			}
@@ -139,7 +139,7 @@ public final class GCOps {
 				readLeb(reader);
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPop(instAddress, ValType.i32);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.arrayref);
 				break;
 			case 0x0B: // array.get t: [(ref null t) i32] -> [field]
 			case 0x0C: // array.get_s t: -> [i32]
@@ -201,18 +201,19 @@ public final class GCOps {
 				owner.gcPush(instAddress, ValType.i32);
 				break;
 			case 0x16: // ref.cast (ref ht): [(ref null ht')] -> [(ref ht)]
-			case 0x17: // ref.cast (ref null ht)
-				readHeapType(reader);
+			case 0x17: { // ref.cast (ref null ht)
+				ValType castType = analysis.getModule().resolveHeapType(reader.readNext(LEB128::signed));
 				owner.gcPop(instAddress);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, castType);
 				break;
+			}
 			case 0x18: // br_on_cast castop l ht1 ht2
 			case 0x19: { // br_on_cast_fail castop l ht1 ht2
 				reader.readNextUnsignedByte(); // castop (nullability flags)
 				long labelidx = readLeb(reader);
-				readHeapType(reader);
-				readHeapType(reader);
-				owner.gcConditionalRefBranch(instAddress, labelidx, REF);
+				ValType source = analysis.getModule().resolveHeapType(reader.readNext(LEB128::signed));
+				ValType target = analysis.getModule().resolveHeapType(reader.readNext(LEB128::signed));
+				owner.gcConditionalRefBranch(instAddress, labelidx, opcode == 0x18 ? source : target);
 				break;
 			}
 			case 0x1A: // any.convert_extern: [(ref null extern)] -> [(ref null any)]
@@ -221,11 +222,11 @@ public final class GCOps {
 				break;
 			case 0x1B: // extern.convert_any: [(ref null any)] -> [(ref null extern)]
 				owner.gcPop(instAddress);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.externref);
 				break;
 			case 0x1C: // ref.i31: [i32] -> [(ref i31)]
 				owner.gcPop(instAddress, ValType.i32);
-				owner.gcPush(instAddress, REF);
+				owner.gcPush(instAddress, ValType.i31ref);
 				break;
 			case 0x1D: // i31.get_s: [(ref null i31)] -> [i32]
 			case 0x1E: // i31.get_u

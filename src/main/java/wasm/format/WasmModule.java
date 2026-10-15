@@ -27,6 +27,8 @@ import java.util.Set;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 import wasm.format.WasmEnums.WasmExternalKind;
+import wasm.format.WasmEnums.ValType;
+import wasm.format.sections.structures.WasmGCType;
 import wasm.format.sections.WasmCodeSection;
 import wasm.format.sections.WasmCustomSection;
 import wasm.format.sections.WasmDataSection;
@@ -117,6 +119,38 @@ public class WasmModule {
 			}
 			lastRank = Math.max(lastRank, rank);
 			lastOrdered = section.getId();
+		}
+		resolveReferenceTypes();
+	}
+
+	/** Resolve concrete references to their abstract family, keeping external and internal
+	 * references distinct without pretending to implement full nominal type validation. */
+	public ValType resolveHeapType(long heapType) {
+		if (heapType < 0) { return ValType.forHeapType(heapType); }
+		if (heapType > Integer.MAX_VALUE) { throw new IllegalArgumentException("Invalid heap type index " + heapType); }
+		WasmFuncType type = getType((int) heapType);
+		if (!(type instanceof WasmGCType)) { return ValType.funcref; }
+		switch (((WasmGCType) type).getKind()) {
+		case STRUCT: return ValType.structref;
+		case ARRAY: return ValType.arrayref;
+		case CONT: return ValType.contref;
+		default: return ValType.funcref;
+		}
+	}
+
+	private void resolveReferenceTypes() throws IOException {
+		try {
+			WasmTypeSection types = getTypeSection();
+			if (types != null) {
+				for (int i = 0; i < types.getNumTypes(); i++) { types.getType(i).resolveReferenceTypes(this::resolveHeapType); }
+			}
+			for (WasmImportEntry entry : getImports(WasmExternalKind.EXT_GLOBAL)) { entry.getGlobalType().resolveReferenceTypes(this::resolveHeapType); }
+			for (WasmImportEntry entry : getImports(WasmExternalKind.EXT_TABLE)) { entry.getTableType().resolveReferenceTypes(this::resolveHeapType); }
+			for (WasmGlobalEntry entry : getNonImportedGlobals()) { entry.getGlobalType().resolveReferenceTypes(this::resolveHeapType); }
+			for (WasmTableType table : getNonImportedTables()) { table.resolveReferenceTypes(this::resolveHeapType); }
+			for (WasmCodeEntry function : getNonImportedFunctions()) { function.resolveReferenceTypes(this::resolveHeapType); }
+		} catch (IndexOutOfBoundsException | IllegalArgumentException e) {
+			throw new IOException("Invalid concrete reference type", e);
 		}
 	}
 

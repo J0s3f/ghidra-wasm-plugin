@@ -66,7 +66,7 @@ public class InjectPayloadWasmCallPrologue extends InjectPayloadWasmPop {
 
 		long regoffset = con.inputlist.get(0).getOffset();
 		Address inputsBase = program.getAddressFactory().getAddressSpace("register").getAddress(regoffset);
-		AddressSpace ramSpace = program.getAddressFactory().getDefaultAddressSpace();
+		AddressSpace ramSpace = program.getAddressFactory().getAddressSpace("memory");
 
 		Address bufPtr = inputsBase.add(SCRATCH_SLOT * WasmLoader.REG_SIZE);
 		Address slotAddr = bufPtr.add(WasmLoader.REG_SIZE);

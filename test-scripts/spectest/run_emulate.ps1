@@ -80,13 +80,16 @@ $script = Join-Path $repo "ghidra_scripts\spectest.py"
 
 foreach ($f in $Files) {
     $wast = Join-Path $specDir $f".wast"
-    if (-not (Test-Path $wast)) { Write-Warning "no such wast: $f"; continue }
+    if (-not (Test-Path $wast)) { throw "no such wast: $f" }
     $json = Join-Path $jsonDir "$f.json"
     $rep = Join-Path $repDir "$f.txt"
     if (-not $NoPrepare -or -not (Test-Path $json)) {
         Copy-Item $wast (Join-Path $jsonDir (Split-Path $wast -Leaf)) -Force
         Push-Location $jsonDir
-        try { & "$wabt\wast2json.exe" --no-check (Split-Path $wast -Leaf) -o "$f.json" | Out-Null }
+        try {
+            & "$wabt\wast2json.exe" --no-check (Split-Path $wast -Leaf) -o "$f.json" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "wast2json failed for $f (exit $LASTEXITCODE)" }
+        }
         finally { Pop-Location }
     }
 
@@ -103,15 +106,20 @@ foreach ($f in $Files) {
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $emLog = Join-Path $repDir "$f.log"
+    Remove-Item -LiteralPath $rep -Force -ErrorAction SilentlyContinue
     try {
         & $PythonExe -m pyghidra --install-dir $GhidraDir --project-path $proj --project-name spectest `
             --skip-analysis $script $json "--report=$rep" @extra 2>&1 |
             Out-File -FilePath $emLog -Encoding utf8
+        $emExitCode = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $prevEap }
+    if ($emExitCode -ne 0) { throw "Emulation process failed for $f (exit $emExitCode); see $emLog" }
+    if (-not (Test-Path -LiteralPath $rep -PathType Leaf)) { throw "Missing emulation report for $f; see $emLog" }
     Select-String -Path $emLog -Pattern "SUMMARY|ERROR:" | ForEach-Object { $_.Line }
     Remove-Item -Recurse -Force $proj -ErrorAction SilentlyContinue
 }
 
 Write-Host "== parsing reports ==" -ForegroundColor Cyan
-& python (Join-Path $PSScriptRoot "parse_emulate_report.py") $repDir $OutDir
+& python (Join-Path $PSScriptRoot "parse_emulate_report.py") $repDir $OutDir @Files
+if ($LASTEXITCODE -ne 0) { throw "Spec emulation regression(s) or incomplete reports; see $OutDir/emulate-summary.md" }

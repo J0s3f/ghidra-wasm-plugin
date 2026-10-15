@@ -117,6 +117,7 @@ public class WasmFunctionAnalysis {
 		private static final RegisterDefinition REG_MEM64 = new RegisterDefinition(14, 15);
 		/* @@SS/@@STR: callother shape code for the variable-arity proposal instructions. */
 		private static final RegisterDefinition REG_SS_SHAPE = new RegisterDefinition(16, 19);
+		private static final RegisterDefinition REG_TABLE64 = new RegisterDefinition(20, 21);
 
 		private static final int DIRECTIVE_CASE = 0;
 		private static final int DIRECTIVE_DEFAULT = 1;
@@ -530,7 +531,7 @@ public class WasmFunctionAnalysis {
 			WasmFuncType type = analysis.getType((int) info.typeIndex);
 			return new BlockType(type.getParamTypes(), type.getReturnTypes());
 		}
-		return new BlockType(info.type);
+		return new BlockType(info.heapType == null ? info.type : analysis.getModule().resolveHeapType(info.heapType));
 	}
 	// #endregion
 
@@ -754,6 +755,16 @@ public class WasmFunctionAnalysis {
 		pushValue(instAddress, destType);
 	}
 
+	private ValType tableIndexType(WasmAnalysis analysis, long tableidx) {
+		return analysis.getModule().getTableType(Math.toIntExact(tableidx)).is64Bit() ? ValType.i64 : ValType.i32;
+	}
+
+	private ValType setTableIndexContext(WasmAnalysis analysis, Address address, long tableidx) {
+		ValType type = tableIndexType(analysis, tableidx);
+		contextreg.setRegister(address, ContextRegister.REG_TABLE64, type == ValType.i64 ? 3 : 0);
+		return type;
+	}
+
 	private void memoryStore(WasmAnalysis analysis, BinaryReader reader, Address instAddress, ValType destType) throws IOException {
 		ValType indexType = setMemoryIndexContext(analysis, instAddress, readMemarg(reader));
 		popValue(instAddress, destType);
@@ -802,6 +813,7 @@ public class WasmFunctionAnalysis {
 
 	/** Convert a BlockTypeInfo (the reader-level form of a block type) into a BlockType. */
 	private static BlockType blockTypeFromInfo(WasmAnalysis analysis, ValType.BlockTypeInfo info) {
+		if (info.heapType != null) { return new BlockType(analysis.getModule().resolveHeapType(info.heapType)); }
 		if (info.typeIndex >= 0) {
 			return new BlockType(analysis, info.typeIndex);
 		}
@@ -939,7 +951,13 @@ public class WasmFunctionAnalysis {
 	void gcConditionalRefBranch(Address instAddress, long labelidx, ValType ref) {
 		popValue(instAddress);
 		ControlFrame block = getBlock(instAddress, labelidx);
+		ValType[] arguments = block.getBranchArguments();
+		if (arguments.length == 0) { throw new ValidationException(instAddress, "reference branch requires a reference result"); }
+		ValType[] prefix = java.util.Arrays.copyOf(arguments, arguments.length - 1);
+		popValues(instAddress, prefix);
+		setStackEffect(instAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 		block.addBranch(instAddress);
+		pushValues(instAddress, prefix);
 		pushValue(instAddress, ref);
 	}
 	// @@GC ---------------------------------------------------------------------
@@ -1510,12 +1528,12 @@ public class WasmFunctionAnalysis {
 		case 0x11: /* call_indirect x y */ {
 			long typeidx = readLeb128(reader);
 			long tableidx = readLeb128(reader);
-			if (analysis.getTableType((int) tableidx) != ValType.funcref) {
+			if (!analysis.getTableType((int) tableidx).isSubtypeOf(ValType.funcref)) {
 				throw new ValidationException(instAddress, "call_indirect does not reference a function table");
 			}
 			WasmFuncType type = analysis.getType((int) typeidx);
 
-			popValue(instAddress, ValType.i32);
+			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			ValType[] params = type.getParamTypes();
 			ValType[] returns = type.getReturnTypes();
 			popValues(instAddress, params);
@@ -1537,11 +1555,11 @@ public class WasmFunctionAnalysis {
 		case 0x13: /* return_call_indirect x y */ {
 			long typeidx = readLeb128(reader);
 			long tableidx = readLeb128(reader);
-			if (analysis.getTableType((int) tableidx) != ValType.funcref) {
+			if (!analysis.getTableType((int) tableidx).isSubtypeOf(ValType.funcref)) {
 				throw new ValidationException(instAddress, "return_call_indirect does not reference a function table");
 			}
 			WasmFuncType type = analysis.getType((int) typeidx);
-			popValue(instAddress, ValType.i32);
+			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			ValType[] params = type.getParamTypes();
 			popValues(instAddress, params);
 			setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), type.getReturnTypes());
@@ -1608,7 +1626,7 @@ public class WasmFunctionAnalysis {
 			if (count != 1) {
 				throw new ValidationException(instAddress, "only select t is supported");
 			}
-			ValType t = ValType.readFromReader(reader);
+			ValType t = ValType.readFromReader(reader, analysis.getModule()::resolveHeapType);
 			popValue(instAddress, ValType.i32);
 			popValue(instAddress, t);
 			popValue(instAddress, t);
@@ -1658,7 +1676,7 @@ public class WasmFunctionAnalysis {
 		case 0x25: /* table.get x */ {
 			long tableidx = readLeb128(reader);
 			ValType type = analysis.getTableType((int) tableidx);
-			popValue(instAddress, ValType.i32);
+			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			pushValue(instAddress, type);
 			break;
 		}
@@ -1666,7 +1684,7 @@ public class WasmFunctionAnalysis {
 			long tableidx = readLeb128(reader);
 			ValType type = analysis.getTableType((int) tableidx);
 			popValue(instAddress, type);
-			popValue(instAddress, ValType.i32);
+			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			break;
 		}
 
@@ -1940,10 +1958,8 @@ public class WasmFunctionAnalysis {
 			break;
 
 		case 0xD0: /* ref.null ht */ {
-			/* The immediate is a bare s33 heap type (not a valtype): abstract heap types
-			   map to their ValType (ref.null struct -> structref), a concrete type index to
-			   the generic reference placeholder. */
-			ValType reftype = ValType.readHeapType(reader);
+			/* A bare s33 heap type; concrete indices resolve to their abstract family. */
+			ValType reftype = analysis.getModule().resolveHeapType(readSignedLeb128(reader));
 			pushValue(instAddress, reftype);
 			break;
 		}
@@ -1979,7 +1995,11 @@ public class WasmFunctionAnalysis {
 			long labelidx = readLeb128(reader);
 			ValType ref = popValue(instAddress);
 			ControlFrame block = getBlock(instAddress, labelidx);
+			ValType[] arguments = block.getBranchArguments();
+			popValues(instAddress, arguments);
+			setStackEffect(instAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 			block.addBranch(instAddress);
+			pushValues(instAddress, arguments);
 			/* fall-through keeps the (now non-null) reference */
 			pushValue(instAddress, (ref != null) ? ref : ValType.externref);
 			break;
@@ -1988,7 +2008,13 @@ public class WasmFunctionAnalysis {
 			long labelidx = readLeb128(reader);
 			popValue(instAddress);
 			ControlFrame block = getBlock(instAddress, labelidx);
+			ValType[] arguments = block.getBranchArguments();
+			if (arguments.length == 0) { throw new ValidationException(instAddress, "reference branch requires a reference result"); }
+			ValType[] prefix = java.util.Arrays.copyOf(arguments, arguments.length - 1);
+			popValues(instAddress, prefix);
+			setStackEffect(instAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 			block.addBranch(instAddress);
+			pushValues(instAddress, prefix);
 			/* fall-through consumes the (null) reference */
 			break;
 		}
@@ -2110,10 +2136,10 @@ public class WasmFunctionAnalysis {
 			}
 			case 0x0C: /* table.init x y */ {
 				readLeb128(reader); /* elemidx */
-				readLeb128(reader); /* tableidx */
+				ValType indexType = setTableIndexContext(analysis, instAddress, readLeb128(reader));
 				popValue(instAddress, ValType.i32);
 				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				break;
 			}
 			case 0x0D: /* elem.drop x */ {
@@ -2121,30 +2147,31 @@ public class WasmFunctionAnalysis {
 				break;
 			}
 			case 0x0E: /* table.copy x y */ {
-				readLeb128(reader); /* tableidx */
-				readLeb128(reader); /* tableidx2 */
-				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
-				popValue(instAddress, ValType.i32);
+				ValType dst = tableIndexType(analysis, readLeb128(reader));
+				ValType src = tableIndexType(analysis, readLeb128(reader));
+				int widths = dst == ValType.i64 ? (src == ValType.i64 ? 3 : 1) : (src == ValType.i64 ? 2 : 0);
+				contextreg.setRegister(instAddress, ContextRegister.REG_TABLE64, widths);
+				popValue(instAddress, dst == ValType.i64 && src == ValType.i64 ? ValType.i64 : ValType.i32);
+				popValue(instAddress, src);
+				popValue(instAddress, dst);
 				break;
 			}
 			case 0x0F: /* table.grow x */ {
-				readLeb128(reader); /* tableidx */
-				popValue(instAddress, ValType.i32);
+				ValType indexType = setTableIndexContext(analysis, instAddress, readLeb128(reader));
+				popValue(instAddress, indexType);
 				popValue(instAddress);
-				pushValue(instAddress, ValType.i32);
+				pushValue(instAddress, indexType);
 				break;
 			}
 			case 0x10: /* table.size x */ {
-				readLeb128(reader); /* tableidx */
-				pushValue(instAddress, ValType.i32);
+				pushValue(instAddress, setTableIndexContext(analysis, instAddress, readLeb128(reader)));
 				break;
 			}
 			case 0x11: /* table.fill x */ {
-				readLeb128(reader); /* tableidx */
-				popValue(instAddress, ValType.i32);
+				ValType indexType = setTableIndexContext(analysis, instAddress, readLeb128(reader));
+				popValue(instAddress, indexType);
 				popValue(instAddress);
-				popValue(instAddress, ValType.i32);
+				popValue(instAddress, indexType);
 				break;
 			}
 			// @@WA: memory.discard and wide arithmetic.
@@ -2702,7 +2729,7 @@ public class WasmFunctionAnalysis {
 			instAddress = startAddress.add(reader.getPointerIndex());
 			contextreg.setLocalDeclaration(instAddress);
 			readLeb128(reader); /* count */
-			readLeb128(reader); /* type */
+			ValType.readFromReader(reader); /* complete value type, including heap type */
 		}
 
 		instAddress = startAddress.add(reader.getPointerIndex());

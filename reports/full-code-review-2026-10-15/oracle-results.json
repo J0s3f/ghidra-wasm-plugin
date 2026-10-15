@@ -1,0 +1,163 @@
+{
+  "node": "v26.10.0",
+  "results": [
+    {
+      "fixture": "br_on_non_null.wasm",
+      "valid": true,
+      "result": "7"
+    },
+    {
+      "fixture": "br_on_null.wasm",
+      "valid": true,
+      "result": "42"
+    },
+    {
+      "fixture": "copy_dynamic_len.wasm",
+      "valid": true
+    },
+    {
+      "fixture": "copy_overlap.wasm",
+      "valid": true
+    },
+    {
+      "fixture": "cross_section_type.wasm",
+      "valid": false,
+      "validation_error": "WebAssembly.Module(): type kind @+11"
+    },
+    {
+      "fixture": "gc_return.wasm",
+      "valid": true,
+      "result": "[opaque reference]"
+    },
+    {
+      "fixture": "global_index64.wasm",
+      "valid": true,
+      "result": "undefined"
+    },
+    {
+      "fixture": "grow_overflow.wasm",
+      "valid": true,
+      "result": "-1"
+    },
+    {
+      "fixture": "huge_params.wasm",
+      "valid": false,
+      "validation_error": "WebAssembly.Module(): param count of 268435456 exceeds internal limit of 1000 @+12"
+    },
+    {
+      "fixture": "local_names.wasm",
+      "valid": true
+    },
+    {
+      "fixture": "max_zero.wasm",
+      "valid": true,
+      "result": "0"
+    },
+    {
+      "fixture": "min_zero.wasm",
+      "valid": true,
+      "result": "-2147483648"
+    },
+    {
+      "fixture": "multi_memarg.wasm",
+      "valid": true,
+      "result": "0"
+    },
+    {
+      "fixture": "mutable_memory.wasm",
+      "valid": true
+    },
+    {
+      "fixture": "nearest_half.wasm",
+      "valid": true,
+      "result": "1073741824"
+    },
+    {
+      "fixture": "oob_store.wasm",
+      "valid": true,
+      "runtime_error": "memory access out of bounds"
+    },
+    {
+      "fixture": "overlap_struct.wasm",
+      "valid": true,
+      "result": "undefined"
+    },
+    {
+      "fixture": "rec_functype.wasm",
+      "valid": true
+    },
+    {
+      "fixture": "sat_nan.wasm",
+      "valid": true,
+      "result": "0"
+    },
+    {
+      "fixture": "sat_signed_max.wasm",
+      "valid": true,
+      "result": "2147483647"
+    },
+    {
+      "fixture": "sat_unsigned_2p32.wasm",
+      "valid": true,
+      "result": "-1"
+    },
+    {
+      "fixture": "sat_unsigned_max.wasm",
+      "valid": true,
+      "result": "-1"
+    },
+    {
+      "fixture": "sat_unsigned_negative.wasm",
+      "valid": true,
+      "result": "0"
+    },
+    {
+      "fixture": "table64_get.wasm",
+      "valid": true,
+      "result": "1"
+    },
+    {
+      "fixture": "table64_size.wasm",
+      "valid": true,
+      "result": "1"
+    },
+    {
+      "fixture": "table_initializer.wasm",
+      "valid": true
+    },
+    {
+      "fixture": "trunc_lower.wasm",
+      "valid": true,
+      "result": "-2147483648"
+    },
+    {
+      "fixture": "trunc_unsigned.wasm",
+      "valid": true,
+      "result": "-1"
+    },
+    {
+      "fixture": "trunc_unsigned_i64.wasm",
+      "valid": true,
+      "result": "-9223372036854775808"
+    },
+    {
+      "fixture": "truncated_datacount.wasm",
+      "valid": false,
+      "validation_error": "WebAssembly.Module(): section (code 12, \"DataCount\") extends past end of the module (length 5, remaining bytes 1) @+8"
+    },
+    {
+      "fixture": "typed_local.wasm",
+      "valid": true,
+      "result": "1"
+    },
+    {
+      "fixture": "typed_select.wasm",
+      "valid": true,
+      "result": "1"
+    },
+    {
+      "fixture": "typed_signature.wasm",
+      "valid": true
+    }
+  ]
+}

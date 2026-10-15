@@ -42,6 +42,16 @@ jobs:
     - name: Build
       run: gradle buildExtension
 
+    - name: Install numeric oracle runtime
+      uses: actions/setup-node@v7
+      with:
+        node-version: '26'
+        package-manager-cache: false
+
+    - name: Repository-wide review regression tests
+      shell: pwsh
+      run: ./test-scripts/run-regressions.ps1 -GhidraDir $env:GHIDRA_INSTALL_DIR -OutDir "$env:RUNNER_TEMP/review-regressions"
+
     - name: Install the built extension into Ghidra
       run: |
         set -euxo pipefail
@@ -176,4 +186,5 @@ jobs:
         path: |
           ${{ runner.temp }}/probes/probe-run.log
           ${{ runner.temp }}/probes/fixture-run.log
+          ${{ runner.temp }}/review-regressions/*.txt
         if-no-files-found: warn

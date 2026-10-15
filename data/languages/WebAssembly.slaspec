@@ -1921,6 +1921,8 @@ define context contextreg
 	# instruction's callother reads/writes: 0..1 = number of modelled params, 2..3 = number of
 	# modelled results (p*2+r). See StackSwitchOps.sinc / StringOps.sinc.
 	ctx_ss_shape = (16, 19) noflow
+	# Same width codes as ctx_mem64, for table indices and mixed table.copy.
+	ctx_table64 = (20, 21) noflow
 	ctx_case_index = (32, 63) noflow
 	ctx_br_target = (64, 95) noflow
 	ctx_sp = (96, 127) noflow

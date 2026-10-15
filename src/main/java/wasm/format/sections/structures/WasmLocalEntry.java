@@ -29,10 +29,12 @@ public class WasmLocalEntry implements StructConverter {
 
 	private LEB128Info count;
 	private ValType type;
+	private ValType.TypeInfo typeInfo;
 
 	public WasmLocalEntry(BinaryReader reader) throws IOException {
 		count = reader.readNext(LEB128Info::unsigned);
-		type = ValType.readFromReader(reader);
+		typeInfo = ValType.readTypeInfo(reader);
+		type = typeInfo.type;
 	}
 
 	public int getCount() {
@@ -55,12 +57,15 @@ public class WasmLocalEntry implements StructConverter {
 	public ValType getType() {
 		return type;
 	}
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		type = typeInfo.resolve(resolver);
+	}
 
 	@Override
 	public DataType toDataType() throws DuplicateNameException, IOException {
 		StructureBuilder builder = new StructureBuilder("locals_" + count.asLong() + "_" + type.typeByte);
 		builder.addUnsignedLeb128(count, "count");
-		builder.add(BYTE, "type");
+		builder.addArray(BYTE, typeInfo.encodedLength, "type");
 		return builder.toStructure();
 	}
 }

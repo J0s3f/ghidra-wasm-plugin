@@ -43,7 +43,7 @@ import ghidra.util.task.TaskMonitor;
  * InjectPayloadWasmMemoryCopy can unroll the copy, letting the decompiler fold
  * the read-only source into inline constant stores (recompilable) rather than
  * an opaque memory_copy() call. Dynamic copies (runtime src/len) are left alone
- * and rendered as memcpy.
+ * and retain an explicit Wasm copy intrinsic.
  */
 public class WasmMemoryCopyAnalyzer extends AbstractAnalyzer {
 	private static final String NAME = "Wasm Memory Copy Analyzer";
@@ -113,38 +113,31 @@ public class WasmMemoryCopyAnalyzer extends AbstractAnalyzer {
 
 	private void processSite(Program program, SymbolicPropogator symEval, Instruction instr) {
 		Address addr = instr.getMinAddress();
-		/*
-		 * memory.copy's three stack operands (dest, src, len) decode to concrete
-		 * sN registers depending on stack height. Rather than recompute the
-		 * height, resolve the constant value of every input register and
-		 * classify by magnitude: len is a small count, src is a data-segment
-		 * address. dest is a frame-relative (register-relative) pointer, so it
-		 * is naturally excluded (not a plain constant).
-		 */
-		Long len = null, src = null;
-		for (Object obj : instr.getInputObjects()) {
-			if (!(obj instanceof Register)) {
-				continue;
+		WasmMemoryCopyInfo.clear(program, addr);
+		for (ghidra.program.model.pcode.PcodeOp op : instr.getPcode()) {
+			if (op.getOpcode() != ghidra.program.model.pcode.PcodeOp.CALLOTHER || op.getNumInputs() != 6) continue;
+			int userop = (int) op.getInput(0).getOffset();
+			if (!"memory_copy".equals(program.getLanguage().getUserDefinedOpName(userop))) continue;
+			Long len = constantValue(program, symEval, addr, op.getInput(3));
+			Long src = constantValue(program, symEval, addr, op.getInput(4));
+			if (len == null || len < 1 || len > MAX_BYTES || src == null) return;
+			int srcMemory = (int) op.getInput(2).getOffset();
+			Address source = wasm.WasmLoader.getMemoryAddress(program.getAddressFactory(), srcMemory, src, op.getInput(4).getSize() == 8);
+			ghidra.program.model.mem.MemoryBlock block = program.getMemory().getBlock(source);
+			if (block != null && block.isInitialized() && !block.isWrite() && block.contains(source.add(len - 1))) {
+				WasmMemoryCopyInfo.putLength(program, addr, len.intValue());
 			}
-			SymbolicPropogator.Value v = symEval.getRegisterValue(addr, (Register) obj);
-			if (v == null || v.isRegisterRelativeValue()) {
-				continue;
-			}
-			long val = v.getValue() & 0xFFFFFFFFL;
-			if (val >= 1 && val <= MAX_BYTES) {
-				if (len == null) {
-					len = val;
-				}
-			} else if (val >= 0x1000) {
-				if (src == null) {
-					src = val;
-				}
-			}
+			return;
 		}
+	}
 
-		if (len == null || src == null) {
-			return; /* dynamic or unresolved: leave as memcpy */
-		}
-		WasmMemoryCopyInfo.putLength(program, addr, len.intValue());
+	private static Long constantValue(Program program, SymbolicPropogator evaluator, Address site,
+			ghidra.program.model.pcode.Varnode value) {
+		if (value.isConstant()) return value.getOffset();
+		Register register = program.getRegister(value);
+		if (register == null) return null;
+		SymbolicPropogator.Value result = evaluator.getRegisterValue(site, register);
+		if (result == null || result.isRegisterRelativeValue()) return null;
+		return value.getSize() == 4 ? result.getValue() & 0xffffffffL : result.getValue();
 	}
 }

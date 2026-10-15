@@ -18,15 +18,25 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if (-not (Test-Path $Source)) { throw "source install not found: $Source" }
-if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+. (Join-Path $PSScriptRoot 'lib/wasm-install.ps1')
+if (-not (Test-Path -LiteralPath (Join-Path $Source 'Ghidra/application.properties'))) { throw "source install not found: $Source" }
+$Source = Get-WasmCanonicalPath $Source
+$Dest = Assert-WasmTestInstallDestination $Source $Dest
+if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force }
+New-Item -ItemType Directory -Path $Dest | Out-Null
+$marker = Join-Path $Dest '.ghidra-wasm-test-install.json'
+@{ source = $Source } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding utf8
 
 Write-Host "== copying $Source -> $Dest ==" -ForegroundColor Cyan
 robocopy $Source $Dest /E /NFL /NDL /NJH /NJS /MT:16 | Out-Null
+if ($LASTEXITCODE -lt 0 -or $LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE); incomplete test install: $Dest" }
+@{ source = $Source } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding utf8
 
 if (-not $KeepExtensions) {
-    Get-ChildItem (Join-Path $Dest "Ghidra\Extensions") -ErrorAction SilentlyContinue |
-        Remove-Item -Recurse -Force
+    foreach ($extension in @(Get-ChildItem (Join-Path $Dest "Ghidra\Extensions") -ErrorAction SilentlyContinue)) {
+        $checked = Assert-WasmChildPath $extension.FullName $Dest
+        Remove-Item -LiteralPath $checked -Recurse -Force
+    }
 }
 
 Add-Content -Path (Join-Path $Dest "support\launch.properties") -Value @"

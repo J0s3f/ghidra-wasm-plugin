@@ -103,12 +103,9 @@ public class WasmEnums {
 		public final int typeByte;
 
 		/**
-		 * The single ValType used for a reference whose *concrete* heap type is not modelled
-		 * (i.e. every {@code (ref null $t)} / {@code (ref $t)} / {@code ref.null $t} whose
-		 * heap type is a non-negative type index). Mapping all of them onto one value keeps a
-		 * signature and the value that satisfies it consistent, which is what the coarse
-		 * value-stack model needs. Kept as {@code externref} - the previous catch-all result -
-		 * so existing probes do not change.
+		 * Provisional value for readers without a module type graph. Persisted TypeInfo
+		 * records retain the heap index; WasmModule resolves it to func/struct/array/cont
+		 * after parsing, before signatures or stack analysis use the value.
 		 */
 		public static final ValType GENERIC_REF = externref;
 
@@ -240,15 +237,36 @@ public class WasmEnums {
 		 * Never returns null.
 		 */
 		public static ValType readFromReader(BinaryReader reader) throws IOException {
-			int b = reader.readNextUnsignedByte();
-			
-			// Check for multi-byte reference types
-			if (b == 0x63 || b == 0x64) {
-				// (ref null <heaptype>) or (ref <heaptype>): consume the s33 heaptype operand
-				return forHeapType(reader.readNext(LEB128Info::signed).asLong());
+			return readTypeInfo(reader).type;
+		}
+
+		/** Preserve a concrete heap index until the complete module type graph is available. */
+		public static final class TypeInfo {
+			public final ValType type;
+			public final Long heapType;
+			public final int encodedLength;
+			private TypeInfo(ValType type, Long heapType, int encodedLength) {
+				this.type = type; this.heapType = heapType; this.encodedLength = encodedLength;
 			}
-			
-			return fromByte(b);
+			public ValType resolve(java.util.function.LongFunction<ValType> resolver) {
+				return heapType == null ? type : resolver.apply(heapType);
+			}
+		}
+
+		public static TypeInfo readTypeInfo(BinaryReader reader) throws IOException {
+			long start = reader.getPointerIndex();
+			int b = reader.readNextUnsignedByte();
+			Long heap = b == 0x63 || b == 0x64 ? reader.readNext(LEB128Info::signed).asLong() : null;
+			if (heap == null && !BY_BYTE.containsKey(b)) {
+				throw new IOException("Invalid value type byte " + b);
+			}
+			return new TypeInfo(heap == null ? fromByte(b) : forHeapType(heap), heap,
+					(int) (reader.getPointerIndex() - start));
+		}
+
+		public static ValType readFromReader(BinaryReader reader, java.util.function.LongFunction<ValType> resolver)
+				throws IOException {
+			return readTypeInfo(reader).resolve(resolver);
 		}
 
 		/**
@@ -270,17 +288,23 @@ public class WasmEnums {
 		public static final class BlockTypeInfo {
 			public final ValType type;
 			public final long typeIndex;
+			public final Long heapType;
 
 			private BlockTypeInfo(ValType type, long typeIndex) {
+				this(type, typeIndex, null);
+			}
+			private BlockTypeInfo(ValType type, long typeIndex, Long heapType) {
 				this.type = type;
 				this.typeIndex = typeIndex;
+				this.heapType = heapType;
 			}
 		}
 
 		public static BlockTypeInfo readBlockType(BinaryReader reader) throws IOException {
 			int b = reader.readNextUnsignedByte();
 			if (b == 0x63 || b == 0x64) {
-				return new BlockTypeInfo(forHeapType(reader.readNext(LEB128Info::signed).asLong()), -1);
+				long heapType = reader.readNext(LEB128Info::signed).asLong();
+				return new BlockTypeInfo(forHeapType(heapType), -1, heapType);
 			}
 			/* Re-encode the first byte and decode the whole immediate as a signed LEB, so a
 			   multi-byte type index is consumed correctly. */
@@ -328,6 +352,10 @@ public class WasmEnums {
 						|| this == none;
 			case eqref:
 				return this == i31ref || this == structref || this == arrayref || this == none;
+			case structref:
+			case arrayref:
+			case i31ref:
+				return this == none;
 			case funcref:
 				return this == nofuncref;
 			case externref:

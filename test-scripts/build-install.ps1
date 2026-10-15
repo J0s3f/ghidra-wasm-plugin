@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     1. runs `gradle buildExtension` in the current directory with GHIDRA_INSTALL_DIR set,
-    2. removes every previously installed extension under <GhidraDir>\Ghidra\Extensions,
+    2. replaces only previously installed WebAssembly copies under <GhidraDir>\Ghidra\Extensions,
     3. extracts the newly built zip there,
     4. removes shadowing copies from the per-user settings directories of THIS Ghidra version only
        (see -CleanAllVersions for the cross-version sweep).
@@ -73,36 +73,9 @@ try {
 
     $extDir = Join-Path $GhidraDir "Ghidra\Extensions"
     Write-Host "== installing $($zip.Name) into $extDir ==" -ForegroundColor Cyan
-    # Pre-flight: a running Ghidra holds the installed jar open. Clearing the directory then deletes
-    # part of the install (data/, ghidra_scripts/) before failing on the locked jar - detect the lock
-    # first and refuse, leaving the existing install untouched.
-    $installedJars = @(Get-ChildItem $extDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-        Get-ChildItem (Join-Path $_.FullName "lib") -Filter "*.jar" -ErrorAction SilentlyContinue
-    })
-    $locked = @($installedJars | Where-Object {
-        try { $s = [IO.File]::Open($_.FullName, 'Open', 'ReadWrite', 'None'); $s.Close(); $false } catch { $true }
-    })
-    if ($locked.Count -gt 0) {
-        throw ("the installed extension is in use (locked: {0}) - close Ghidra and re-run, or install into a different -GhidraDir" -f
-               (($locked | ForEach-Object { $_.Name }) -join ", "))
-    }
-    # Clear the previous install, then extract. Verify afterwards that at least one extension with a
-    # jar actually landed, and fail loudly otherwise (this used to report success on a broken install).
-    Get-ChildItem $extDir -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-    $extractError = $null
-    try { Expand-Archive -Path $zip.FullName -DestinationPath $extDir -Force -ErrorAction Stop }
-    catch { $extractError = $_ }
-    $installed = @(Get-ChildItem $extDir -Directory -ErrorAction SilentlyContinue | Where-Object {
-        Get-ChildItem (Join-Path $_.FullName "lib") -Filter "*.jar" -ErrorAction SilentlyContinue
-    })
-    if ($installed.Count -eq 0) {
-        if ($extractError) { throw "install failed: extracting $($zip.Name) failed: $($extractError.Exception.Message)" }
-        throw "install failed: no extension with a lib/*.jar landed in $extDir (is a Ghidra instance holding the old files?)"
-    }
-    $installed | ForEach-Object {
-        $jar = Get-ChildItem (Join-Path $_.FullName "lib") -Filter "*.jar" | Select-Object -First 1
-        Write-Host ("installed: {0}  jar: {1}  ({2} bytes)" -f $_.Name, $jar.Name, $jar.Length)
-    }
+    . (Join-Path $PSScriptRoot 'lib/wasm-install.ps1')
+    $installed = @(Install-WasmExtensionArchive -Archive $zip.FullName -ExtensionRoot $extDir)
+    $installed | ForEach-Object { Write-Host ('installed: ' + $_.Name) }
 
     # Ghidra also loads extensions from its per-user settings directory (an isolated test install
     # keeps that directory inside itself, see new-test-install.ps1). A second copy there - e.g. one

@@ -44,6 +44,7 @@ import ghidra.util.HelpLocation;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
+import wasm.format.WasmEnums.ValType;
 
 public class WasmPreAnalyzer extends AbstractAnalyzer {
 	private final static String NAME = "Wasm Pre-Analyzer";
@@ -99,10 +100,10 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 				? new MemoryByteProvider(mem, funcAddress, funcBlock.getEnd())
 				: new MemoryByteProvider(mem, funcAddress);
 		BinaryReader codeReader = new BinaryReader(provider, true);
-		int localsCount = codeReader.readNextVarInt(LEB128::signed);
+		int localsCount = codeReader.readNextUnsignedVarIntExact(LEB128::unsigned);
 		for (int i = 0; i < localsCount; i++) {
-			codeReader.readNextVarInt(LEB128::signed); /* count */
-			codeReader.readNextVarInt(LEB128::signed); /* type */
+			codeReader.readNextUnsignedVarIntExact(LEB128::unsigned); /* count */
+			ValType.readFromReader(codeReader);
 		}
 
 		/*
@@ -111,7 +112,7 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 		 */
 		if (codeReader.readNextUnsignedByte() != 0x23)
 			return -1;
-		return codeReader.readNextVarInt(LEB128::signed);
+		return codeReader.readNextUnsignedVarIntExact(LEB128::unsigned);
 	}
 
 	private int guessCStackGlobal(Program program, List<WasmFuncSignature> functions, TaskMonitor monitor) {
@@ -158,9 +159,8 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 		WasmAnalysis state = WasmAnalysis.getState(program);
 		List<WasmFuncSignature> functions = state.getFunctions();
 
-		if (cStackGlobal == CSTACK_GLOBAL_AUTO) {
-			cStackGlobal = guessCStackGlobal(program, functions, monitor);
-		}
+		int programCStackGlobal = cStackGlobal == CSTACK_GLOBAL_AUTO
+				? guessCStackGlobal(program, functions, monitor) : cStackGlobal;
 
 		monitor.setMessage("Analyzing functions...");
 		monitor.initialize(functions.size());
@@ -199,7 +199,7 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 			}
 
 			try {
-				funcAnalysis.applyContext(program, cStackGlobal);
+				funcAnalysis.applyContext(program, programCStackGlobal);
 				AddressSet funcSet = new AddressSet(
 					funcAnalysis.getSignature().getStartAddr(),
 					funcAnalysis.getSignature().getEndAddr());

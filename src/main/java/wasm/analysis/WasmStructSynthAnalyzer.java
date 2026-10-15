@@ -689,10 +689,10 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 
 	private static Scalar getMemoryOffset(Instruction instr) {
 		Object[] operands = instr.getOpObjects(0);
-		if (operands.length < 2 || !(operands[1] instanceof Scalar)) {
+		if (operands.length < 2 || !(operands[operands.length - 1] instanceof Scalar)) {
 			return null;
 		}
-		return (Scalar) operands[1];
+		return (Scalar) operands[operands.length - 1];
 	}
 
 	private static boolean isLoadStore(String mnemonic) {
@@ -759,20 +759,33 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		}
 
 		StructureDataType struct = new StructureDataType(category, name, 0);
-		struct.setPackingEnabled(true);
+		struct.setPackingEnabled(false);
 		struct.setDescription("Synthesized from constant-offset memory accesses through wasm pointer parameters");
-
-		int prevEnd = 0;
-		int fieldCount = 0;
+		// Coalesce overlapping observations into one storage span. This preserves the
+		// full observed extent, including a later access that crosses an earlier field.
+		TreeMap<Integer, Integer> spans = new TreeMap<>();
 		for (Map.Entry<Integer, Integer> entry : offsets.entrySet()) {
 			int offset = entry.getKey();
 			int width = entry.getValue();
-			if (offset < 0) continue;
+			if (offset < 0 || width <= 0 || (long) offset + width > Integer.MAX_VALUE) { continue; }
+			Map.Entry<Integer, Integer> previous = spans.lastEntry();
+			if (previous != null && offset < previous.getKey() + previous.getValue()) {
+				spans.put(previous.getKey(), Math.max(previous.getValue(), offset + width - previous.getKey()));
+			} else {
+				spans.put(offset, width);
+			}
+		}
+
+		int prevEnd = 0;
+		int fieldCount = 0;
+		for (Map.Entry<Integer, Integer> entry : spans.entrySet()) {
+			int offset = entry.getKey();
+			int width = entry.getValue();
 
 			// Fill gap
 			if (offset > prevEnd) {
 				int gap = offset - prevEnd;
-				struct.add(new Undefined1DataType(), gap, "pad_" + prevEnd, null);
+				struct.growStructure(gap);
 			}
 
 			// Add field
@@ -803,7 +816,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			case 4: return ghidra.program.model.data.Undefined4DataType.dataType;
 			case 8: return ghidra.program.model.data.Undefined8DataType.dataType;
 			case 16: return Undefined.getUndefinedDataType(16);
-			default: return Undefined1DataType.dataType;
+			default: return Undefined.getUndefinedDataType(width);
 		}
 	}
 

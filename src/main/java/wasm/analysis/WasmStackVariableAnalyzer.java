@@ -394,10 +394,10 @@ public class WasmStackVariableAnalyzer extends AbstractAnalyzer {
 	/** The `offset=O` operand of a load/store instruction, or null if it is not present. */
 	private static Scalar getMemoryOffset(Instruction instr) {
 		Object[] operands = instr.getOpObjects(0);
-		if (operands.length < 2 || !(operands[1] instanceof Scalar)) {
+		if (operands.length < 2 || !(operands[operands.length - 1] instanceof Scalar)) {
 			return null;
 		}
-		return (Scalar) operands[1];
+		return (Scalar) operands[operands.length - 1];
 	}
 
 	private static boolean overlaps(Atom atom, Access access) {

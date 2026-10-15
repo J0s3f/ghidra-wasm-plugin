@@ -32,12 +32,12 @@ import wasm.analysis.WasmMemoryCopyInfo;
  * so the decompiler folds the read-only source into inline constant stores:
  * <code>memory_copy(...)</code> becomes <code>dst[i] = &lt;const&gt;</code>.
  *
- * Otherwise (dynamic copy) render it as <code>memcpy(dst, src, len)</code>,
- * which is a real, recompilable libc call.
+ * Dynamic copies retain an explicit Wasm intrinsic with both memory identities;
+ * callers must preserve memory.copy's overlapping-range semantics.
  */
 public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 
-	private int memcpyOpIndex = -1;
+	private int copyOpIndex = -1;
 
 	public InjectPayloadWasmMemoryCopy(String sourceName) {
 		super(sourceName);
@@ -58,7 +58,7 @@ public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 		try {
 			nbytes = WasmMemoryCopyInfo.getLength(program, con.baseAddr);
 		} catch (Exception e) {
-			/* fall through to memcpy */
+			/* fall through to the dynamic intrinsic */
 		}
 
 		if (nbytes != null && nbytes > 0) {
@@ -69,33 +69,29 @@ public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 			 * would not link. Word granularity is more compact but the
 			 * address-table analyzer types the folded words as pointers.
 			 */
-			if (src.getSize() == 8 || dst.getSize() == 8) {
-				ops.emitUnrolledCopy64(src, dst, nbytes, 1,
-						con.inputlist.get(1).getOffset(), con.inputlist.get(0).getOffset());
-			} else {
-				ops.emitUnrolledCopy(src, dst, nbytes, 1);
-			}
+			ops.emitUnrolledCopy64(src, dst, nbytes, 1,
+					con.inputlist.get(1).getOffset(), con.inputlist.get(0).getOffset());
 		} else {
-			int idx = memcpyIndex(program);
+			int idx = copyIndex(program);
 			if (idx >= 0) {
-				/* memcpy(dst, src, len) */
-				ops.emitCallOther(idx, dst, src, len);
+				// Preserve both memory identities and pointer widths in the opaque dynamic form.
+				ops.emitCallOther(idx, con.inputlist.get(0), con.inputlist.get(1), dst, src, len);
 			}
 		}
 		return ops.getPcodeOps();
 	}
 
-	private int memcpyIndex(Program program) {
-		if (memcpyOpIndex >= 0) {
-			return memcpyOpIndex;
+	private int copyIndex(Program program) {
+		if (copyOpIndex >= 0) {
+			return copyOpIndex;
 		}
 		SleighLanguage lang = (SleighLanguage) program.getLanguage();
 		for (int i = 0; i < lang.getNumberOfUserDefinedOpNames(); i++) {
-			if ("memcpy".equals(lang.getUserDefinedOpName(i))) {
-				memcpyOpIndex = i;
+			if ("wasm_memory_copy".equals(lang.getUserDefinedOpName(i))) {
+				copyOpIndex = i;
 				break;
 			}
 		}
-		return memcpyOpIndex;
+		return copyOpIndex;
 	}
 }

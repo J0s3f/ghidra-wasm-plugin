@@ -163,7 +163,9 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		 */
 		public long growMemory(int memidx, long deltaPages) {
 			long old = memoryPages[memidx];
-			if (deltaPages < 0 || old + deltaPages > memoryMaxPages[memidx]) {
+			long maximum = memoryMaxPages[memidx];
+			if (Long.compareUnsigned(old, maximum) > 0
+					|| Long.compareUnsigned(deltaPages, maximum - old) > 0) {
 				return -1;
 			}
 			memoryPages[memidx] = old + deltaPages;
@@ -265,6 +267,11 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 		registerPcodeOpBehavior("memory_size", new MemorySizeOpBehaviour());
 		registerPcodeOpBehavior("memory_grow", new MemoryGrowOpBehaviour());
+		registerPcodeOpBehavior("table_size", (emulate, out, inputs) -> {
+			Varnode[] args = getArgs(inputs, 1, "table_size");
+			int tableidx = (int) emulate.getMemoryState().getValue(args[0]);
+			emulate.getMemoryState().setValue(out, analysisProvider.getTableSize(tableidx));
+		});
 	}
 
 	/**
@@ -730,10 +737,6 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		long memorySize = analysisProvider.getMemorySizeBytes(memidx);
 		if (Long.compareUnsigned(addressInMemory, memorySize) > 0
 				|| Long.compareUnsigned(size, memorySize - addressInMemory) > 0) {
-			if (isStore && Long.compareUnsigned(addressInMemory, memorySize) < 0) {
-				int inBoundsBytes = (int) Math.min(size, memorySize - addressInMemory);
-				emulate.getMemoryState().setChunk(new byte[inBoundsBytes], space, address, inBoundsBytes);
-			}
 			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
 		}
 	}
@@ -796,7 +799,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		boolean overflow;
 		if (signed) {
 			overflow = outSize == 4
-					? !(value >= -2147483648.0 && value < 2147483648.0)
+					? !(value > -2147483649.0 && value < 2147483648.0)
 					: !(value >= -9.223372036854776E18 && value < 9.223372036854776E18);
 		}
 		else {
@@ -948,7 +951,8 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	 * i32 and i64 paths. Operand-stack values are saved after each instruction
 	 * because loads, SIMD lane loads and atomic RMWs overwrite their address slot.
 	 */
-	private void checkMemoryBounds64(Emulate emulate, Address instructionAddress, PcodeOp[] pcode) {
+	private void checkMemoryBounds64(Emulate emulate, Address instructionAddress, PcodeOp[] pcode,
+			boolean beforeExecution) {
 		if (analysisProvider == null || analysisProvider.getMemoryCount() == 0) {
 			return;
 		}
@@ -1026,7 +1030,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		}
 		long slot = REG_STACK_BASE + (stackSize - stackN) * WasmLoader.REG_SIZE;
 		long dynamicBase;
-		if (overwritesAddress) {
+		if (overwritesAddress && !beforeExecution) {
 			// Loads (and lane loads / atomic RMWs) overwrite the address slot with the result.
 			// The live register now holds the loaded value, so we must use the cached address.
 			Long saved = regSlotValues.get(slotKey(slot, addressBytes));
@@ -1055,16 +1059,6 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		if (Long.compareUnsigned(ea, dynamicBase) < 0
 				|| Long.compareUnsigned(ea, memorySize) > 0
 				|| Long.compareUnsigned(accessWidth, memorySize - ea) > 0) {
-			if (isStore) {
-				long wrapped = is64Bit ? ea : ea & 0xffffffffL;
-				if (Long.compareUnsigned(wrapped, memorySize) < 0) {
-					int inBounds = (int) Math.min(accessWidth, memorySize - wrapped);
-					AddressSpace space = emulate.getLanguage().getAddressFactory()
-							.getAddressSpace(is64Bit ? "memory64" : "memory");
-					emulate.getMemoryState().setChunk(new byte[inBounds], space,
-							wrapped + memidx * WasmLoader.MEMORY_STRIDE, inBounds);
-				}
-			}
 			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
 		}
 	}
@@ -1143,6 +1137,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 		// Set SSP register if not set
 		helper.setInitialSSP(emulate.getMemoryState());
+		checkMemoryBounds64(emulate, current_address, null, true);
 	}
 
 	@Override
@@ -1152,10 +1147,13 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			return;
 		}
 		checkMemoryBounds(emulate, lastExecuteAddress, lastExecutePcode);
-		checkMemoryBounds64(emulate, lastExecuteAddress, lastExecutePcode);
+		checkMemoryBounds64(emulate, lastExecuteAddress, lastExecutePcode, false);
 		checkArithmeticTraps(emulate, lastExecuteAddress, lastExecutePcode);
 		checkCallIndirect(emulate, lastExecuteAddress, lastExecutePcode);
 		checkFloatPurity(emulate, lastExecutePcode);
 		recordRegisterWrites(emulate, lastExecutePcode);
+		// Validate the next access while its address is still live and before any store
+		// writes bytes. A trapping store must leave every byte unchanged.
+		checkMemoryBounds64(emulate, currentAddress, null, true);
 	}
 }

@@ -27,6 +27,7 @@ import ghidra.program.model.data.ShortDataType;
 import ghidra.program.model.data.Undefined4DataType;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
+import wasm.format.WasmParsing;
 import wasm.format.WasmEnums.ValType;
 
 /**
@@ -78,6 +79,7 @@ public class WasmGCType extends WasmFuncType {
 		/** Encoded byte length of the storage type (1, or 2 for the ref forms with a 1-byte ht). */
 		public final int encodedLength;
 		private final boolean mutable;
+		private ValType resolvedReference;
 
 		StorageType(int code, long heapType, int encodedLength, boolean mutable) {
 			this.code = code;
@@ -119,14 +121,7 @@ public class WasmGCType extends WasmFuncType {
 		}
 
 		private ValType heapTypeValType() {
-			int b = (int) (heapType + 0x80);
-			if (b >= 0x69 && b <= 0x74) {
-				ValType t = ValType.fromByte(b);
-				if (t != null) {
-					return t;
-				}
-			}
-			return ValType.anyref;
+			return resolvedReference != null ? resolvedReference : ValType.forHeapType(heapType);
 		}
 
 		/** Data type used when the (byte-faithful) listing shows this storage byte blob. */
@@ -253,6 +248,7 @@ public class WasmGCType extends WasmFuncType {
 		if (form == 0x4E) {
 			long recStart = reader.getPointerIndex();
 			long n = readLeb(reader);
+			WasmParsing.checkedCount(reader, n, 1, "recursive type");
 			int recPrefix = (int) (reader.getPointerIndex() - (recStart - 1));
 			for (long i = 0; i < n; i++) {
 				result.add(parseSubType(reader, i == 0 ? recPrefix : 0));
@@ -275,7 +271,7 @@ public class WasmGCType extends WasmFuncType {
 			hasSubtype = true;
 			finalFlag = (b == 0x4F);
 			long n = readLeb(reader);
-			supers = new long[(int) n];
+			supers = new long[WasmParsing.checkedCount(reader, n, 1, "supertype")];
 			for (int i = 0; i < n; i++) {
 				supers[i] = readLeb(reader);
 			}
@@ -287,15 +283,16 @@ public class WasmGCType extends WasmFuncType {
 			case 0x60: {
 				reader.setPointerIndex(start);
 				WasmFuncType func = new WasmFuncType(reader);
-				if (!hasSubtype) {
+				if (!hasSubtype && recGroupLength == 0) {
 					return func;
 				}
-				return new WasmGCType(Kind.FUNC, true, finalFlag, supers, headerLength, recGroupLength,
+				return new WasmGCType(Kind.FUNC, hasSubtype, finalFlag, supers, headerLength, recGroupLength,
 					null, 0, null, func);
 			}
 			case 0x5F: {
 				long countPos = reader.getPointerIndex();
 				long n = readLeb(reader);
+				WasmParsing.checkedCount(reader, n, 2, "struct field");
 				int countLength = (int) (reader.getPointerIndex() - countPos);
 				List<StorageType> fields = new ArrayList<>();
 				for (long i = 0; i < n; i++) {
@@ -365,6 +362,21 @@ public class WasmGCType extends WasmFuncType {
 		return kind;
 	}
 
+	@Override
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		if (funcType != null) { funcType.resolveReferenceTypes(resolver); }
+		if (fields != null) {
+			for (StorageType field : fields) {
+				if (field.code == StorageType.REF || field.code == StorageType.REF_NULL) {
+					field.resolvedReference = resolver.apply(field.heapType);
+				}
+			}
+		}
+		if (element != null && (element.code == StorageType.REF || element.code == StorageType.REF_NULL)) {
+			element.resolvedReference = resolver.apply(element.heapType);
+		}
+	}
+
 	public boolean hasSubtype() {
 		return hasSubtype;
 	}
@@ -432,7 +444,7 @@ public class WasmGCType extends WasmFuncType {
 		}
 		switch (kind) {
 			case FUNC:
-				return sb.append(super.toString()).toString();
+				return sb.append(funcType.toString()).toString();
 			case STRUCT: {
 				sb.append("struct {");
 				for (int i = 0; i < fields.size(); i++) {
@@ -462,7 +474,7 @@ public class WasmGCType extends WasmFuncType {
 			if (recGroupLength > 0) {
 				builder.add(BYTE, recGroupLength, "rec_group");
 			}
-			builder.add(BYTE, subtypeHeaderLength, "subtype");
+			if (subtypeHeaderLength > 0) { builder.add(BYTE, subtypeHeaderLength, "subtype"); }
 			builder.add(funcType.toDataType(), "func_type");
 			return builder.toStructure();
 		}

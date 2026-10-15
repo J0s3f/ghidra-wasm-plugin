@@ -23,6 +23,7 @@ import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
+import wasm.format.WasmParsing;
 import wasm.format.WasmEnums.ValType;
 
 public class WasmFuncType implements StructConverter {
@@ -33,21 +34,34 @@ public class WasmFuncType implements StructConverter {
 	private ValType[] paramTypes;
 	private LEB128Info returnCount;
 	private ValType[] returnTypes;
+	private int paramEncodingLength;
+	private int returnEncodingLength;
+	private ValType.TypeInfo[] paramTypeInfo;
+	private ValType.TypeInfo[] returnTypeInfo;
 
 	public WasmFuncType(BinaryReader reader) throws IOException {
 		form = reader.readNextUnsignedByte();
+		if (form != 0x60) { throw new IOException("Invalid function type form " + form); }
 		paramCount = reader.readNext(LEB128Info::unsigned);
-		long pcount = paramCount.asLong();
-		paramTypes = new ValType[(int) pcount];
+		int pcount = WasmParsing.checkedCount(reader, paramCount.asLong(), 1, "parameter");
+		paramTypes = new ValType[pcount];
+		paramTypeInfo = new ValType.TypeInfo[pcount];
+		long paramStart = reader.getPointerIndex();
 		for (int i = 0; i < pcount; i++) {
-			paramTypes[i] = ValType.readFromReader(reader);
+			paramTypeInfo[i] = ValType.readTypeInfo(reader);
+			paramTypes[i] = paramTypeInfo[i].type;
 		}
+		paramEncodingLength = (int) (reader.getPointerIndex() - paramStart);
 		returnCount = reader.readNext(LEB128Info::unsigned);
-		long rcount = returnCount.asLong();
-		returnTypes = new ValType[(int) rcount];
+		int rcount = WasmParsing.checkedCount(reader, returnCount.asLong(), 1, "result");
+		returnTypes = new ValType[rcount];
+		returnTypeInfo = new ValType.TypeInfo[rcount];
+		long returnStart = reader.getPointerIndex();
 		for (int i = 0; i < rcount; i++) {
-			returnTypes[i] = ValType.readFromReader(reader);
+			returnTypeInfo[i] = ValType.readTypeInfo(reader);
+			returnTypes[i] = returnTypeInfo[i].type;
 		}
+		returnEncodingLength = (int) (reader.getPointerIndex() - returnStart);
 	}
 
 	// @@GC: used by WasmGCType (a structural GC type entry) so that GC composite
@@ -59,6 +73,11 @@ public class WasmFuncType implements StructConverter {
 
 	public ValType[] getParamTypes() {
 		return paramTypes;
+	}
+
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		for (int i = 0; i < paramTypes.length; i++) { paramTypes[i] = paramTypeInfo[i].resolve(resolver); }
+		for (int i = 0; i < returnTypes.length; i++) { returnTypes[i] = returnTypeInfo[i].resolve(resolver); }
 	}
 
 	public ValType[] getReturnTypes() {
@@ -88,9 +107,9 @@ public class WasmFuncType implements StructConverter {
 		StructureBuilder builder = new StructureBuilder("func_type_" + paramCount.asLong() + "_" + returnCount.asLong());
 		builder.add(BYTE, "form");
 		builder.addUnsignedLeb128(paramCount, "param_count");
-		builder.addArray(BYTE, (int) paramCount.asLong(), "param_types");
+		builder.addArray(BYTE, paramEncodingLength, "param_types");
 		builder.addUnsignedLeb128(returnCount, "return_count");
-		builder.addArray(BYTE, (int) returnCount.asLong(), "return_types");
+		builder.addArray(BYTE, returnEncodingLength, "return_types");
 		return builder.toStructure();
 	}
 }

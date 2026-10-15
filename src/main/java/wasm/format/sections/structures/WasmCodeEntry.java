@@ -26,6 +26,7 @@ import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
+import wasm.format.WasmParsing;
 import wasm.format.WasmEnums.ValType;
 
 public class WasmCodeEntry implements StructConverter {
@@ -70,6 +71,8 @@ public class WasmCodeEntry implements StructConverter {
 	public WasmCodeEntry(BinaryReader reader) throws IOException {
 		codeSize = reader.readNext(LEB128Info::unsigned);
 		codeOffset = reader.getPointerIndex();
+		BinaryReader parentReader = reader;
+		reader = WasmParsing.boundedReader(reader, codeOffset, codeSize.asLong());
 		localCount = reader.readNext(LEB128Info::unsigned);
 
 		/*
@@ -98,7 +101,7 @@ public class WasmCodeEntry implements StructConverter {
 		declaredLocalCount = total;
 
 		instructions = reader.readByteArray(codeOffset, codeSize.asInt32());
-		reader.setPointerIndex(codeOffset + codeSize.asLong());
+		parentReader.setPointerIndex(codeOffset + codeSize.asLong());
 	}
 
 
@@ -150,6 +153,10 @@ public class WasmCodeEntry implements StructConverter {
 			pos += count;
 		}
 		return result;
+	}
+
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		for (WasmLocalEntry local : locals) { local.resolveReferenceTypes(resolver); }
 	}
 
 	@Override

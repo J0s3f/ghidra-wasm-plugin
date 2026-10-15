@@ -27,11 +27,29 @@ import wasm.format.WasmEnums.ValType;
 public class WasmTableType implements StructConverter {
 
 	private ValType elemType;
+	private ValType.TypeInfo elemTypeInfo;
 	private WasmResizableLimits limits;
+	private ConstantExpression initializer;
 
 	public WasmTableType(BinaryReader reader) throws IOException {
-		elemType = ValType.readFromReader(reader);
+		this(reader, false);
+	}
+
+	public WasmTableType(BinaryReader reader, boolean definition) throws IOException {
+		boolean hasInitializer = definition && reader.peekNextByte() == 0x40;
+		if (hasInitializer) {
+			reader.readNextByte();
+			if (reader.readNextUnsignedByte() != 0) { throw new IOException("Invalid table initializer prefix"); }
+		}
+		elemTypeInfo = ValType.readTypeInfo(reader);
+		elemType = elemTypeInfo.type;
 		limits = new WasmResizableLimits(reader);
+		if (hasInitializer) { initializer = new ConstantExpression(reader); }
+	}
+
+	public ConstantExpression getInitializer() { return initializer; }
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		elemType = elemTypeInfo.resolve(resolver);
 	}
 
 	public ValType getElementType() {
@@ -60,8 +78,10 @@ public class WasmTableType implements StructConverter {
 	@Override
 	public DataType toDataType() throws DuplicateNameException, IOException {
 		StructureBuilder builder = new StructureBuilder("table_type");
-		builder.add(BYTE, "element_type");
+		if (initializer != null) { builder.addArray(BYTE, 2, "initializer_prefix"); }
+		builder.addArray(BYTE, elemTypeInfo.encodedLength, "element_type");
 		builder.add(limits, "limits");
+		if (initializer != null) { builder.add(initializer, "initializer"); }
 		return builder.toStructure();
 	}
 }

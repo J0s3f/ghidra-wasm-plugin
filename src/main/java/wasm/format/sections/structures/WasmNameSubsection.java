@@ -23,6 +23,7 @@ import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
+import wasm.format.WasmParsing;
 
 public abstract class WasmNameSubsection implements StructConverter {
 
@@ -52,19 +53,13 @@ public abstract class WasmNameSubsection implements StructConverter {
 		int id = reader.readNextUnsignedByte();
 		LEB128Info contentLength = reader.readNext(LEB128Info::unsigned);
 		/*
-		 * @@NAME: bound the skip to the end of the section reader. A malformed (or
-		 * deliberately huge) content length must not move the pointer past the end of
-		 * the buffer: BinaryReader.setPointerIndex would then fail on the next read.
+		 * A name subsection cannot read into the next subsection, and its declared
+		 * payload must fit inside the enclosing custom section.
 		 */
 		long afterHeader = reader.getPointerIndex();
-		long declaredEnd = afterHeader + contentLength.asLong();
-		long end = Math.min(declaredEnd, reader.length());
-		if (end < afterHeader) {
-			end = afterHeader;
-		}
-		reader.setPointerIndex(end);
-
-		BinaryReader sectionReader = reader.clone(sectionOffset);
+		BinaryReader sectionReader = WasmParsing.boundedReader(reader, afterHeader, contentLength.asLong());
+		reader.setPointerIndex(sectionReader.length());
+		sectionReader.setPointerIndex(sectionOffset);
 
 		if (id >= WasmNameSubsectionId.values().length) {
 			return new WasmNameUnknownSubsection(sectionReader);
@@ -107,7 +102,8 @@ public abstract class WasmNameSubsection implements StructConverter {
 		}
 		catch (IOException | RuntimeException e) {
 			try {
-				return new WasmNameUnknownSubsection(reader.clone(sectionOffset));
+				sectionReader.setPointerIndex(sectionOffset);
+				return new WasmNameUnknownSubsection(sectionReader);
 			}
 			catch (IOException | RuntimeException e2) {
 				/* The subsection is unparseable even as raw bytes: skip it. */

@@ -36,6 +36,8 @@ def main():
         print("usage: parse_emulate_report.py <report-dir> <out-dir>", file=sys.stderr)
         return 2
     rep_dir, out_dir = sys.argv[1], sys.argv[2]
+    expected = set(sys.argv[3:])
+    os.makedirs(out_dir, exist_ok=True)
 
     suites = {}
     types = set()
@@ -44,6 +46,8 @@ def main():
         if not name.endswith(".txt"):
             continue
         wast = name[:-4]
+        if expected and wast not in expected:
+            continue
         counts, fails = parse(os.path.join(rep_dir, name))
         if not counts:
             continue
@@ -110,7 +114,10 @@ def main():
                   fh, indent=2, sort_keys=True)
 
     print("\n".join(lines))
-    return 0
+    missing = expected - suites.keys()
+    if missing:
+        print("Missing or empty reports: " + ", ".join(sorted(missing)), file=sys.stderr)
+    return 1 if any_fail or missing or not suites else 0
 
 
 if __name__ == "__main__":

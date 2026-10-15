@@ -107,42 +107,16 @@ public class PcodeOpEmitter {
 	 * opaque memory_copy() call.
 	 */
 	public void emitUnrolledCopy(Varnode src, Varnode dst, int count, int gran) {
-		AddressSpace memorySpace = language.getAddressFactory().getAddressSpace("memory");
-		Varnode memId = constVn(memorySpace.getSpaceID(), 4);
-		int ptrSize = src.getSize();
-		for (int i = 0; i < count; i++) {
-			long off = (long) i * gran;
-			/* sp = src + off */
-			Varnode sp = newUnique(ptrSize);
-			PcodeOp add1 = newOp(PcodeOp.INT_ADD);
-			add1.setInput(src, 0);
-			add1.setInput(constVn(off, ptrSize), 1);
-			add1.setOutput(sp);
-			/* val = *[memory] sp */
-			Varnode val = newUnique(gran);
-			PcodeOp load = newOp(PcodeOp.LOAD);
-			load.setInput(memId, 0);
-			load.setInput(sp, 1);
-			load.setOutput(val);
-			/* dp = dst + off */
-			Varnode dp = newUnique(ptrSize);
-			PcodeOp add2 = newOp(PcodeOp.INT_ADD);
-			add2.setInput(dst, 0);
-			add2.setInput(constVn(off, ptrSize), 1);
-			add2.setOutput(dp);
-			/* *[memory] dp = val */
-			PcodeOp store = newOp(PcodeOp.STORE);
-			store.setInput(memId, 0);
-			store.setInput(dp, 1);
-			store.setInput(val, 2);
-		}
+		emitUnrolledCopy64(src, dst, count, gran, 0, 0);
 	}
 
-	/** Hybrid bulk-copy expansion. Keep the legacy i32 expansion above unchanged. */
+	/** Bulk-copy expansion preserving each memory index, address width and overlapping ranges. */
 	public void emitUnrolledCopy64(Varnode src, Varnode dst, int count, int gran,
 			long srcMemidx, long dstMemidx) {
 		AddressSpace srcSpace = language.getAddressFactory().getAddressSpace(src.getSize() == 8 ? "memory64" : "memory");
 		AddressSpace dstSpace = language.getAddressFactory().getAddressSpace(dst.getSize() == 8 ? "memory64" : "memory");
+		Varnode[] values = new Varnode[count];
+		// Read the entire source before any write, preserving memory.copy overlap semantics.
 		for (int i = 0; i < count; i++) {
 			long offset = (long) i * gran;
 			Varnode sp = newUnique(src.getSize());
@@ -155,6 +129,10 @@ public class PcodeOpEmitter {
 			load.setInput(constVn(srcSpace.getSpaceID(), 4), 0);
 			load.setInput(sp, 1);
 			load.setOutput(value);
+			values[i] = value;
+		}
+		for (int i = 0; i < count; i++) {
+			long offset = (long) i * gran;
 			Varnode dp = newUnique(dst.getSize());
 			PcodeOp addDst = newOp(PcodeOp.INT_ADD);
 			addDst.setInput(dst, 0);
@@ -163,7 +141,7 @@ public class PcodeOpEmitter {
 			PcodeOp store = newOp(PcodeOp.STORE);
 			store.setInput(constVn(dstSpace.getSpaceID(), 4), 0);
 			store.setInput(dp, 1);
-			store.setInput(value, 2);
+			store.setInput(values[i], 2);
 		}
 	}
 

@@ -30,7 +30,7 @@ main = currentProgram.listing.getFunctions("export", "main")[0]
 emuHelper = EmulatorHelper(currentProgram)
 emuHelper.writeRegister(emuHelper.getPCRegister(), main.entryPoint.offset)
 wasmHelper = WasmEmulationHelper(emuHelper.language)
-ramSpace = currentProgram.addressFactory.defaultAddressSpace
+ramSpace = currentProgram.addressFactory.getAddressSpace("memory")
 
 syscall3Addr = currentProgram.listing.getFunctions("import::env", "__syscall3")[0].entryPoint
 emuHelper.setBreakpoint(syscall3Addr)

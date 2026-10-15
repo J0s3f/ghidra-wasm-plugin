@@ -65,7 +65,10 @@ public class WasmTypeSection extends WasmSection {
 				if (gcType.getKind() == WasmGCType.Kind.CONT) {
 					long idx = gcType.getContTypeIndex();
 					if (idx >= 0 && idx < types.size()) {
-						gcType.resolveContType(types.get((int) idx));
+						WasmFuncType referenced = types.get((int) idx);
+						if (!(referenced instanceof WasmGCType) || ((WasmGCType) referenced).getKind() == WasmGCType.Kind.FUNC) {
+							gcType.resolveContType(referenced);
+						}
 					}
 				}
 			}

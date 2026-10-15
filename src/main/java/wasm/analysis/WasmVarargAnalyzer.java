@@ -246,7 +246,7 @@ public class WasmVarargAnalyzer extends AbstractAnalyzer {
 			return;
 		long fmtAddrOffset = val.getValue() & 0xFFFFFFFFL;
 		Address fmtAddr =
-			program.getAddressFactory().getDefaultAddressSpace().getAddress(fmtAddrOffset);
+			program.getAddressFactory().getAddressSpace("memory").getAddress(fmtAddrOffset);
 		String fmt = readCString(program.getMemory(), fmtAddr);
 		if (fmt == null)
 			return;

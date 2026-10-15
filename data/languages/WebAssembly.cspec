@@ -17,8 +17,10 @@
     <range space="global"/>
     <range space="table"/>
     <range space="ram"/>
+    <range space="memory"/>
+    <range space="memory64"/>
   </global>
-  <stackpointer register="SP" space="ram"/>
+  <stackpointer register="SP" space="memory"/>
   <default_proto>
     <prototype name="__wasm" extrapop="0" stackshift="0" strategy="register">
       <input>

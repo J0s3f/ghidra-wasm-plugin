@@ -1,0 +1,32 @@
+ok  : the selected install's version directory name is derived
+ok  : the legacy (dotted) spelling of the target version is derived
+ok  : the other install's version directory name is NOT derived
+ok  : the application directory inside a settings root is derived
+ok  : the settings roots include the install's own settings directory
+ok  : removed: <tree>\roots\appdata\ghidra_12.1.4_PUBLIC\Extensions\GhidraWasm
+ok  : kept: <tree>\roots\appdata\ghidra_11.1.2_PUBLIC\Extensions\GhidraWasm
+ok  : kept: <tree>\roots\appdata\ghidra_12.1.4_PUBLIC\Extensions\SomeOtherExtension
+ok  : removed: <tree>\roots\xdg\ghidra_12.1.4_PUBLIC\Extensions\GhidraWasm
+ok  : kept: <tree>\roots\xdg\ghidra_11.1.2_PUBLIC\Extensions\GhidraWasm
+ok  : removed: <tree>\install-a\settings\ghidra\ghidra_12.1.4_PUBLIC\Extensions\GhidraWasm
+ok  : kept: <tree>\install-a\settings\ghidra\ghidra_11.1.2_PUBLIC\Extensions\GhidraWasm
+ok  : removed: <tree>\roots\legacy\.ghidra_12.1.4_PUBLIC\Extensions\GhidraWasm
+ok  : kept: <tree>\roots\legacy\.ghidra_11.1.2_PUBLIC\Extensions\GhidraWasm
+ok  : the sweep reports exactly the copies it removed
+ok  : the sweep reports no warnings
+ok  : the sweep reports the versions it deliberately left alone
+ok  : the sweep sees the nested isolated-install layout
+ok  : a settings root that does not exist is skipped without an error
+ok  : an empty version-dir scope removes nothing
+ok  : an empty version-dir scope leaves the other version's copy alone
+ok  : -CleanAllVersions removes every version's copy
+ok  : -CleanAllVersions still leaves unrelated extensions alone
+ok  : a locked copy does not abort the sweep
+ok  : a locked copy is reported as a warning
+ok  : a locked copy survives
+ok  : an install without application.version yields no scope
+ok  : the pinned install (C:\Tools\ghidra_12.1.4_PUBLIC) yields its version directory
+note: settings root C:\Users\micro\AppData\Roaming\ghidra holds [ghidra_11.1.2_PUBLIC, ghidra_12.1.4_PUBLIC] -> in scope: ghidra_12.1.4_PUBLIC
+note: settings root C:\Users\micro\.ghidra holds [.ghidra_10.2.3_PUBLIC] -> in scope:
+
+PASS: the settings sweep removes only the selected installation's copy (mock trees under D:\code\Ghidra-WASM\build\full-code-review\safe-harness-checks\cleanup)

@@ -38,6 +38,7 @@ else {
 // are not part of a release archive.
 tasks.named('buildExtension') {
 	exclude 'test-scripts/**'
+	exclude 'reports/**'
 	exclude '.github/**'
 	exclude 'MERGE_NOTES.md'
 	exclude 'MODERN_WASM_GAPS.md'

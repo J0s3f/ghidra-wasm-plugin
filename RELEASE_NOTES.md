@@ -1,4 +1,4 @@
-# Ghidra-WASM 2.8.0
+# Ghidra-WASM 2.8.1
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
@@ -12,6 +12,24 @@ Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
+
+## New in 2.8.1 (since 2.8.0)
+
+This patch addresses all 28 findings from the repository-wide review.
+
+* Fix linear-memory global and C-stack classification, reference-branch argument movement,
+  typed locals/select, concrete reference families, table initializers, and table64 operand widths.
+* Preserve overlap semantics and memory indices in `memory.copy`; correct vararg memory access,
+  named-local types, memarg offsets, and overlapping struct layout.
+* Correct saturating and unsigned float conversions, ties-to-even rounding, signed-zero min/max,
+  truncation boundaries, memory-growth overflow, and trapping stores that previously changed memory.
+* Bound parser allocations and container reads, and preserve complete type encodings in listings.
+* Preserve unrelated Ghidra extensions during installation, validate disposable-install destinations,
+  and make emulation failures and missing reports fail the test run.
+
+Validation includes 2,601 integration assertions, 22 bounded-heap parser assertions, 195 independent
+Node checks, installer and harness tests, and the unchanged 223-probe baseline. The new regression
+suite runs in CI. See the [fix report and regression coverage](https://github.com/J0s3f/ghidra-wasm-plugin/blob/v2.8.1/reports/full-code-review-2026-10-15/FIXES.md).
 
 ## New in 2.8.0 (since 2.7.0)
 

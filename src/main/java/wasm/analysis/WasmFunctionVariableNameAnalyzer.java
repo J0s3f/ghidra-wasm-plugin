@@ -134,7 +134,7 @@ public class WasmFunctionVariableNameAnalyzer extends AbstractAnalyzer {
 		for (Variable var : func.getLocalVariables()) {
 			usedVarNames.add(var.getName());
 			Varnode vn = var.getFirstStorageVarnode();
-			if (vn.isRegister()) {
+			if (vn != null && vn.isRegister()) {
 				long localIndex = registerToLocal(vn.getOffset());
 				if (localIndex != -1) {
 					usedLocalIndexes.add(localIndex);
@@ -154,7 +154,7 @@ public class WasmFunctionVariableNameAnalyzer extends AbstractAnalyzer {
 			}
 
 			// there are at most 4096 locals (as defined in the slaspec file).
-			if (localIndex >= MAX_LOCAL) {
+			if (localIndex >= MAX_LOCAL || localIndex >= funcSig.getLocals().length) {
 				continue;
 			}
 
@@ -180,13 +180,14 @@ public class WasmFunctionVariableNameAnalyzer extends AbstractAnalyzer {
 
 		ValType[] localsTypes = funcSig.getLocals();
 
-		int paramCount = funcSig.getParams().length;
-
 		for (Entry<Long, String> entry : localNames.entrySet()) {
 			long localIndex = entry.getKey();
+			if (localIndex < funcSig.getParams().length || localIndex >= localsTypes.length || localIndex >= MAX_LOCAL) {
+				continue;
+			}
 			String varName = entry.getValue();
 			long firstUse = localsFirstUse.getOrDefault(localIndex, 0l);
-			DataType dt = localsTypes[(int) (localIndex - paramCount)].asDataType();
+			DataType dt = localsTypes[(int) localIndex].asDataType();
 			Register reg = program.getLanguage().getRegister(getRegisterName(localIndex, dt.getLength()));
 
 			try {
@@ -209,6 +210,7 @@ public class WasmFunctionVariableNameAnalyzer extends AbstractAnalyzer {
 		DecompInterface decomp = getInitializedDecompInterface(prog);
 		// decompile the function
 		HighFunction hf = decomp.decompileFunction(func, 10, null).getHighFunction();
+		if (hf == null) { return res; }
 
 		// loop through HighSymbol to retrieve variable corresponding to a local
 		Iterator<HighSymbol> it = hf.getLocalSymbolMap().getSymbols();
@@ -236,6 +238,7 @@ public class WasmFunctionVariableNameAnalyzer extends AbstractAnalyzer {
 	}
 
 	protected long registerToLocal(long registerOffset) {
+		if (registerOffset < baseLocalOffset) { return -1; }
 		long localIndex = (registerOffset - baseLocalOffset) / localStride;
 		if (localIndex < 0 || localIndex >= MAX_LOCAL) {
 			return -1;
@@ -244,7 +247,7 @@ public class WasmFunctionVariableNameAnalyzer extends AbstractAnalyzer {
 	}
 
 	protected String getRegisterName(long localIndex, int dataSize) {
-		return "l" + localIndex + (dataSize == 8 ? "q" : "");
+		return "l" + localIndex + (dataSize == 16 ? "o" : dataSize == 8 ? "q" : "");
 	}
 
 }

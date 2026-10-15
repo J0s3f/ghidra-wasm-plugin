@@ -28,10 +28,12 @@ import wasm.format.WasmEnums.ValType;
 public class WasmGlobalType implements StructConverter {
 
 	private ValType type;
+	private ValType.TypeInfo typeInfo;
 	private int mutability;
 
 	public WasmGlobalType(BinaryReader reader) throws IOException {
-		type = ValType.readFromReader(reader);
+		typeInfo = ValType.readTypeInfo(reader);
+		type = typeInfo.type;
 		mutability = reader.readNextUnsignedByte();
 	}
 
@@ -44,6 +46,9 @@ public class WasmGlobalType implements StructConverter {
 	public ValType getType() {
 		return type;
 	}
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		type = typeInfo.resolve(resolver);
+	}
 
 	public int getMutability() {
 		return mutability;
@@ -52,7 +57,7 @@ public class WasmGlobalType implements StructConverter {
 	@Override
 	public DataType toDataType() throws DuplicateNameException, IOException {
 		StructureBuilder builder = new StructureBuilder("global_type");
-		builder.add(BYTE, "type");
+		builder.addArray(BYTE, typeInfo.encodedLength, "type");
 		builder.add(BYTE, "mutability");
 		return builder.toStructure();
 	}

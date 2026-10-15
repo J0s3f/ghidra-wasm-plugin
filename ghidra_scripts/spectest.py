@@ -637,6 +637,8 @@ def main():
 
     eprint("SUMMARY: %s: %d succeeded, %d failed, %d skipped (%d commands)" % (
         os.path.basename(json_fn), succeeded_cmds, failed_cmds, skipped_cmds, done))
+    if failed_cmds or succeeded_cmds + failed_cmds + skipped_cmds != done:
+        raise RuntimeError("Spec emulation failed: %d failed commands" % failed_cmds)
 
 if __name__ == "__main__":
     main()

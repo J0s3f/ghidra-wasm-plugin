@@ -29,6 +29,10 @@ import ghidra.util.exception.DuplicateNameException;
  */
 public class WasmMemoryCopyInfo {
 	public static final String PROPERTY_NAME = "WasmMemoryCopyLen";
+	public static void clear(Program program, Address callsite) {
+		IntPropertyMap map = program.getUsrPropertyManager().getIntPropertyMap(PROPERTY_NAME);
+		if (map != null) { map.remove(callsite); }
+	}
 
 	public static Integer getLength(Program program, Address callsite) {
 		IntPropertyMap map = program.getUsrPropertyManager().getIntPropertyMap(PROPERTY_NAME);

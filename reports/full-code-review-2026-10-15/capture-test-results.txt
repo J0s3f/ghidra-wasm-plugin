@@ -1,0 +1,10 @@
+note: the old pattern did not abort here (the bug needs PowerShell >= 7.3; this host is 7.6.5) - the checks below still apply
+ok  : native stderr does not abort the capture
+ok  : stdout is captured
+ok  : stderr is captured
+ok  : exit code is preserved for the caller (3)
+ok  : log has no UTF-16 BOM
+ok  : log has no NUL bytes (is not UTF-16)
+ok  : a UTF-16 log (5.1 capture) still parses
+
+PASS: harness stderr capture is robust (logs under D:\code\Ghidra-WASM\build\full-code-review\safe-harness-checks\stderr)

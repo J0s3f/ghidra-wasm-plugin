@@ -45,6 +45,7 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.symbol.ExternalLocation;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.RefType;
@@ -54,6 +55,7 @@ import ghidra.program.model.symbol.SymbolUtilities;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
 import ghidra.util.exception.InvalidInputException;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import wasm.format.StructureBuilder;
 import wasm.format.WasmConstants;
@@ -720,6 +722,21 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 			validateTableLimits(tableidx, table);
 			createTableBlock(program, table.getElementDataType(), table.getLimits().getInitial(), tableidx, table.is64Bit(), monitor);
+			if (table.getInitializer() != null) {
+				byte[] value = table.getInitializer().asBytes(module);
+				Address start = getTableAddress(program.getAddressFactory(), tableidx, 0);
+				MemoryBlock block = program.getMemory().getBlock(start);
+				if (value != null && value.length == 4 && block != null) {
+					byte[] chunk = new byte[(int) Math.min(4096, block.getSize())];
+					for (int i = 0; i < chunk.length; i++) { chunk[i] = value[i % value.length]; }
+					try {
+						for (long pos = 0; pos < block.getSize(); pos += chunk.length) {
+							monitor.checkCancelled();
+							program.getMemory().setBytes(start.add(pos), chunk, 0, (int) Math.min(chunk.length, block.getSize() - pos));
+						}
+					} catch (MemoryAccessException | CancelledException e) { throw new IOException("Failed to initialize table " + tableidx, e); }
+				}
+			}
 		}
 	}
 

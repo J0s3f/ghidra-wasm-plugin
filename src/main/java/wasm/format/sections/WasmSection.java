@@ -23,6 +23,7 @@ import ghidra.app.util.bin.StructConverter;
 import ghidra.program.model.data.DataType;
 import ghidra.util.exception.DuplicateNameException;
 import wasm.format.StructureBuilder;
+import wasm.format.WasmParsing;
 
 public abstract class WasmSection implements StructConverter {
 	
@@ -51,7 +52,9 @@ public abstract class WasmSection implements StructConverter {
 		long sectionOffset = reader.getPointerIndex();
 		int id = reader.readNextUnsignedByte();
 		LEB128Info contentLength = reader.readNext(LEB128Info::unsigned);
-		reader.setPointerIndex(reader.getPointerIndex() + contentLength.asLong());
+		long payloadStart = reader.getPointerIndex();
+		BinaryReader sectionReader = WasmParsing.boundedReader(reader, payloadStart, contentLength.asLong());
+		reader.setPointerIndex(sectionReader.length());
 
 		if (id >= WasmSectionId.values().length) {
 			/*
@@ -63,7 +66,7 @@ public abstract class WasmSection implements StructConverter {
 					+ " at file offset 0x" + Long.toHexString(sectionOffset));
 		}
 
-		BinaryReader sectionReader = reader.clone(sectionOffset);
+		sectionReader.setPointerIndex(sectionOffset);
 
 		switch (WasmSectionId.values()[id]) {
 			case SEC_CUSTOM:

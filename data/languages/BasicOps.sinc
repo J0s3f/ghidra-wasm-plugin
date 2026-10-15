@@ -500,7 +500,22 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 	sp1_32 = floor(sp1_32);
 }
 :f32.nearest  is opc=0x90; sp1_32; ctx_is_directive=0 {
-	sp1_32 = round(sp1_32);
+	local original:4 = sp1_32;
+	local magnitude:4 = abs(original);
+	local rounded:4 = floor(magnitude);
+	local fraction:4 = magnitude f- rounded;
+	local half:4 = 0x3f000000;
+	local one:4 = 0x3f800000;
+	local two:4 = 0x40000000;
+	if (nan(original) || magnitude f== 0x7f800000) goto inst_next;
+	if (fraction f> half) goto <up>;
+	if (fraction f< half) goto <done>;
+	local even:4 = floor(rounded f* half) f* two;
+	if (rounded f== even) goto <done>;
+<up>
+	rounded = rounded f+ one;
+<done>
+	sp1_32 = rounded | (original & 0x80000000);
 }
 :f32.sqrt  is opc=0x91; sp1_32; ctx_is_directive=0 {
 	sp1_32 = sqrt(sp1_32);
@@ -518,11 +533,19 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 	sp2_32 = sp2_32 f/ sp1_32;
 }
 :f32.min  is opc=0x96; sp1_32; sp2_32; ctx_is_directive=0 {
-	if(sp1_32 f> sp2_32 || nan(sp2_32)) goto inst_next;
+	if (sp1_32 f!= 0 || sp2_32 f!= 0) goto <nonzero>;
+	sp2_32 = sp1_32 | sp2_32;
+	goto inst_next;
+<nonzero>
+	if (sp1_32 f> sp2_32 || nan(sp2_32)) goto inst_next;
 	sp2_32 = sp1_32;
 }
 :f32.max  is opc=0x97; sp1_32; sp2_32; ctx_is_directive=0 {
-	if(sp1_32 f< sp2_32 || nan(sp2_32)) goto inst_next;
+	if (sp1_32 f!= 0 || sp2_32 f!= 0) goto <nonzero>;
+	sp2_32 = sp1_32 & sp2_32;
+	goto inst_next;
+<nonzero>
+	if (sp1_32 f< sp2_32 || nan(sp2_32)) goto inst_next;
 	sp2_32 = sp1_32;
 }
 :f32.copysign  is opc=0x98; sp1_32; sp2_32; ctx_is_directive=0 {
@@ -548,7 +571,22 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 	sp1_64 = floor(sp1_64);
 }
 :f64.nearest  is opc=0x9E; sp1_64; ctx_is_directive=0 {
-	sp1_64 = round(sp1_64);
+	local original:8 = sp1_64;
+	local magnitude:8 = abs(original);
+	local rounded:8 = floor(magnitude);
+	local fraction:8 = magnitude f- rounded;
+	local half:8 = 0x3fe0000000000000;
+	local one:8 = 0x3ff0000000000000;
+	local two:8 = 0x4000000000000000;
+	if (nan(original) || magnitude f== 0x7ff0000000000000) goto inst_next;
+	if (fraction f> half) goto <up>;
+	if (fraction f< half) goto <done>;
+	local even:8 = floor(rounded f* half) f* two;
+	if (rounded f== even) goto <done>;
+<up>
+	rounded = rounded f+ one;
+<done>
+	sp1_64 = rounded | (original & 0x8000000000000000);
 }
 :f64.sqrt  is opc=0x9F; sp1_64; ctx_is_directive=0 {
 	sp1_64 = sqrt(sp1_64);
@@ -566,11 +604,19 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 	sp2_64 = sp2_64 f/ sp1_64;
 }
 :f64.min  is opc=0xA4; sp1_64; sp2_64; ctx_is_directive=0 {
-	if(sp1_64 f> sp2_64 || nan(sp2_64)) goto inst_next;
+	if (sp1_64 f!= 0 || sp2_64 f!= 0) goto <nonzero>;
+	sp2_64 = sp1_64 | sp2_64;
+	goto inst_next;
+<nonzero>
+	if (sp1_64 f> sp2_64 || nan(sp2_64)) goto inst_next;
 	sp2_64 = sp1_64;
 }
 :f64.max  is opc=0xA5; sp1_64; sp2_64; ctx_is_directive=0 {
-	if(sp1_64 f< sp2_64 || nan(sp2_64)) goto inst_next;
+	if (sp1_64 f!= 0 || sp2_64 f!= 0) goto <nonzero>;
+	sp2_64 = sp1_64 & sp2_64;
+	goto inst_next;
+<nonzero>
+	if (sp1_64 f< sp2_64 || nan(sp2_64)) goto inst_next;
 	sp2_64 = sp1_64;
 }
 :f64.copysign  is opc=0xA6; sp1_64; sp2_64; ctx_is_directive=0 {
@@ -582,15 +628,26 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 :i32.trunc_f32_s  is opc=0xA8; sp1_32; ctx_is_directive=0 {
 	sp1_32 = trunc(sp1_32);
 }
-# TODO: Can we do an unsigned trunc?
 :i32.trunc_f32_u  is opc=0xA9; sp1_32; ctx_is_directive=0 {
-	sp1_32 = trunc(sp1_32);
+	local value:4 = sp1_32;
+	if (value f< 0x4f000000) goto <low>;
+	sp1_32 = trunc(value f- 0x4f000000);
+	sp1_32 = sp1_32 | 0x80000000;
+	goto inst_next;
+<low>
+	sp1_32 = trunc(value);
 }
 :i32.trunc_f64_s  is opc=0xAA; sp1_32; sp1_64; ctx_is_directive=0 {
 	sp1_32 = trunc(sp1_64);
 }
 :i32.trunc_f64_u  is opc=0xAB; sp1_32; sp1_64; ctx_is_directive=0 {
-	sp1_32 = trunc(sp1_64);
+	local value:8 = sp1_64;
+	if (value f< 0x41e0000000000000) goto <low>;
+	sp1_32 = trunc(value f- 0x41e0000000000000);
+	sp1_32 = sp1_32 | 0x80000000;
+	goto inst_next;
+<low>
+	sp1_32 = trunc(value);
 }
 :i64.extend_i32_s  is opc=0xAC; sp1_32; sp1_64; ctx_is_directive=0 {
 	sp1_64 = sext(sp1_32);
@@ -602,13 +659,25 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 	sp1_64 = trunc(sp1_32);
 }
 :i64.trunc_f32_u  is opc=0xAF; sp1_32; sp1_64; ctx_is_directive=0 {
-	sp1_64 = trunc(sp1_32);
+	local value:4 = sp1_32;
+	if (value f< 0x5f000000) goto <low>;
+	sp1_64 = trunc(value f- 0x5f000000);
+	sp1_64 = sp1_64 | 0x8000000000000000;
+	goto inst_next;
+<low>
+	sp1_64 = trunc(value);
 }
 :i64.trunc_f64_s  is opc=0xB0; sp1_64; ctx_is_directive=0 {
 	sp1_64 = trunc(sp1_64);
 }
 :i64.trunc_f64_u  is opc=0xB1; sp1_64; ctx_is_directive=0 {
-	sp1_64 = trunc(sp1_64);
+	local value:8 = sp1_64;
+	if (value f< 0x43e0000000000000) goto <low>;
+	sp1_64 = trunc(value f- 0x43e0000000000000);
+	sp1_64 = sp1_64 | 0x8000000000000000;
+	goto inst_next;
+<low>
+	sp1_64 = trunc(value);
 }
 :f32.convert_i32_s  is opc=0xB2; sp1_32; ctx_is_directive=0 {
 	sp1_32 = int2float(sp1_32);
@@ -667,27 +736,150 @@ storeaddr64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem;
 
 # TODO: actually handle saturation, or express semantics via pcodeop?
 :i32.trunc_sat_f32_s  is opc=0xFC; opc2_0; sp1_32; ctx_is_directive=0 {
-	sp1_32 = trunc(sp1_32);
+	local value:4 = sp1_32;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x4f000000) goto <maximum>;
+	if (value f<= 0xcf000000) goto <minimum>;
+	sp1_32 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_32 = 0x7fffffff;
+	goto inst_next;
+<minimum>
+	sp1_32 = 0x80000000;
+	goto inst_next;
+<nan>
+	sp1_32 = 0;
 }
-# TODO: Can we do an unsigned trunc?
 :i32.trunc_sat_f32_u  is opc=0xFC; opc2_1; sp1_32; ctx_is_directive=0 {
-	sp1_32 = trunc(sp1_32);
+	local value:4 = sp1_32;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x4f800000) goto <maximum>;
+	if (value f<= 0x00000000) goto <minimum>;
+	if (value f< 0x4f000000) goto <low>;
+	sp1_32 = trunc(value f- 0x4f000000);
+	sp1_32 = sp1_32 | 0x80000000;
+	goto inst_next;
+<low>
+	sp1_32 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_32 = 0xffffffff;
+	goto inst_next;
+<minimum>
+	sp1_32 = 0x0;
+	goto inst_next;
+<nan>
+	sp1_32 = 0;
 }
 :i32.trunc_sat_f64_s  is opc=0xFC; opc2_2; sp1_32; sp1_64; ctx_is_directive=0 {
-	sp1_32 = trunc(sp1_64);
+	local value:8 = sp1_64;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x41e0000000000000) goto <maximum>;
+	if (value f<= 0xc1e0000000000000) goto <minimum>;
+	sp1_32 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_32 = 0x7fffffff;
+	goto inst_next;
+<minimum>
+	sp1_32 = 0x80000000;
+	goto inst_next;
+<nan>
+	sp1_32 = 0;
 }
 :i32.trunc_sat_f64_u  is opc=0xFC; opc2_3; sp1_32; sp1_64; ctx_is_directive=0 {
-	sp1_32 = trunc(sp1_64);
+	local value:8 = sp1_64;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x41f0000000000000) goto <maximum>;
+	if (value f<= 0x0000000000000000) goto <minimum>;
+	if (value f< 0x41e0000000000000) goto <low>;
+	sp1_32 = trunc(value f- 0x41e0000000000000);
+	sp1_32 = sp1_32 | 0x80000000;
+	goto inst_next;
+<low>
+	sp1_32 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_32 = 0xffffffff;
+	goto inst_next;
+<minimum>
+	sp1_32 = 0x0;
+	goto inst_next;
+<nan>
+	sp1_32 = 0;
 }
 :i64.trunc_sat_f32_s  is opc=0xFC; opc2_4; sp1_32; sp1_64; ctx_is_directive=0 {
-	sp1_64 = trunc(sp1_32);
+	local value:4 = sp1_32;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x5f000000) goto <maximum>;
+	if (value f<= 0xdf000000) goto <minimum>;
+	sp1_64 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_64 = 0x7fffffffffffffff;
+	goto inst_next;
+<minimum>
+	sp1_64 = 0x8000000000000000;
+	goto inst_next;
+<nan>
+	sp1_64 = 0;
 }
 :i64.trunc_sat_f32_u  is opc=0xFC; opc2_5; sp1_32; sp1_64; ctx_is_directive=0 {
-	sp1_64 = trunc(sp1_32);
+	local value:4 = sp1_32;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x5f800000) goto <maximum>;
+	if (value f<= 0x00000000) goto <minimum>;
+	if (value f< 0x5f000000) goto <low>;
+	sp1_64 = trunc(value f- 0x5f000000);
+	sp1_64 = sp1_64 | 0x8000000000000000;
+	goto inst_next;
+<low>
+	sp1_64 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_64 = 0xffffffffffffffff;
+	goto inst_next;
+<minimum>
+	sp1_64 = 0x0;
+	goto inst_next;
+<nan>
+	sp1_64 = 0;
 }
 :i64.trunc_sat_f64_s  is opc=0xFC; opc2_6; sp1_64; ctx_is_directive=0 {
-	sp1_64 = trunc(sp1_64);
+	local value:8 = sp1_64;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x43e0000000000000) goto <maximum>;
+	if (value f<= 0xc3e0000000000000) goto <minimum>;
+	sp1_64 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_64 = 0x7fffffffffffffff;
+	goto inst_next;
+<minimum>
+	sp1_64 = 0x8000000000000000;
+	goto inst_next;
+<nan>
+	sp1_64 = 0;
 }
 :i64.trunc_sat_f64_u  is opc=0xFC; opc2_7; sp1_64; ctx_is_directive=0 {
-	sp1_64 = trunc(sp1_64);
+	local value:8 = sp1_64;
+	if (nan(value)) goto <nan>;
+	if (value f>= 0x43f0000000000000) goto <maximum>;
+	if (value f<= 0x0000000000000000) goto <minimum>;
+	if (value f< 0x43e0000000000000) goto <low>;
+	sp1_64 = trunc(value f- 0x43e0000000000000);
+	sp1_64 = sp1_64 | 0x8000000000000000;
+	goto inst_next;
+<low>
+	sp1_64 = trunc(value);
+	goto inst_next;
+<maximum>
+	sp1_64 = 0xffffffffffffffff;
+	goto inst_next;
+<minimum>
+	sp1_64 = 0x0;
+	goto inst_next;
+<nan>
+	sp1_64 = 0;
 }

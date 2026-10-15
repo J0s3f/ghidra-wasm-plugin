@@ -35,7 +35,7 @@ public class WasmTableSection extends WasmSection {
 		super(reader);
 		count = reader.readNext(LEB128Info::unsigned);
 		for (int i = 0; i < count.asLong(); ++i) {
-			tables.add(new WasmTableType(reader));
+			tables.add(new WasmTableType(reader, true));
 		}
 	}
 

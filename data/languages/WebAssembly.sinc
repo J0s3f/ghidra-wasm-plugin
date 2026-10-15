@@ -93,6 +93,7 @@ define pcodeop memory_atomic_notify;
 define pcodeop memory_atomic_wait32;
 define pcodeop memory_atomic_wait64;
 define pcodeop memcpy;
+define pcodeop wasm_memory_copy;
 
 @include "Leb128.sinc"
 
@@ -282,6 +283,19 @@ macro doBranch(br_target) {
 :.local "count="^count "type="^typeidx is count; typeidx; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) {
 }
 
+local_reftype: "ref null "^SLeb128 is bytev=0x63; SLeb128 { }
+local_reftype: "ref "^SLeb128 is bytev=0x64; SLeb128 { }
+local_count1: value is topbit=0 & v0 [ value = (v0 << 0); ] { export *[const]:8 value; }
+:.local "count="^local_count1 "type="^local_reftype is local_count1; local_reftype; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) { }
+local_count2: value is topbit=1 & v0; topbit=0 & v1 [ value = (v0 << 0) | (v1 << 7); ] { export *[const]:8 value; }
+:.local "count="^local_count2 "type="^local_reftype is local_count2; local_reftype; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) { }
+local_count3: value is topbit=1 & v0; topbit=1 & v1; topbit=0 & v2 [ value = (v0 << 0) | (v1 << 7) | (v2 << 14); ] { export *[const]:8 value; }
+:.local "count="^local_count3 "type="^local_reftype is local_count3; local_reftype; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) { }
+local_count4: value is topbit=1 & v0; topbit=1 & v1; topbit=1 & v2; topbit=0 & v3 [ value = (v0 << 0) | (v1 << 7) | (v2 << 14) | (v3 << 21); ] { export *[const]:8 value; }
+:.local "count="^local_count4 "type="^local_reftype is local_count4; local_reftype; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) { }
+local_count5: value is topbit=1 & v0; topbit=1 & v1; topbit=1 & v2; topbit=1 & v3; topbit=0 & v4 [ value = (v0 << 0) | (v1 << 7) | (v2 << 14) | (v3 << 21) | (v4 << 28); ] { export *[const]:8 value; }
+:.local "count="^local_count5 "type="^local_reftype is local_count5; local_reftype; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) { }
+
 ## Control instructions
 :unreachable is opc=0x00; ctx_is_directive=0 {
 	trap();
@@ -374,7 +388,7 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 	call br_target;
 	pushCallOther(&o0);
 }
-:call_indirect "type="^typeidx tableref is opc=0x11; typeidx; tableref; sp1_32; ctx_is_directive=0 {
+:call_indirect "type="^typeidx tableref is opc=0x11; typeidx; tableref; sp1_32; ctx_table64=0; ctx_is_directive=0 {
 	addr:8 = &tableref + zext(sp1_32) * 4;
 	val:4 = *[table] addr;
 	LR = inst_next;
@@ -390,7 +404,7 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 	call br_target;
 	return [LR];
 }
-:return_call_indirect "type="^typeidx tableref is opc=0x13; typeidx; tableref; sp1_32; ctx_is_directive=0 {
+:return_call_indirect "type="^typeidx tableref is opc=0x13; typeidx; tableref; sp1_32; ctx_table64=0; ctx_is_directive=0 {
 	addr:8 = &tableref + zext(sp1_32) * 4;
 	val:4 = *[table] addr;
 	LR = inst_next;
@@ -617,6 +631,10 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 }
 
 # opc2_1 is used here to check that the LEB128 length of the type vector is 1.
+select_valtype: local_reftype is local_reftype; sp1_32; sp2_32; sp3_32 {
+	select32(sp1_32, sp2_32, sp3_32);
+}
+
 :select select_valtype is opc=0x1c; opc2_1; select_valtype; ctx_is_directive=0 {
 }
 
@@ -678,17 +696,17 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 }
 
 ## Table Instructions
-:table.get tableref is opc=0x25; tableref; sp1_32; ctx_is_directive=0 {
+:table.get tableref is opc=0x25; tableref; sp1_32; ctx_table64=0; ctx_is_directive=0 {
 	addr:8 = &tableref + zext(sp1_32) * 4;
 	sp1_32 = *[table] addr;
 }
 
-:table.set tableref is opc=0x26; tableref; sp1_32; sp2_32; ctx_is_directive=0 {
+:table.set tableref is opc=0x26; tableref; sp1_32; sp2_32; ctx_table64=0; ctx_is_directive=0 {
 	addr:8 = &tableref + zext(sp2_32) * 4;
 	*[table] addr = sp1_32;
 }
 
-:table.init elemidx tableidx is opc=0xfc; opc2_12; elemidx; tableidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+:table.init elemidx tableidx is opc=0xfc; opc2_12; elemidx; tableidx; sp1_32; sp2_32; sp3_32; ctx_table64=0; ctx_is_directive=0 {
 	table_init(elemidx:4, tableidx:4, sp1_32, sp2_32, sp3_32);
 }
 
@@ -696,19 +714,19 @@ select_valtype: valtype is valtype & bytev=0x7b; sp1_32; sp2_128; sp3_128 {
 	elem_drop(elemidx:4);
 }
 
-:table.copy tableidx tableidx2 is opc=0xfc; opc2_14; tableidx; tableidx2; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+:table.copy tableidx tableidx2 is opc=0xfc; opc2_14; tableidx; tableidx2; sp1_32; sp2_32; sp3_32; ctx_table64=0; ctx_is_directive=0 {
 	table_copy(tableidx:4, tableidx2:4, sp1_32, sp2_32, sp3_32);
 }
 
-:table.grow tableidx is opc=0xfc; opc2_15; tableidx; sp1_32; ctx_is_directive=0 {
-	sp1_32 = table_grow(tableidx:4, sp1_32);
+:table.grow tableidx is opc=0xfc; opc2_15; tableidx; sp1_32; sp2_32; ctx_table64=0; ctx_is_directive=0 {
+	sp2_32 = table_grow(tableidx:4, sp2_32, sp1_32);
 }
 
-:table.size tableidx is opc=0xfc; opc2_16; tableidx; sp0_32; ctx_is_directive=0 {
+:table.size tableidx is opc=0xfc; opc2_16; tableidx; sp0_32; ctx_table64=0; ctx_is_directive=0 {
 	sp0_32 = table_size(tableidx:4);
 }
 
-:table.fill tableidx is opc=0xfc; opc2_17; tableidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
+:table.fill tableidx is opc=0xfc; opc2_17; tableidx; sp1_32; sp2_32; sp3_32; ctx_table64=0; ctx_is_directive=0 {
 	table_fill(tableidx:4, sp1_32, sp2_32, sp3_32);
 }
 
@@ -817,3 +835,60 @@ stringidx: "string="^ULeb128 is ULeb128 {
 @include "StackSwitchOps.sinc"  # @@SS: stack switching / JSPI (0xE0-0xE6)
 @include "WideArithOps.sinc"    # @@WA: wide arithmetic + memory.discard (0xFC 0x12-0x16)
 @include "StringOps.sinc"       # @@STR: JS string builtins / stringref (0xFB 0x80-0xB7)
+
+# Table64 index widths, including mixed-width table.copy.
+:call_indirect "type="^typeidx tableref is opc=0x11; typeidx; tableref; sp1_64; ctx_table64=3; ctx_is_directive=0 {
+	addr:8 = &tableref + sp1_64 * 4;
+	val:4 = *[table] addr;
+	LR = inst_next;
+	callPrologueCallOther(&i0);
+	call [val];
+	pushCallOther(&o0);
+}
+
+:return_call_indirect "type="^typeidx tableref is opc=0x13; typeidx; tableref; sp1_64; ctx_table64=3; ctx_is_directive=0 {
+	addr:8 = &tableref + sp1_64 * 4;
+	val:4 = *[table] addr;
+	LR = inst_next;
+	callPrologueCallOther(&i0);
+	call [val];
+	return [LR];
+}
+
+:table.get tableref is opc=0x25; tableref; sp1_64; sp1_32; ctx_table64=3; ctx_is_directive=0 {
+	addr:8 = &tableref + sp1_64 * 4;
+	sp1_32 = *[table] addr;
+}
+
+:table.set tableref is opc=0x26; tableref; sp1_32; sp2_64; ctx_table64=3; ctx_is_directive=0 {
+	addr:8 = &tableref + sp2_64 * 4;
+	*[table] addr = sp1_32;
+}
+
+:table.init elemidx tableidx is opc=0xfc; opc2_12; elemidx; tableidx; sp1_32; sp2_32; sp3_64; ctx_table64=3; ctx_is_directive=0 {
+	table_init(elemidx:4, tableidx:4, sp1_32, sp2_32, sp3_64);
+}
+
+:table.copy tableidx tableidx2 is opc=0xfc; opc2_14; tableidx; tableidx2; sp1_32; sp2_32; sp3_64; ctx_table64=1; ctx_is_directive=0 {
+	table_copy(tableidx:4, tableidx2:4, sp1_32, sp2_32, sp3_64);
+}
+
+:table.copy tableidx tableidx2 is opc=0xfc; opc2_14; tableidx; tableidx2; sp1_32; sp2_64; sp3_32; ctx_table64=2; ctx_is_directive=0 {
+	table_copy(tableidx:4, tableidx2:4, sp1_32, sp2_64, sp3_32);
+}
+
+:table.copy tableidx tableidx2 is opc=0xfc; opc2_14; tableidx; tableidx2; sp1_64; sp2_64; sp3_64; ctx_table64=3; ctx_is_directive=0 {
+	table_copy(tableidx:4, tableidx2:4, sp1_64, sp2_64, sp3_64);
+}
+
+:table.grow tableidx is opc=0xfc; opc2_15; tableidx; sp1_64; sp2_64; sp2_32; ctx_table64=3; ctx_is_directive=0 {
+	sp2_64 = table_grow(tableidx:4, sp2_32, sp1_64);
+}
+
+:table.size tableidx is opc=0xfc; opc2_16; tableidx; sp0_64; ctx_table64=3; ctx_is_directive=0 {
+	sp0_64 = table_size(tableidx:4);
+}
+
+:table.fill tableidx is opc=0xfc; opc2_17; tableidx; sp1_64; sp2_32; sp3_64; ctx_table64=3; ctx_is_directive=0 {
+	table_fill(tableidx:4, sp1_64, sp2_32, sp3_64);
+}

@@ -9,6 +9,8 @@
   </properties>
   <inferptrbounds>
     <range space="ram" first="0x400" last="0xffffffff"/>
+    <range space="memory" first="0x400" last="0xffffffff"/>
+    <range space="memory64" first="0x400" last="0xffffffffffffffff"/>
   </inferptrbounds>
   <programcounter register="PC"/>
   <register_data>
