@@ -76,6 +76,12 @@ public class RegressionTest {
     return new ghidra.program.model.pcode.Varnode(lang.getAddressFactory().getConstantSpace().getAddress(value),size);
   }
   static void copyInjectionTests(ProgramDB p,Address site) {
+    for(boolean wide:new boolean[]{false,true}) {
+      String name=WasmLoader.getMemorySpaceName(1,wide);
+      if(p.getAddressFactory().getAddressSpace(name)==null) try {
+        p.createOverlaySpace(name,p.getAddressFactory().getAddressSpace(wide?"memory64":"memory"));
+      } catch(Exception e) {throw new AssertionError(e);}
+    }
     // Execute injected straight-line pcode on a tiny independent memory image. This
     // checks the observable memmove result, not just a particular operation order.
     for(int srcWidth:new int[]{4,8}) for(int dstWidth:new int[]{4,8}) for(boolean separate:new boolean[]{false,true}) {
@@ -88,8 +94,8 @@ public class RegressionTest {
       var ops=fixup.getPcode(p,context);
       Map<ghidra.program.model.pcode.Varnode,Long> values=new HashMap<>();
       Map<String,Byte> memory=new HashMap<>();
-      String srcSpace=srcWidth==8?"memory64":"memory",dstSpace=dstWidth==8?"memory64":"memory";
-      for(int i=0;i<4;i++) memory.put(srcSpace+":"+(srcIndex*WasmLoader.MEMORY_STRIDE+4096+i),(byte)(65+i));
+      String srcSpace=WasmLoader.getMemorySpaceName(srcIndex,srcWidth==8),dstSpace=WasmLoader.getMemorySpaceName(0,dstWidth==8);
+      for(int i=0;i<4;i++) memory.put(srcSpace+":"+(4096+i),(byte)(65+i));
       java.util.function.ToLongFunction<ghidra.program.model.pcode.Varnode> value=v->v.isConstant()?v.getOffset():Objects.requireNonNull(values.get(v));
       for(var op:ops) switch(op.getOpcode()) {
         case ghidra.program.model.pcode.PcodeOp.INT_ADD: {
@@ -97,13 +103,13 @@ public class RegressionTest {
           values.put(op.getOutput(),op.getOutput().getSize()==4?result & 0xffffffffL:result);break;
         }
         case ghidra.program.model.pcode.PcodeOp.LOAD: {
-          String space=lang.getAddressFactory().getAddressSpace((int)op.getInput(0).getOffset()).getName();
+          String space=p.getAddressFactory().getAddressSpace((int)op.getInput(0).getOffset()).getName();
           Byte b=memory.get(space+":"+value.applyAsLong(op.getInput(1)));
           check(b!=null,"Copy reads correct source memory and width");
           values.put(op.getOutput(),b.longValue() & 255);break;
         }
         case ghidra.program.model.pcode.PcodeOp.STORE: {
-          String space=lang.getAddressFactory().getAddressSpace((int)op.getInput(0).getOffset()).getName();
+          String space=p.getAddressFactory().getAddressSpace((int)op.getInput(0).getOffset()).getName();
           memory.put(space+":"+value.applyAsLong(op.getInput(1)),(byte)value.applyAsLong(op.getInput(2)));break;
         }
         default: throw new AssertionError("Unexpected copy pcode "+op);
@@ -322,7 +328,7 @@ public class RegressionTest {
     for (String arg:args) {
       System.out.println("REVIEW FILE "+arg);
       ProgramDB p=null;
-      try {p=load(Path.of(arg));inspect(p);emulate(p);} catch(Throwable e) {failures++;e.printStackTrace(System.out);} finally {if(p!=null)p.release(owner);}
+      try {p=load(Path.of(arg));inspect(p);emulate(p);PatchRegressionTest.run(p);} catch(Throwable e) {failures++;e.printStackTrace(System.out);} finally {if(p!=null)p.release(owner);}
     }
     System.out.println("Assertions: "+assertions+"; failed fixtures: "+failures);
     System.exit(failures==0?0:1);

@@ -38,6 +38,8 @@ public class PcodeInjectLibraryWasm extends PcodeInjectLibrary {
 	public InjectPayload allocateInject(String sourceName, String name, int tp) {
 		if (tp == InjectPayload.CALLOTHERFIXUP_TYPE) {
 			switch (name) {
+			case "brTableTargetCallOther":
+				return new InjectPayloadWasmBrTable(sourceName);
 			case "funcEntryCallOther":
 				return new InjectPayloadWasmEntry(sourceName);
 			case "popCallOther":
@@ -51,6 +53,10 @@ public class PcodeInjectLibraryWasm extends PcodeInjectLibrary {
 				return new InjectPayloadWasmPush(sourceName);
 			case "memory_copy":
 				return new InjectPayloadWasmMemoryCopy(sourceName);
+			case "wasm_memory_load":
+				return new InjectPayloadWasmMemoryAccess(sourceName, false);
+			case "wasm_memory_store":
+				return new InjectPayloadWasmMemoryAccess(sourceName, true);
 			}
 		}
 		return super.allocateInject(sourceName, name, tp);

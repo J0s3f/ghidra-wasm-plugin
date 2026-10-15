@@ -150,3 +150,54 @@ Path(sys.argv[1],'numeric-expected.tsv').write_text(''.join(str(i)+'\t'+result+'
 import shutil
 for fixture in ('call32','call64','cache32','cache64','cache32_controls','cache64_controls','brtable_default'):
     shutil.copyfile(Path(__file__).resolve().parents[1]/'fixtures'/(fixture+'.wasm'),Path(sys.argv[1],fixture+'.wasm'))
+
+# Isolation regressions: grow after import so testing high offsets does not materialize
+# hundreds of MiB in Ghidra. Distinct memories must remain distinct above the old stride.
+def access(op, index, offset=0, align=2):
+    return bytes([op])+uleb(0x40|align)+uleb(index)+uleb(offset)
+def load32(index,address): return i32_const(address)+access(0x28,index)
+def store32(index,address,value): return i32_const(address)+i32_const(value)+access(0x36,index)
+simple('isolation32',[I32],i32_const(2048)+b'\x40\x00'+drop()+
+    store32(0,0x08000000,0x44)+store32(1,0,0x11)+
+    load32(0,0x08000000)+i32_const(256)+b'\x6c'+load32(1,0)+b'\x6a',
+    extra=[memory_section([(0,1),(0,1)])])
+simple('isolation_index32',[I32],store32(0,0,0x22)+store32(32,0,0x77)+
+    load32(0,0)+i32_const(256)+b'\x6c'+load32(32,0)+b'\x6a',
+    extra=[memory_section([(0,1)]*33)])
+high=0x100000010
+simple('isolation64',[I32],i64_const(65536)+b'\x40\x00'+drop()+i64_const(65536)+b'\x40\x01'+drop()+
+    i64_const(high)+i32_const(0x55)+access(0x36,0)+i64_const(high)+i32_const(0x66)+access(0x36,1)+
+    i64_const(high)+access(0x28,0)+i32_const(256)+b'\x6c'+i64_const(high)+access(0x28,1)+b'\x6a',
+    extra=[memory_section([(4,1),(4,1)])])
+simple('isolation_simd',[I32],store32(0,0,0x12)+i32_const(0)+b'\xfd\x0c'+bytes([0x34])+bytes(15)+
+    b'\xfd\x0b\x44\x01\x00'+i32_const(0)+b'\xfd\x00\x44\x01\x00\xfd\x1b\x00'+
+    i32_const(256)+b'\x6c'+load32(0,0)+b'\x6a',extra=[memory_section([(0,1),(0,1)])])
+simple('isolation_atomic',[I32],store32(0,0,0x12)+store32(1,0,0x30)+i32_const(0)+i32_const(4)+
+    b'\xfe\x1e\x42\x01\x00'+drop()+load32(1,0)+i32_const(256)+b'\x6c'+load32(0,0)+b'\x6a',
+    extra=[memory_section([(0,1),(3,1,1)])])
+simple('isolation_copy',[I32],store32(0,0,0x12345678)+store32(1,0,0x11223344)+
+    i32_const(0)+i32_const(0)+i32_const(4)+misc_op(10)+b'\x01\x00'+load32(1,0),
+    extra=[memory_section([(0,1),(0,1)])])
+simple('isolation_oob',[],store32(0,65532,0x12345678)+store32(1,65534,0x11223344),
+    extra=[memory_section([(0,1),(0,1)])])
+simple('isolation_zero',[I32],i32_const(1)+b'\x40\x01'+drop()+load32(1,0),
+    extra=[memory_section([(0,1),(0,0)]),data_section([active_data(i32_const(0)+END,b'ABCD')])])
+simple('isolation_copy_overlap',[I32],store32(0,0,0xaa)+store32(0,8199,0xbb)+
+    i32_const(1)+i32_const(0)+i32_const(8200)+misc_op(10)+b'\x00\x00'+
+    i32_const(0)+i32_const(1)+i32_const(8200)+misc_op(10)+b'\x00\x00'+
+    i32_const(0)+access(0x2d,0,align=0)+i32_const(256)+b'\x6c'+i32_const(8199)+access(0x2d,0,align=0)+b'\x6a',
+    extra=[memory_section([(0,1)])])
+
+# Alternating labels include distinct targets above the former 1023-case cutoff.
+# Test both scalar and mixed i64/v128 label arguments with an extra discarded value.
+for mixed in (False,True):
+    count=16384
+    labels=b'\x0e'+uleb(count)+b''.join(uleb(i%2) for i in range(count))+uleb(1)
+    vector=b'\xfd\x0c'+bytes(range(16))
+    typ=1 if mixed else I64
+    branch=i32_const(99)+i64_const(42)+(vector if mixed else b'')+local_get(0)+labels
+    inner=block(typ,branch)+(drop() if mixed else b'')+i64_const(1)+b'\x7c'+(vector if mixed else b'')
+    code=block(typ,inner)+(drop() if mixed else b'')+END
+    write('brtable_large'+('_mixed' if mixed else '')+'.wasm',module(
+        type_section(functype([I32],[I64]),functype([],[I64,V128])),func_section([0]),
+        export_section([('dispatch',0,0)]),code_section([code])))

@@ -27,6 +27,7 @@ define space table   type=ram_space		 size=8;
 define space global  type=ram_space		 size=4;
 define space memory  type=ram_space      size=4;
 define space register type=register_space size=4;
+define space brtable type=ram_space size=8;
 define space memory64 type=ram_space      size=8;
 
 # PC is the program counter
@@ -1923,6 +1924,7 @@ define context contextreg
 	ctx_ss_shape = (16, 19) noflow
 	# Same width codes as ctx_mem64, for table indices and mixed table.copy.
 	ctx_table64 = (20, 21) noflow
+	ctx_br_table = (22, 22) noflow
 	ctx_case_index = (32, 63) noflow
 	ctx_br_target = (64, 95) noflow
 	ctx_sp = (96, 127) noflow

@@ -45,19 +45,18 @@ import wasm.format.sections.structures.WasmResizableLimits;
  */
 public class WasmFunctionAnalysis {
 
-	/**
-	 * Upper bound on the number of br_table branches the pre-analyzer materialises for one
-	 * br_table. Each case is a separate basic block ending in a conditional branch, and a
-	 * pathological br_table (the spec suite's br_table.wast `large` function has ~16k labels)
-	 * makes the native decompiler process die. The bound applies to *case* targets only: at most
-	 * {@code MAX_BR_TABLE_CASES - 1} cases are modelled, and the default target is always modelled
-	 * (so one br_table emits at most {@code MAX_BR_TABLE_CASES} branch instructions). Case targets
-	 * past the bound are still consumed (by the byte-only `.case_ignored` directive) but contribute
-	 * no control flow, and a warning is logged. Residual limit: an input whose index equals a
-	 * dropped case index is modelled as taking the default target (see REPORT-R5-BRTABLE.md). This
-	 * is production behaviour, not harness-only. See also REPORT-SF.md finding 3.
-	 */
-	static final int MAX_BR_TABLE_CASES = 1024;
+	/** Large vectors use a read-only selector table and one branch per distinct label. */
+	static final int COMPACT_BR_TABLE_THRESHOLD = 1024;
+	private final Map<Address, int[]> brTables = new HashMap<>();
+
+	public int getBrTableSelector(Address address, long index) {
+		int[] selectors = brTables.get(address);
+		return selectors[(int) Math.min(index, selectors.length - 1L)];
+	}
+
+	public static long getBrTableOffset(Address address) {
+		return (address.getOffset() - wasm.WasmLoader.CODE_BASE) * 4;
+	}
 
 	private WasmFuncSignature func;
 	/* null in the value stack means Unknown */
@@ -117,6 +116,7 @@ public class WasmFunctionAnalysis {
 		private static final RegisterDefinition REG_MEM64 = new RegisterDefinition(14, 15);
 		/* @@SS/@@STR: callother shape code for the variable-arity proposal instructions. */
 		private static final RegisterDefinition REG_SS_SHAPE = new RegisterDefinition(16, 19);
+		private static final RegisterDefinition REG_BR_TABLE = new RegisterDefinition(22, 22);
 		private static final RegisterDefinition REG_TABLE64 = new RegisterDefinition(20, 21);
 
 		private static final int DIRECTIVE_CASE = 0;
@@ -234,8 +234,8 @@ public class WasmFunctionAnalysis {
 		// @@SS end
 
 		/**
-		 * Directive type for a br_table label past the modelled-case cap; must match
-		 * DIRECTIVE_CASE_IGNORED in WebAssembly.slaspec. See {@link #MAX_BR_TABLE_CASES}.
+		 * Directive type for a coalesced duplicate br_table label; must match
+		 * DIRECTIVE_CASE_IGNORED in WebAssembly.slaspec.
 		 */
 		private static final int DIRECTIVE_CASE_IGNORED = 5;
 
@@ -294,13 +294,7 @@ public class WasmFunctionAnalysis {
 			}
 		}
 
-		/**
-		 * Disassemble this br_table label as a byte-only directive: it consumes the label's
-		 * bytes (keeping the stream aligned) but emits no branch and no basic block. Used for the
-		 * *case* labels past the cap on modelled case targets ({@link #MAX_BR_TABLE_CASES} - 1) so
-		 * that one pathological br_table cannot explode the decompiler's control-flow graph. The
-		 * default label is never routed here.
-		 */
+		/** Decode a duplicate label; its selector is redirected to the representative branch. */
 		public void setBrTableCaseIgnored(Address address) {
 			setRegister(address, REG_IS_DIRECTIVE, 1);
 			setRegister(address, REG_DIRECTIVE_TYPE, DIRECTIVE_CASE_IGNORED);
@@ -731,6 +725,8 @@ public class WasmFunctionAnalysis {
 	private ValType setMemoryIndexContext(WasmAnalysis analysis, Address instAddress, long memidx) {
 		ValType indexType = memoryIndexType(analysis, memidx);
 		contextreg.setMemoryWidths(instAddress, indexType == ValType.i64 ? MEM_CTX_I64 : MEM_CTX_I32);
+		// Memory instructions reuse the case-index field for the complete u32 memidx.
+		contextreg.setRegister(instAddress, ContextRegister.REG_CASE_INDEX, memidx);
 		return indexType;
 	}
 
@@ -1467,43 +1463,39 @@ public class WasmFunctionAnalysis {
 		}
 		case 0x0E: /* br_table l* l */ {
 			long count = readLeb128(reader);
+			// Every label occupies at least one byte; bound allocation before narrowing.
+			if (count < 0 || count >= Integer.MAX_VALUE || count + 1 > reader.length() - reader.getPointerIndex()) {
+				throw new IOException("Invalid br_table label count: " + count);
+			}
+			boolean compact = count >= COMPACT_BR_TABLE_THRESHOLD;
+			int[] selectors = compact ? new int[(int) count + 1] : null;
+			Map<ControlFrame, Integer> representatives = new HashMap<>();
+			if (compact) {
+				contextreg.setRegister(instAddress, ContextRegister.REG_BR_TABLE, 1);
+				brTables.put(instAddress, selectors);
+			}
 			popValue(instAddress, ValType.i32);
-			for (int i = 0; i < count + 1; i++) {
+			for (int i = 0; i <= count; i++) {
 				Address caseAddress = func.getStartAddr().add(reader.getPointerIndex());
 				long labelidx = readLeb128(reader);
-
-				/*
-				 * The last label (i == count) is the default target and is ALWAYS modelled, even
-				 * when the table is past the cap, so bounding the expansion can never change where
-				 * an input that misses every modelled case goes. Only *case* targets are dropped:
-				 * the first MAX_BR_TABLE_CASES-1 cases are modelled and every later case is decoded
-				 * without control flow (its bytes are still consumed). Residual limit: an input
-				 * equal to a dropped case index is modelled as taking the default target.
-				 */
-				boolean isDefault = (i == count);
-				if (!isDefault && i >= MAX_BR_TABLE_CASES - 1) {
-					// @@BRTABLE_CAP: bound the control-flow graph. The label bytes are consumed
-					// by a byte-only directive (no branch, no block) so the stream stays aligned,
-					// but we do not model the branch or touch the value stack.
-					if (i == MAX_BR_TABLE_CASES - 1) {
-						Msg.warn(this, "br_table at " + instAddress + " has " + (count + 1)
-								+ " labels; only the first " + (MAX_BR_TABLE_CASES - 1)
-								+ " case targets are modelled as branches (the default target is"
-								+ " always modelled; the remaining labels are decoded without control flow)");
-					}
-					contextreg.setBrTableCaseIgnored(caseAddress);
-					continue;
-				}
-
-				contextreg.setBrTableCase(caseAddress, isDefault ? -1 : i);
 				ControlFrame block = getBlock(caseAddress, labelidx);
+				boolean isDefault = i == count;
+				Integer representative = representatives.get(block);
+				if (compact) {
+					selectors[i] = representative == null ? (isDefault ? -1 : i) : representative;
+				}
+				// Validate every label, including duplicates, before coalescing its branch.
 				ValType[] arguments = block.getBranchArguments();
 				ValType[] actualArgs = popValues(caseAddress, arguments);
-				setStackEffect(caseAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
-				block.addBranch(caseAddress);
-				if (!isDefault) {
-					pushValues(caseAddress, actualArgs);
+				if (compact && !isDefault && representative != null) {
+					contextreg.setBrTableCaseIgnored(caseAddress);
+				} else {
+					contextreg.setBrTableCase(caseAddress, isDefault ? -1 : i);
+					setStackEffect(caseAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
+					block.addBranch(caseAddress);
+					representatives.put(block, i);
 				}
+				if (!isDefault) { pushValues(caseAddress, actualArgs); }
 			}
 			markUnreachable(instAddress);
 			break;
@@ -2761,6 +2753,25 @@ public class WasmFunctionAnalysis {
 	}
 
 	public void applyContext(Program program, int cStackGlobal) {
+		for (var entry : brTables.entrySet()) {
+			var address = program.getAddressFactory().getAddressSpace("brtable").getAddress(getBrTableOffset(entry.getKey()));
+			byte[] bytes = new byte[entry.getValue().length * 4];
+			java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+			for (int selector : entry.getValue()) { buffer.putInt(selector); }
+			try {
+				var memory = program.getMemory();
+				var block = memory.getBlock(address);
+				if (block == null) {
+					block = memory.createInitializedBlock(".br_table_" + entry.getKey(), address,
+						new java.io.ByteArrayInputStream(bytes), bytes.length, ghidra.util.task.TaskMonitor.DUMMY, false);
+					block.setWrite(false);
+				} else {
+					memory.setBytes(address, bytes);
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Unable to materialize br_table at " + entry.getKey(), e);
+			}
+		}
 		for (Map.Entry<Address, Long> entry : globalGetSets.entrySet()) {
 			if (entry.getValue() == cStackGlobal) {
 				contextreg.setIsGlobalSp(entry.getKey(), entry.getValue() == cStackGlobal);

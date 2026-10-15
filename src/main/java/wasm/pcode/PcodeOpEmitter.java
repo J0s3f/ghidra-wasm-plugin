@@ -27,12 +27,19 @@ import ghidra.program.model.pcode.Varnode;
 
 public class PcodeOpEmitter {
 	private Language language;
+	private ghidra.program.model.address.AddressFactory addressFactory;
 	private Address baseAddress;
 	private List<PcodeOp> ops = new ArrayList<>();
 
 	public PcodeOpEmitter(Language language, Address baseAddress) {
 		this.language = language;
+		this.addressFactory = language.getAddressFactory();
 		this.baseAddress = baseAddress;
+	}
+
+	public PcodeOpEmitter(ghidra.program.model.listing.Program program, Address baseAddress) {
+		this(program.getLanguage(), baseAddress);
+		this.addressFactory = program.getAddressFactory();
 	}
 
 	public PcodeOp[] getPcodeOps() {
@@ -113,8 +120,8 @@ public class PcodeOpEmitter {
 	/** Bulk-copy expansion preserving each memory index, address width and overlapping ranges. */
 	public void emitUnrolledCopy64(Varnode src, Varnode dst, int count, int gran,
 			long srcMemidx, long dstMemidx) {
-		AddressSpace srcSpace = language.getAddressFactory().getAddressSpace(src.getSize() == 8 ? "memory64" : "memory");
-		AddressSpace dstSpace = language.getAddressFactory().getAddressSpace(dst.getSize() == 8 ? "memory64" : "memory");
+		AddressSpace srcSpace = wasm.WasmLoader.getMemorySpace(addressFactory, (int) srcMemidx, src.getSize() == 8);
+		AddressSpace dstSpace = wasm.WasmLoader.getMemorySpace(addressFactory, (int) dstMemidx, dst.getSize() == 8);
 		Varnode[] values = new Varnode[count];
 		// Read the entire source before any write, preserving memory.copy overlap semantics.
 		for (int i = 0; i < count; i++) {
@@ -122,7 +129,7 @@ public class PcodeOpEmitter {
 			Varnode sp = newUnique(src.getSize());
 			PcodeOp addSrc = newOp(PcodeOp.INT_ADD);
 			addSrc.setInput(src, 0);
-			addSrc.setInput(constVn(srcMemidx * wasm.WasmLoader.MEMORY_STRIDE + offset, src.getSize()), 1);
+			addSrc.setInput(constVn(offset, src.getSize()), 1);
 			addSrc.setOutput(sp);
 			Varnode value = newUnique(gran);
 			PcodeOp load = newOp(PcodeOp.LOAD);
@@ -136,7 +143,7 @@ public class PcodeOpEmitter {
 			Varnode dp = newUnique(dst.getSize());
 			PcodeOp addDst = newOp(PcodeOp.INT_ADD);
 			addDst.setInput(dst, 0);
-			addDst.setInput(constVn(dstMemidx * wasm.WasmLoader.MEMORY_STRIDE + offset, dst.getSize()), 1);
+			addDst.setInput(constVn(offset, dst.getSize()), 1);
 			addDst.setOutput(dp);
 			PcodeOp store = newOp(PcodeOp.STORE);
 			store.setInput(constVn(dstSpace.getSpaceID(), 4), 0);

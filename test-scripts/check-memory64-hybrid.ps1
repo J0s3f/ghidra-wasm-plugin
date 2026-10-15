@@ -44,7 +44,7 @@ try {
 $text = Get-Content -LiteralPath $log -Raw
 Select-String -LiteralPath $log -Pattern "HYBRID-|I32-PCODE|ERROR" | ForEach-Object { $_.Line }
 if ($code -ne 0 -or $text -notmatch "HYBRID-MATRIX functions=246 .* passed" -or
-    $text -notmatch "HYBRID-EMU functions=9 passed; loader high/unsigned/overflow checks passed" -or
+    $text -notmatch "HYBRID-EMU functions=9 passed; loader high/unsigned/isolation checks passed" -or
     $text -notmatch "HYBRID-SIMD-PREFIX functions=\d+ passed") {
     throw "Hybrid assertions failed; inspect $log"
 }

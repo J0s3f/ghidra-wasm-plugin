@@ -38,7 +38,7 @@ public class CheckMemory64Hybrid extends GhidraScript {
             boolean wide = f.getName().startsWith("m64_");
             require(wide || f.getName().startsWith("m32_"), "unexpected function " + f.getName());
             int width = wide ? 8 : 4;
-            String space = wide ? "memory64" : "memory";
+            String space = wide ? "memory64_1" : "memory";
             boolean found = false;
             for (Instruction insn : currentProgram.getListing().getInstructions(f.getBody(), true)) {
                 for (PcodeOp op : insn.getPcode()) {
@@ -53,8 +53,12 @@ public class CheckMemory64Hybrid extends GhidraScript {
                     } else if (op.getOpcode() == PcodeOp.CALLOTHER) {
                         String userop = currentProgram.getLanguage()
                             .getUserDefinedOpName((int) op.getInput(0).getOffset());
-                        if (userop.startsWith("memory_atomic_")) {
-                            require(op.getInput(1).getSize() == width, f.getName() + " callother address");
+                        if (userop.equals("wasm_memory_load") || userop.equals("wasm_memory_store")) {
+                            require(op.getInput(1).getOffset() == (wide ? 1 : 0), f.getName() + " memory identity");
+                            require(op.getInput(2).getSize() == width, f.getName() + " address width");
+                            found = true; accesses++;
+                        } else if (userop.startsWith("memory_atomic_")) {
+                            require(op.getInput(2).getSize() == width, f.getName() + " callother address");
                             found = true;
                         } else if (f.getName().contains("string_") &&
                                    (userop.startsWith("string_new_") || userop.startsWith("string_encode_")
@@ -71,7 +75,7 @@ public class CheckMemory64Hybrid extends GhidraScript {
         }
         require(functions == 246, "matrix functions=" + functions);
         require(currentProgram.getMemory().getBlock(".memory0").getStart().getAddressSpace().getName().equals("memory"), "i32 block");
-        require(currentProgram.getMemory().getBlock(".memory1").getStart().getAddressSpace().getName().equals("memory64"), "i64 block");
+        require(currentProgram.getMemory().getBlock(".memory1").getStart().getAddressSpace().getName().equals("memory64_1"), "i64 block");
         println("HYBRID-MATRIX functions=" + functions + " accesses=" + accesses + " passed");
         runScript("MemoryPcodeFingerprint.java");
     }
@@ -111,11 +115,16 @@ public class CheckMemory64Hybrid extends GhidraScript {
         } finally { emu.dispose(); }
     }
 
-    private void copyExpansion() {
+    private void copyExpansion() throws Exception {
+        for (int index : new int[]{1,2}) for (boolean wide : new boolean[]{false,true}) {
+            String name = WasmLoader.getMemorySpaceName(index, wide);
+            if (currentProgram.getAddressFactory().getAddressSpace(name) == null)
+                currentProgram.createOverlaySpace(name, currentProgram.getAddressFactory().getAddressSpace(wide ? "memory64" : "memory"));
+        }
         for (int srcWidth : new int[] {4, 8}) {
             for (int dstWidth : new int[] {4, 8}) {
                 if (srcWidth == 4 && dstWidth == 4) continue;
-                PcodeOpEmitter emitter = new PcodeOpEmitter(currentProgram.getLanguage(),
+                PcodeOpEmitter emitter = new PcodeOpEmitter(currentProgram,
                     currentProgram.getMinAddress());
                 emitter.emitUnrolledCopy64(new Varnode(currentProgram.getRegister("s0").getAddress(), srcWidth),
                     new Varnode(currentProgram.getRegister("s1").getAddress(), dstWidth), 4, 1, 1, 2);
@@ -126,7 +135,7 @@ public class CheckMemory64Hybrid extends GhidraScript {
                     int width = load ? srcWidth : dstWidth;
                     String space = currentProgram.getAddressFactory()
                         .getAddressSpace((int) op.getInput(0).getOffset()).getName();
-                    require(space.equals(width == 8 ? "memory64" : "memory"), "copy expansion space");
+                    require(space.equals(WasmLoader.getMemorySpaceName(load ? 1 : 2, width == 8)), "copy expansion space");
                     require(op.getInput(1).getSize() == width, "copy expansion address width");
                     if (load) loads++; else stores++;
                 }
@@ -177,10 +186,8 @@ public class CheckMemory64Hybrid extends GhidraScript {
         require(high.getOffset() == 0x100000030L && high.getAddressSpace().getName().equals("memory64"), "loader high address");
         Address upper = WasmLoader.getMemoryAddress(currentProgram.getAddressFactory(), 0, Long.MIN_VALUE, true);
         require(upper.getOffset() == Long.MIN_VALUE, "unsigned upper-half loader address");
-        try {
-            WasmLoader.getMemoryAddress(currentProgram.getAddressFactory(), 1, -1L, true);
-            throw new AssertionError("stride overflow was accepted");
-        } catch (IllegalArgumentException expectedOverflow) { /* expected */ }
-        println("HYBRID-EMU functions=9 passed; loader high/unsigned/overflow checks passed");
+        Address secondary = WasmLoader.getMemoryAddress(currentProgram.getAddressFactory(), 1, -1L, true);
+        require(secondary.getOffset() == -1L && secondary.getAddressSpace().getName().equals("memory64_1"), "full-width secondary address stays isolated");
+        println("HYBRID-EMU functions=9 passed; loader high/unsigned/isolation checks passed");
     }
 }

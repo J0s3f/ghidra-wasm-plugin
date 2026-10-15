@@ -48,11 +48,10 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
   `br_on_null`, `br_on_non_null`; precise `(ref null ht)` / `(ref ht)` type model
 - **Multi-value**: blocks with type-index blocktypes, functions returning multiple
   results as a packed struct visible to the decompiler
-- **Multi-memory**: memarg `memidx` decoded, every memory gets its own block in a
-  dedicated 32-bit `memory` address space (128 MiB stride, supports ≥ 8 memories)
-- **memory64**: 64-bit index type propagates to the pre-analyzer and SLEIGH;
-  addresses computed in 64-bit pcode and truncated into the 32-bit `memory` space
-  (exact below 4 GiB, documented wrap above)
+- **Multi-memory**: every declared memory has an independent address space, including
+  zero-sized memories, large offsets, and memory indices above 31
+- **memory64**: full 64-bit effective addresses in `memory64` and per-memory spaces;
+  scalar, SIMD, atomic, and copy operations preserve the selected memory
 - **Extended constant expressions**: `i32`/`i64` `add`/`sub`/`mul` in initializers
 - **Stack switching / JSPI**: `cont.new`, `cont.bind`, `resume`, `suspend`, `switch`
   (decoded; `cont` types parse in the type section)
@@ -200,16 +199,11 @@ fix order. In summary, the still-open items are:
   mnemonics (the 0xFE atomic *memory* ops are implemented).
 - **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
   (core-module extraction only, by design).
-- **`br_table large` assertion cases**: 1 remaining `assert_return` failure in the emulation
-  harness (the `large(10000)` case, whose target is a *case* past the modelled-case cap). The
-  `MAX_BR_TABLE_CASES` bound previously also dropped the DEFAULT target — production control flow,
-  not harness-only; it now models at most `MAX_BR_TABLE_CASES - 1` case targets and **always** the
-  default target (`REPORT-R5-BRTABLE.md`).
 - **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
   only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
-- **128 MiB materialisation cap / stride**: memories larger than 128 MiB are clamped (with a
-  warning); memories of the same index type can alias beyond a stride, and i32 memory indices above
-  31 exceed the legacy 32-bit space.
+- **128 MiB materialisation cap**: the loader maps at most 128 MiB per memory and
+  reports data outside that prefix. Addressing and emulator banks remain independent
+  beyond the mapped prefix; large memories no longer alias neighboring memories.
 - **Cosmetic listings**: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` and the `ht=`
   operands of `ref.test`/`ref.cast`/`br_on_cast*` still print numerically (`ref.null` abstract heap
   types now print by name).
@@ -246,10 +240,20 @@ Four different types of "registers" are defined: input (iN), output (oN), stack
 disassembly; stack registers will appear in the PCode, and input/output
 registers will appear in function types.
 
-Linear memories live in a dedicated 32-bit `memory` address space (not `ram`),
-with a 128 MiB stride between memory indices (memory 0 at offset 0, memory N at
-`N * 0x08000000`). This supports ≥ 8 memories without colliding with the module
-image in `ram` at `CODE_BASE` (0x80000000).
+Memory 0 uses the 32-bit `memory` or 64-bit `memory64` space, according to its
+declared index type. Each secondary memory uses a program overlay named `memory_N`
+or `memory64_N`. Effective addresses are offsets within that space, without a stride.
+Dynamic pcode fixups resolve memory accesses to the correct program space; the
+emulator maintains independent banks, including unmapped and newly grown pages.
+
+Large `br_table` vectors use a read-only selector table in the `brtable` space.
+Repeated labels share one modeled branch and its stack relocation. Every case and
+the default remain represented, while the control-flow graph scales with distinct
+labels rather than the vector length.
+
+After upgrading to 2.8.2, **reimport existing Wasm programs** to regenerate memory
+spaces, instruction context, and large-table selector data. Saved programs from
+earlier versions retain their previous layout and context.
 
 ## Acknowledgements
 

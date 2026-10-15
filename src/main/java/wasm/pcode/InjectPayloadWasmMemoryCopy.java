@@ -45,7 +45,7 @@ public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 
 	@Override
 	public PcodeOp[] getPcode(Program program, InjectContext con) {
-		PcodeOpEmitter ops = new PcodeOpEmitter(program.getLanguage(), con.baseAddr);
+		PcodeOpEmitter ops = new PcodeOpEmitter(program, con.baseAddr);
 
 		if (con.inputlist == null || con.inputlist.size() < 5) {
 			return ops.getPcodeOps();

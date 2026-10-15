@@ -5,8 +5,7 @@
 //
 // Pins, per function: the exact instruction sequence (mnemonic, byte length, operand
 // text - i.e. instruction boundaries and the align/memidx/offset decode), the memory
-// selection of every load/store (ACCESS space + address width + the memidx stride
-// multiply in the pcode) and the emulated i32 result (the effective address: which
+// selection of every load/store (independent space + address width + memory index in the pcode) and the emulated i32 result (the effective address: which
 // memory's bytes actually come back). The fully padded 26-byte v128.load also
 // exercises the emulator's memarg read buffer (MAX_MEMARG_INSTRUCTION_BYTES).
 //@category Test.Wasm
@@ -49,7 +48,7 @@ public class CheckMemargPadding extends GhidraScript {
 		final String[] insns;
 		final String space;     // "memory" or "memory64"
 		final int addrSize;     // 4 (i32 index) or 8 (i64 index)
-		final boolean flagged;  // memidx present -> stride multiply in the pcode
+		final boolean flagged;  // explicit memidx present in the encoded memarg
 		final long offset;      // static memarg offset
 		final long result;      // expected emulated i32 return (unsigned)
 
@@ -202,25 +201,28 @@ public class CheckMemargPadding extends GhidraScript {
 			String text = insn.toString();
 			require(text.contains("memidx") == c.flagged,
 				c.name + ": memidx operand presence wrong in '" + text + "'");
-			boolean hasStride = false, hasOffset = false;
+			boolean hasAccess = false, hasOffset = false;
 			for (PcodeOp op : insn.getPcode()) {
-				if (op.getOpcode() == PcodeOp.LOAD || op.getOpcode() == PcodeOp.STORE) {
-					String actual = currentProgram.getAddressFactory()
-						.getAddressSpace((int) op.getInput(0).getOffset()).getName();
-					require(actual.equals(c.space), c.name + " wrong space " + actual);
-					require(op.getInput(1).getSize() == c.addrSize,
-						c.name + " address width " + op.getInput(1).getSize());
+				if (op.getOpcode() == PcodeOp.CALLOTHER) {
+					String name = currentProgram.getLanguage().getUserDefinedOpName((int) op.getInput(0).getOffset());
+					if (name.equals("wasm_memory_load") || name.equals("wasm_memory_store")) {
+						require(op.getInput(1).isConstant() && op.getInput(1).getOffset() == (c.flagged ? 1 : 0), c.name + " selected memory index");
+						require(op.getInput(2).getSize() == c.addrSize, c.name + " address width");
+						var context = new ghidra.program.model.lang.InjectContext();
+						context.baseAddr = insn.getAddress();
+						context.inputlist = new ArrayList<>(java.util.Arrays.asList(op.getInputs()).subList(1, op.getNumInputs()));
+						context.output = new ArrayList<>();
+						if (op.getOutput() != null) context.output.add(op.getOutput());
+						var access = new wasm.pcode.InjectPayloadWasmMemoryAccess("test", name.endsWith("store")).getPcode(currentProgram, context)[0];
+						String actual = currentProgram.getAddressFactory().getAddressSpace((int) access.getInput(0).getOffset()).getName();
+						require(actual.equals(c.space + (c.flagged ? "_1" : "")), c.name + " isolated space " + actual);
+						hasAccess = true;
+					}
 				}
-				if (op.getOpcode() == PcodeOp.INT_MULT) {
-					hasStride = hasConst(op, MEMORY_STRIDE);
-				}
-				if (op.getOpcode() == PcodeOp.INT_ADD) {
-					hasOffset |= hasConst(op, c.offset);
-				}
+				if (op.getOpcode() == PcodeOp.INT_MULT) require(!hasConst(op, MEMORY_STRIDE), c.name + " obsolete stride");
+				if (op.getOpcode() == PcodeOp.INT_ADD) hasOffset |= hasConst(op, c.offset);
 			}
-			require(hasStride == c.flagged,
-				c.name + ": flagged=" + c.flagged + " but stride multiply present=" +
-				hasStride);
+			require(hasAccess, c.name + " must check every load/store");
 			require(hasOffset, c.name + ": no INT_ADD with the static offset " + c.offset);
 		}
 
@@ -238,7 +240,7 @@ public class CheckMemargPadding extends GhidraScript {
 		String block1Space;
 		if (name.equals("memarg_padding64.wasm")) {
 			cases = MODULE_B;
-			block1Space = "memory64";
+			block1Space = "memory64_1";
 		}
 		else if (name.equals("memarg_padding_lenient.wasm")) {
 			cases = MODULE_C;
@@ -246,7 +248,7 @@ public class CheckMemargPadding extends GhidraScript {
 		}
 		else {
 			cases = MODULE_A;
-			block1Space = "memory";
+			block1Space = "memory_1";
 		}
 		int count = 0;
 		for (Function f : currentProgram.getFunctionManager().getFunctions(true)) {

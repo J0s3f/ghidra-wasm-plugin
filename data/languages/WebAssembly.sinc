@@ -30,16 +30,8 @@ define token I64 (64)
 	f64 = (0,63)
 ;
 
-# @@MM: multi-memory. Linear memory N is addressed at offset N * MEMORY_STRIDE in the
-# `memory` (i32) or `memory64` (i64) address space, in the memarg decoders and loader
-# (WasmLoader.getMemoryAddress / WasmLoader.MEMORY_STRIDE - keep the two in sync).
-# Memory 0 therefore keeps its old offset 0. The `memory` space is 32-bit (size=4),
-# so the stride is chosen so that many memory indices fit: with 128 MiB per memory,
-# indices 0..31 fit in 32 bits (memory 31 = 0xF8000000), and memory index >= 8 no
-# longer collides with the module image in `ram` at WasmLoader.CODE_BASE (0x80000000).
-# All 32-bit memory address arithmetic stays in 32 bits (addr:4), so the decompiled C
-# has no ZEXT noise. The separate memory64 path preserves 64-bit effective addresses.
-@define MEMORY_STRIDE 0x08000000
+# Each declared memory has an independent address space. Memory-indexed userops
+# are resolved to program spaces by the decompiler fixups and emulator modifier.
 
 attach names valtype [
   _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ # 0x0
@@ -94,6 +86,9 @@ define pcodeop memory_atomic_wait32;
 define pcodeop memory_atomic_wait64;
 define pcodeop memcpy;
 define pcodeop wasm_memory_copy;
+define pcodeop wasm_memory_load;
+define pcodeop wasm_memory_store;
+define pcodeop brTableTargetCallOther;
 
 @include "Leb128.sinc"
 
@@ -356,14 +351,7 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 	doBranch(br_target);
 }
 
-# @@BRTABLE_CAP: past the per-br_table cap on modelled *case* targets (MAX_BR_TABLE_CASES-1),
-# the remaining case labels are consumed by this byte-only directive. It keeps the byte stream
-# aligned (no undefined bytes) but contributes no pcode and no basic block, so a pathological
-# br_table (the spec suite's br_table.wast `large`, ~16k labels) cannot explode the decompiler's
-# control-flow graph. The default target is never routed here - it is always modelled as a
-# `.default` directive. The pre-analyzer emits it from setBrTableCaseIgnored();
-# DIRECTIVE_CASE_IGNORED must stay in sync with ContextRegister.DIRECTIVE_CASE_IGNORED in
-# wasm/analysis/WasmFunctionAnalysis.java.
+# Duplicate labels consume bytes here; the selector table redirects their control flow.
 :.case_ignored is ULeb128; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_CASE_IGNORED) {
 }
 
@@ -371,8 +359,16 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 	doBranch(br_target);
 }
 
-:br_table is opc=0x0e; ULeb128; sp1_32; ctx_is_directive=0 {
+:br_table is opc=0x0e; ULeb128; sp1_32; ctx_is_directive=0 & ctx_br_table=0 {
 	BRTableInput = sp1_32;
+}
+
+:br_table is opc=0x0e; ULeb128; sp1_32; ctx_is_directive=0 & ctx_br_table=1 {
+	local index:4 = sp1_32;
+	if (index < ULeb128:4) goto <selected>;
+	index = ULeb128:4;
+<selected>
+	BRTableInput = brTableTargetCallOther(index);
 }
 
 :return is opc=0x0f; ctx_is_directive=0 {

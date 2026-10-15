@@ -34,6 +34,7 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
+import ghidra.program.model.address.OverlayAddressSpace;
 import ghidra.program.model.data.ArrayDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataUtilities;
@@ -82,13 +83,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 	public final static long IMPORT_BASE = 0x7f000000L;
 	public final static long CODE_BASE = 0x80000000L;
-	/* Linear memory N starts at N * MEMORY_STRIDE in `memory` (i32) or `memory64`
-	 * (i64). Keep this in sync with WebAssembly.sinc. Materialized blocks are at
-	 * most one stride long. The i32 space, arithmetic and offsets are unchanged.
-	 * High memory64 addresses are preserved; addresses in different memories can
-	 * alias beyond the stride, so full large-memory isolation is not modeled.
-	 */
-	public final static long MEMORY_STRIDE = 0x08000000L;
+	/* Each secondary memory uses a program overlay; offsets span its full index width. */
 	/* Maximum address of the unchanged i32 `memory` space. */
 	public final static long MEMORY_MAX_ADDRESS = 0xffffffffL;
 	/* The size of one WebAssembly linear-memory page when a memory does not declare a
@@ -97,14 +92,14 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	public final static long MEMORY_PAGE_SIZE = 65536L;
 	/*
 	 * B2/J01/M03/NS12/NS10: the largest initialized region the loader will materialise for a
-	 * single memory (128 MiB, i.e. MEMORY_STRIDE). A malformed or absurd `initial` used to be
+	 * single memory (128 MiB). A malformed or absurd `initial` used to be
 	 * clamped to CODE_BASE (2 GiB) and a tiny module could force that allocation, wedging
 	 * auto-analysis. Valid modules are unaffected: the largest memory in the 747-module
 	 * regression corpus is 17 pages (1 MiB), and the memory64 / multi-memory probes use 1-7
 	 * pages. Anything larger is clamped (with a warning) rather than rejected, so a spec-valid
 	 * module with a very large declared memory still imports - just with a bounded block.
 	 */
-	public final static long MAX_MEMORY_BLOCK_BYTES = MEMORY_STRIDE;
+	public final static long MAX_MEMORY_BLOCK_BYTES = 0x08000000L;
 	/* Core-spec page limit for a 32-bit-index memory: 65536 pages = 4 GiB. */
 	public final static long MAX_MEMORY32_PAGES = 65536L;
 	/* Implementation page limit for a 64-bit-index memory (memory64); well above any real module. */
@@ -168,18 +163,9 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		return addressFactory.getAddressSpace("table").getAddress((((long) tableidx) << 32) + (itemIndex * 4));
 	}
 
-	/** The legacy i32 mapping; its arithmetic and clamping are unchanged. */
+	/** Every declared memory has an independent address space, without an index stride. */
 	public static Address getMemoryAddress(AddressFactory addressFactory, int memidx, long offset) {
-		long base = ((long) memidx) * MEMORY_STRIDE;
-		long address = base + offset;
-		if (memidx < 0 || offset < 0 || base < 0 || address < 0 || address > MEMORY_MAX_ADDRESS) {
-			Msg.warn(WasmLoader.class, "Address memidx=" + memidx + " offset=0x" + Long.toHexString(offset)
-					+ " does not fit the 32-bit `memory` address space; clamping to 0x"
-					+ Long.toHexString(MEMORY_MAX_ADDRESS)
-					+ " (see REPORT-N.md)");
-			address = MEMORY_MAX_ADDRESS;
-		}
-		return addressFactory.getAddressSpace("memory").getAddress(address);
+		return getMemoryAddress(addressFactory, memidx, offset, false);
 	}
 
 	/** Select the address space from the target memory's declared index type. */
@@ -191,18 +177,36 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 
 	public static Address getMemoryAddress(AddressFactory addressFactory, int memidx, long offset,
 			boolean is64Bit) {
-		if (!is64Bit) {
-			return getMemoryAddress(addressFactory, memidx, offset);
+		AddressSpace space = getMemorySpace(addressFactory, memidx, is64Bit);
+		if (!is64Bit && (offset < 0 || offset > MEMORY_MAX_ADDRESS)) {
+			Msg.warn(WasmLoader.class, "Offset " + Long.toUnsignedString(offset)
+					+ " does not fit i32 memory " + memidx + "; clamping to 0xffffffff");
+			offset = MEMORY_MAX_ADDRESS;
 		}
-		if (memidx < 0) {
-			throw new IllegalArgumentException("Negative memory index: " + memidx);
+		return space instanceof OverlayAddressSpace
+				? ((OverlayAddressSpace) space).getAddressInThisSpaceOnly(offset) : space.getAddress(offset);
+	}
+
+	public static String getMemorySpaceName(int memidx, boolean is64Bit) {
+		if (memidx < 0) { throw new IllegalArgumentException("Negative memory index: " + memidx); }
+		String base = is64Bit ? "memory64" : "memory";
+		return memidx == 0 ? base : base + "_" + memidx;
+	}
+
+	public static AddressSpace getMemorySpace(AddressFactory factory, int memidx, boolean is64Bit) {
+		String name = getMemorySpaceName(memidx, is64Bit);
+		AddressSpace space = factory.getAddressSpace(name);
+		if (space == null) { throw new IllegalArgumentException("Missing isolated memory space " + name + "; reimport this module"); }
+		return space;
+	}
+
+	private static void createMemorySpace(Program program, int memidx, boolean is64Bit) throws IOException {
+		if (memidx == 0) { return; }
+		String name = getMemorySpaceName(memidx, is64Bit);
+		if (program.getAddressFactory().getAddressSpace(name) == null) {
+			try { program.createOverlaySpace(name, program.getAddressFactory().getAddressSpace(is64Bit ? "memory64" : "memory")); }
+			catch (Exception e) { throw new IOException("Cannot create isolated memory " + memidx, e); }
 		}
-		long base = (long) memidx * MEMORY_STRIDE;
-		long address = base + offset;
-		if (Long.compareUnsigned(address, offset) < 0) {
-			throw new IllegalArgumentException("memory64 address plus stride overflows u64");
-		}
-		return addressFactory.getAddressSpace("memory64").getAddress(address);
 	}
 
 	public static Address getGlobalAddress(AddressFactory addressFactory, int globalidx) {
@@ -822,7 +826,8 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			 * type's limit) before any block is created - see validateMemoryLimits.
 			 */
 			validateMemoryLimits(memidx, mem);
-			/* Both spaces use N * MEMORY_STRIDE. Large declared sizes are computed
+			createMemorySpace(program, memidx, mem.is64Bit());
+			/* Independent spaces preserve memory identity. Large declared sizes are computed
 			 * with saturation and materialized only up to MAX_MEMORY_BLOCK_BYTES.
 			 * memory64 decoding preserves the full EA independently of this cap.
 			 */
@@ -849,11 +854,11 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 						+ " declares a custom page size of " + pageSize + " byte(s) (2^"
 						+ mem.getPageSizeExponent() + "); its " + mem.getInitial() + " page(s) ("
 						+ declared + " byte(s)) are mapped into the `" + (mem.is64Bit() ? "memory64" : "memory") + "` space at 0x"
-						+ Long.toHexString(((long) memidx) * MEMORY_STRIDE));
+						+ "0 (" + getMemorySpaceName(memidx, mem.is64Bit()) + ")");
 			} else if (mem.is64Bit()) {
 				Msg.info(WasmLoader.class, "Memory " + memidx + " has a 64-bit (i64) index type; its "
 						+ length + " byte(s) are mapped into the 64-bit `memory64` space at 0x"
-						+ Long.toHexString(((long) memidx) * MEMORY_STRIDE));
+						+ "0 (" + getMemorySpaceName(memidx, mem.is64Bit()) + ")");
 			}
 			createMemoryBlock(program, memidx, length, mem.is64Bit(), pageSize, mem, monitor);
 		}
@@ -913,8 +918,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			try {
 				loadDataToMemory(program, module, dataidx, memidx, offset, monitor);
 			} catch (Exception e) {
-				Address memStart = getMemoryAddress(program.getAddressFactory(), module, memidx, offset);
-				Msg.error(this, "Failed to initialize memory " + memidx + " with data segment " + dataidx + " at " + memStart
+				Msg.error(this, "Failed to initialize memory " + memidx + " with data segment " + dataidx + " at offset 0x" + Long.toHexString(offset)
 						+ declaredMemoryNote(module, memidx, offset, dataSegment.getSize()), e);
 			}
 		}

@@ -29,6 +29,10 @@ import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.ByteProviderWrapper;
 import ghidra.app.util.bin.MemBufferByteProvider;
+import ghidra.app.emulator.EmulatorHelper;
+import ghidra.app.emulator.memory.MemoryImage;
+import ghidra.pcode.memstate.MemoryPageOverlay;
+import ghidra.pcode.memstate.MemoryPage;
 import ghidra.pcode.emulate.Emulate;
 import ghidra.pcode.emulate.EmulateInstructionStateModifier;
 import ghidra.pcode.emulate.EmulateMemoryStateBuffer;
@@ -38,6 +42,7 @@ import ghidra.pcode.memstate.MemoryState;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSpace;
+import ghidra.program.model.address.OverlayAddressSpace;
 import ghidra.program.model.data.LEB128;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.lang.RegisterValue;
@@ -57,6 +62,7 @@ import wasm.format.sections.structures.WasmResizableLimits;
 import wasm.format.sections.structures.WasmTableType;
 
 public class WasmEmulateInstructionStateModifier extends EmulateInstructionStateModifier {
+	private AddressFactory memoryAddressFactory;
 
 	private static class WasmFunctionAnalysisProvider {
 		private AddressSpace codeSpace;
@@ -254,6 +260,30 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		contextRegister = emu.getLanguage().getContextBaseRegister();
 		helper = new WasmEmulationHelper(emu.getLanguage());
 		localsBase = emu.getLanguage().getRegister("l0").getOffset();
+		memoryAddressFactory = emu.getLanguage().getAddressFactory();
+		var originalBank = emu.getMemoryState().getMemoryBank(memoryAddressFactory.getAddressSpace("memory"));
+		// The legacy emulator initializes only language spaces. Add the program's data
+		// overlays as independent banks, preserving both initial bytes and later writes.
+		if (originalBank != null && originalBank.getMemoryFaultHandler() instanceof EmulatorHelper) {
+			EmulatorHelper owner = (EmulatorHelper) originalBank.getMemoryFaultHandler();
+			memoryAddressFactory = owner.getProgram().getAddressFactory();
+			for (AddressSpace space : memoryAddressFactory.getAllAddressSpaces()) {
+				if (space.isOverlaySpace() && (space.getName().startsWith("memory_") || space.getName().startsWith("memory64_"))) {
+					var image = new MemoryImage(space, false, 4096, owner.getLoadData().getMemoryLoadImage(), owner) {
+						@Override public MemoryPage getPage(long offset) {
+							MemoryPage page = new MemoryPage(getPageSize());
+							// OverlayAddressSpace.getAddress falls back to the base space outside
+							// mapped blocks. A zero-sized or grown memory must still read its own zeros.
+							Address address = ((OverlayAddressSpace) space).getAddressInThisSpaceOnly(offset);
+							byte[] mask = owner.getLoadData().getMemoryLoadImage().loadFill(page.data, getPageSize(), address, 0, true);
+							page.setInitialized(0, getPageSize(), mask);
+							return page;
+						}
+					};
+					emu.getMemoryState().setMemoryBank(new MemoryPageOverlay(space, image, owner));
+				}
+			}
+		}
 
 		registerPcodeOpBehavior("funcEntryCallOther", new FuncEntryOpBehaviour());
 		registerPcodeOpBehavior("popCallOther", new PopOpBehaviour());
@@ -267,11 +297,80 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 		registerPcodeOpBehavior("memory_size", new MemorySizeOpBehaviour());
 		registerPcodeOpBehavior("memory_grow", new MemoryGrowOpBehaviour());
+		registerPcodeOpBehavior("memory_copy", (emulate, out, inputs) -> {
+			Varnode[] args = getArgs(inputs, 5, "memory_copy");
+			copyMemory(emulate, args[0], args[1], args[4], args[3], args[2]);
+		});
+		registerPcodeOpBehavior("wasm_memory_copy", (emulate, out, inputs) -> {
+			Varnode[] args = getArgs(inputs, 5, "wasm_memory_copy");
+			copyMemory(emulate, args[0], args[1], args[2], args[3], args[4]);
+		});
+		registerPcodeOpBehavior("brTableTargetCallOther", (emulate, out, inputs) -> {
+			Varnode[] args = getArgs(inputs, 1, "brTableTargetCallOther");
+			long index = emulate.getMemoryState().getValue(args[0]) & 0xffffffffL;
+			int selector = getAnalysis(emulate.getExecuteAddress()).getBrTableSelector(emulate.getExecuteAddress(), index);
+			emulate.getMemoryState().setValue(out, selector & 0xffffffffL);
+		});
+		registerPcodeOpBehavior("wasm_memory_load", (emulate, out, inputs) -> {
+			Varnode[] args = getArgs(inputs, 2, "wasm_memory_load");
+			MemoryState state = emulate.getMemoryState();
+			int index = (int) state.getValue(args[0]);
+			long offset = state.getValue(args[1]);
+			if (args[1].getSize() == 4) { offset &= 0xffffffffL; }
+			checkMemoryRange(index, offset, out.getSize());
+			AddressSpace space = WasmLoader.getMemorySpace(memoryAddressFactory, index, args[1].getSize() == 8);
+			state.setValue(out, state.getBigInteger(space, offset, out.getSize(), false));
+		});
+		registerPcodeOpBehavior("wasm_memory_store", (emulate, out, inputs) -> {
+			Varnode[] args = getArgs(inputs, 3, "wasm_memory_store");
+			MemoryState state = emulate.getMemoryState();
+			int index = (int) state.getValue(args[0]);
+			long offset = state.getValue(args[1]);
+			if (args[1].getSize() == 4) { offset &= 0xffffffffL; }
+			checkMemoryRange(index, offset, args[2].getSize());
+			AddressSpace space = WasmLoader.getMemorySpace(memoryAddressFactory, index, args[1].getSize() == 8);
+			state.setValue(space, offset, args[2].getSize(), state.getBigInteger(args[2], false));
+		});
 		registerPcodeOpBehavior("table_size", (emulate, out, inputs) -> {
 			Varnode[] args = getArgs(inputs, 1, "table_size");
 			int tableidx = (int) emulate.getMemoryState().getValue(args[0]);
 			emulate.getMemoryState().setValue(out, analysisProvider.getTableSize(tableidx));
 		});
+	}
+
+	private void checkMemoryRange(int index, long offset, long length) {
+		if (index < 0 || index >= analysisProvider.getMemoryCount()) { throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY); }
+		long size = analysisProvider.getMemorySizeBytes(index);
+		if (Long.compareUnsigned(offset, size) > 0 || Long.compareUnsigned(length, size - offset) > 0) {
+			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
+		}
+	}
+
+	private long unsignedValue(MemoryState state, Varnode value) {
+		long bits = state.getValue(value);
+		return value.getSize() == 4 ? bits & 0xffffffffL : bits;
+	}
+
+	private void copyMemory(Emulate emulate, Varnode destinationIndex, Varnode sourceIndex,
+			Varnode destination, Varnode source, Varnode length) {
+		MemoryState state = emulate.getMemoryState();
+		int dstIndex = (int) state.getValue(destinationIndex), srcIndex = (int) state.getValue(sourceIndex);
+		long dst = unsignedValue(state, destination), src = unsignedValue(state, source), size = unsignedValue(state, length);
+		checkMemoryRange(dstIndex, dst, size);
+		checkMemoryRange(srcIndex, src, size);
+		var dstSpace = WasmLoader.getMemorySpace(memoryAddressFactory, dstIndex, destination.getSize() == 8);
+		var srcSpace = WasmLoader.getMemorySpace(memoryAddressFactory, srcIndex, source.getSize() == 8);
+		boolean backwards = dstSpace.equals(srcSpace) && Long.compareUnsigned(dst, src) > 0 && dst - src < size;
+		for (long done = 0; done < size;) {
+			int chunk = (int) Math.min(4096, size - done);
+			// MemoryPageBank may adopt a full-page array rather than copying it.
+			// Give each write its own buffer so later reads cannot mutate earlier pages.
+			byte[] buffer = new byte[chunk];
+			long offset = backwards ? size - done - chunk : done;
+			state.getChunk(buffer, srcSpace, src + offset, chunk, false);
+			state.setChunk(buffer, dstSpace, dst + offset, chunk);
+			done += chunk;
+		}
 	}
 
 	/**
@@ -733,7 +832,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	/** Check unsigned ranges without overflowing address + size. */
 	private void checkAddressInMemory(Emulate emulate, AddressSpace space, int memidx,
 			long address, int size, boolean isStore) {
-		long addressInMemory = address - (long) memidx * WasmLoader.MEMORY_STRIDE;
+		long addressInMemory = address;
 		long memorySize = analysisProvider.getMemorySizeBytes(memidx);
 		if (Long.compareUnsigned(addressInMemory, memorySize) > 0
 				|| Long.compareUnsigned(size, memorySize - addressInMemory) > 0) {

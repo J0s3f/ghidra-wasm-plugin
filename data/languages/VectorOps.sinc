@@ -25,7 +25,7 @@ loadaddr2: memalign memoffset is memalign; memoffset; ctx_mem64=0; sp2_32 {
 
 ## @@MM: memarg carrying a memory index (see BasicOps.sinc)
 loadaddr2: memalign_mem memidx_label memoffset is memalign_mem; memidx_label; memoffset; ctx_mem64=0; sp2_32 {
-	addr:4 = memoffset:4 + sp2_32 + memidx_label:4 * $(MEMORY_STRIDE);
+	addr:4 = memoffset:4 + sp2_32;
 	export addr;
 }
 
@@ -37,7 +37,7 @@ loadaddr2_64: memalign memoffset " (i64 index)" is memalign; memoffset; ctx_mem6
 }
 
 loadaddr2_64: memalign_mem memidx_label memoffset " (i64 index)" is memalign_mem; memidx_label; memoffset; ctx_mem64=3; sp2_64 {
-	addr:8 = memoffset:8 + sp2_64 + memidx_label:8 * $(MEMORY_STRIDE);
+	addr:8 = memoffset:8 + sp2_64;
 	export addr;
 }
 
@@ -132,108 +132,167 @@ shuf_disp: laneidx0_3 laneidx4_7 laneidx8_11 laneidx12_15 is laneidx0_3 ; laneid
 
 ## Vector instructions
 # [i32] -> [v128]
-:v128.load loadaddr is opc=0xFD; opc2_0; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128 = *[memory]:16 loadaddr;
+:v128.load loadaddr is ctx_case_index & opc=0xFD; opc2_0; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:16 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128 = isolated_value_0;
 }
-:v128.load loadaddr64 is opc=0xFD; opc2_0; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128 = *[memory64]:16 loadaddr64;
-}
-
-# [i32] -> [v128]
-:v128.load8x8_s loadaddr is opc=0xFD; opc2_1; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128[0,16] = sext(*[memory]:1 loadaddr);
-    sp1_128[16,16] = sext(*[memory]:1 (loadaddr + 1));
-    sp1_128[32,16] = sext(*[memory]:1 (loadaddr + 2));
-    sp1_128[48,16] = sext(*[memory]:1 (loadaddr + 3));
-    sp1_128[64,16] = sext(*[memory]:1 (loadaddr + 4));
-    sp1_128[80,16] = sext(*[memory]:1 (loadaddr + 5));
-    sp1_128[96,16] = sext(*[memory]:1 (loadaddr + 6));
-    sp1_128[112,16] = sext(*[memory]:1 (loadaddr + 7));
-}
-:v128.load8x8_s loadaddr64 is opc=0xFD; opc2_1; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128[0,16] = sext(*[memory64]:1 loadaddr64);
-    sp1_128[16,16] = sext(*[memory64]:1 (loadaddr64 + 1));
-    sp1_128[32,16] = sext(*[memory64]:1 (loadaddr64 + 2));
-    sp1_128[48,16] = sext(*[memory64]:1 (loadaddr64 + 3));
-    sp1_128[64,16] = sext(*[memory64]:1 (loadaddr64 + 4));
-    sp1_128[80,16] = sext(*[memory64]:1 (loadaddr64 + 5));
-    sp1_128[96,16] = sext(*[memory64]:1 (loadaddr64 + 6));
-    sp1_128[112,16] = sext(*[memory64]:1 (loadaddr64 + 7));
+:v128.load loadaddr64 is ctx_case_index & opc=0xFD; opc2_0; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:16 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128 = isolated_value_0;
 }
 
 # [i32] -> [v128]
-:v128.load8x8_u loadaddr is opc=0xFD; opc2_2; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128[0,16] = zext(*[memory]:1 loadaddr);
-    sp1_128[16,16] = zext(*[memory]:1 (loadaddr + 1));
-    sp1_128[32,16] = zext(*[memory]:1 (loadaddr + 2));
-    sp1_128[48,16] = zext(*[memory]:1 (loadaddr + 3));
-    sp1_128[64,16] = zext(*[memory]:1 (loadaddr + 4));
-    sp1_128[80,16] = zext(*[memory]:1 (loadaddr + 5));
-    sp1_128[96,16] = zext(*[memory]:1 (loadaddr + 6));
-    sp1_128[112,16] = zext(*[memory]:1 (loadaddr + 7));
+:v128.load8x8_s loadaddr is ctx_case_index & opc=0xFD; opc2_1; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128[0,16] = sext(isolated_value_0);
+	local isolated_value_1:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 1));
+    sp1_128[16,16] = sext(isolated_value_1);
+	local isolated_value_2:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 2));
+    sp1_128[32,16] = sext(isolated_value_2);
+	local isolated_value_3:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 3));
+    sp1_128[48,16] = sext(isolated_value_3);
+	local isolated_value_4:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 4));
+    sp1_128[64,16] = sext(isolated_value_4);
+	local isolated_value_5:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 5));
+    sp1_128[80,16] = sext(isolated_value_5);
+	local isolated_value_6:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 6));
+    sp1_128[96,16] = sext(isolated_value_6);
+	local isolated_value_7:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 7));
+    sp1_128[112,16] = sext(isolated_value_7);
 }
-:v128.load8x8_u loadaddr64 is opc=0xFD; opc2_2; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128[0,16] = zext(*[memory64]:1 loadaddr64);
-    sp1_128[16,16] = zext(*[memory64]:1 (loadaddr64 + 1));
-    sp1_128[32,16] = zext(*[memory64]:1 (loadaddr64 + 2));
-    sp1_128[48,16] = zext(*[memory64]:1 (loadaddr64 + 3));
-    sp1_128[64,16] = zext(*[memory64]:1 (loadaddr64 + 4));
-    sp1_128[80,16] = zext(*[memory64]:1 (loadaddr64 + 5));
-    sp1_128[96,16] = zext(*[memory64]:1 (loadaddr64 + 6));
-    sp1_128[112,16] = zext(*[memory64]:1 (loadaddr64 + 7));
-}
-
-# [i32] -> [v128]
-:v128.load16x4_s loadaddr is opc=0xFD; opc2_3; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128[0,32] = sext(*[memory]:2 loadaddr);
-    sp1_128[32,32] = sext(*[memory]:2 (loadaddr + 2));
-    sp1_128[64,32] = sext(*[memory]:2 (loadaddr + 4));
-    sp1_128[96,32] = sext(*[memory]:2 (loadaddr + 6));
-}
-:v128.load16x4_s loadaddr64 is opc=0xFD; opc2_3; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128[0,32] = sext(*[memory64]:2 loadaddr64);
-    sp1_128[32,32] = sext(*[memory64]:2 (loadaddr64 + 2));
-    sp1_128[64,32] = sext(*[memory64]:2 (loadaddr64 + 4));
-    sp1_128[96,32] = sext(*[memory64]:2 (loadaddr64 + 6));
-}
-
-# [i32] -> [v128]
-:v128.load16x4_u loadaddr is opc=0xFD; opc2_4; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128[0,32] = zext(*[memory]:2 loadaddr);
-    sp1_128[32,32] = zext(*[memory]:2 (loadaddr + 2));
-    sp1_128[64,32] = zext(*[memory]:2 (loadaddr + 4));
-    sp1_128[96,32] = zext(*[memory]:2 (loadaddr + 6));
-}
-:v128.load16x4_u loadaddr64 is opc=0xFD; opc2_4; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128[0,32] = zext(*[memory64]:2 loadaddr64);
-    sp1_128[32,32] = zext(*[memory64]:2 (loadaddr64 + 2));
-    sp1_128[64,32] = zext(*[memory64]:2 (loadaddr64 + 4));
-    sp1_128[96,32] = zext(*[memory64]:2 (loadaddr64 + 6));
+:v128.load8x8_s loadaddr64 is ctx_case_index & opc=0xFD; opc2_1; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128[0,16] = sext(isolated_value_0);
+	local isolated_value_1:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 1));
+    sp1_128[16,16] = sext(isolated_value_1);
+	local isolated_value_2:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 2));
+    sp1_128[32,16] = sext(isolated_value_2);
+	local isolated_value_3:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 3));
+    sp1_128[48,16] = sext(isolated_value_3);
+	local isolated_value_4:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 4));
+    sp1_128[64,16] = sext(isolated_value_4);
+	local isolated_value_5:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 5));
+    sp1_128[80,16] = sext(isolated_value_5);
+	local isolated_value_6:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 6));
+    sp1_128[96,16] = sext(isolated_value_6);
+	local isolated_value_7:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 7));
+    sp1_128[112,16] = sext(isolated_value_7);
 }
 
 # [i32] -> [v128]
-:v128.load32x2_s loadaddr is opc=0xFD; opc2_5; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128[0,64] = sext(*[memory]:4 loadaddr);
-    sp1_128[64,64] = sext(*[memory]:4 (loadaddr + 4));
+:v128.load8x8_u loadaddr is ctx_case_index & opc=0xFD; opc2_2; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128[0,16] = zext(isolated_value_0);
+	local isolated_value_1:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 1));
+    sp1_128[16,16] = zext(isolated_value_1);
+	local isolated_value_2:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 2));
+    sp1_128[32,16] = zext(isolated_value_2);
+	local isolated_value_3:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 3));
+    sp1_128[48,16] = zext(isolated_value_3);
+	local isolated_value_4:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 4));
+    sp1_128[64,16] = zext(isolated_value_4);
+	local isolated_value_5:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 5));
+    sp1_128[80,16] = zext(isolated_value_5);
+	local isolated_value_6:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 6));
+    sp1_128[96,16] = zext(isolated_value_6);
+	local isolated_value_7:1 = wasm_memory_load(ctx_case_index:4, (loadaddr + 7));
+    sp1_128[112,16] = zext(isolated_value_7);
 }
-:v128.load32x2_s loadaddr64 is opc=0xFD; opc2_5; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128[0,64] = sext(*[memory64]:4 loadaddr64);
-    sp1_128[64,64] = sext(*[memory64]:4 (loadaddr64 + 4));
+:v128.load8x8_u loadaddr64 is ctx_case_index & opc=0xFD; opc2_2; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128[0,16] = zext(isolated_value_0);
+	local isolated_value_1:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 1));
+    sp1_128[16,16] = zext(isolated_value_1);
+	local isolated_value_2:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 2));
+    sp1_128[32,16] = zext(isolated_value_2);
+	local isolated_value_3:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 3));
+    sp1_128[48,16] = zext(isolated_value_3);
+	local isolated_value_4:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 4));
+    sp1_128[64,16] = zext(isolated_value_4);
+	local isolated_value_5:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 5));
+    sp1_128[80,16] = zext(isolated_value_5);
+	local isolated_value_6:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 6));
+    sp1_128[96,16] = zext(isolated_value_6);
+	local isolated_value_7:1 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 7));
+    sp1_128[112,16] = zext(isolated_value_7);
 }
 
 # [i32] -> [v128]
-:v128.load32x2_u loadaddr is opc=0xFD; opc2_6; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128[0,64] = zext(*[memory]:4 loadaddr);
-    sp1_128[64,64] = zext(*[memory]:4 (loadaddr + 4));
+:v128.load16x4_s loadaddr is ctx_case_index & opc=0xFD; opc2_3; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128[0,32] = sext(isolated_value_0);
+	local isolated_value_1:2 = wasm_memory_load(ctx_case_index:4, (loadaddr + 2));
+    sp1_128[32,32] = sext(isolated_value_1);
+	local isolated_value_2:2 = wasm_memory_load(ctx_case_index:4, (loadaddr + 4));
+    sp1_128[64,32] = sext(isolated_value_2);
+	local isolated_value_3:2 = wasm_memory_load(ctx_case_index:4, (loadaddr + 6));
+    sp1_128[96,32] = sext(isolated_value_3);
 }
-:v128.load32x2_u loadaddr64 is opc=0xFD; opc2_6; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128[0,64] = zext(*[memory64]:4 loadaddr64);
-    sp1_128[64,64] = zext(*[memory64]:4 (loadaddr64 + 4));
+:v128.load16x4_s loadaddr64 is ctx_case_index & opc=0xFD; opc2_3; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128[0,32] = sext(isolated_value_0);
+	local isolated_value_1:2 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 2));
+    sp1_128[32,32] = sext(isolated_value_1);
+	local isolated_value_2:2 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 4));
+    sp1_128[64,32] = sext(isolated_value_2);
+	local isolated_value_3:2 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 6));
+    sp1_128[96,32] = sext(isolated_value_3);
 }
 
 # [i32] -> [v128]
-:v128.load8_splat loadaddr is opc=0xFD; opc2_7; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    local tmp:1 = *[memory]:1 loadaddr;
+:v128.load16x4_u loadaddr is ctx_case_index & opc=0xFD; opc2_4; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128[0,32] = zext(isolated_value_0);
+	local isolated_value_1:2 = wasm_memory_load(ctx_case_index:4, (loadaddr + 2));
+    sp1_128[32,32] = zext(isolated_value_1);
+	local isolated_value_2:2 = wasm_memory_load(ctx_case_index:4, (loadaddr + 4));
+    sp1_128[64,32] = zext(isolated_value_2);
+	local isolated_value_3:2 = wasm_memory_load(ctx_case_index:4, (loadaddr + 6));
+    sp1_128[96,32] = zext(isolated_value_3);
+}
+:v128.load16x4_u loadaddr64 is ctx_case_index & opc=0xFD; opc2_4; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128[0,32] = zext(isolated_value_0);
+	local isolated_value_1:2 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 2));
+    sp1_128[32,32] = zext(isolated_value_1);
+	local isolated_value_2:2 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 4));
+    sp1_128[64,32] = zext(isolated_value_2);
+	local isolated_value_3:2 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 6));
+    sp1_128[96,32] = zext(isolated_value_3);
+}
+
+# [i32] -> [v128]
+:v128.load32x2_s loadaddr is ctx_case_index & opc=0xFD; opc2_5; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128[0,64] = sext(isolated_value_0);
+	local isolated_value_1:4 = wasm_memory_load(ctx_case_index:4, (loadaddr + 4));
+    sp1_128[64,64] = sext(isolated_value_1);
+}
+:v128.load32x2_s loadaddr64 is ctx_case_index & opc=0xFD; opc2_5; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128[0,64] = sext(isolated_value_0);
+	local isolated_value_1:4 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 4));
+    sp1_128[64,64] = sext(isolated_value_1);
+}
+
+# [i32] -> [v128]
+:v128.load32x2_u loadaddr is ctx_case_index & opc=0xFD; opc2_6; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128[0,64] = zext(isolated_value_0);
+	local isolated_value_1:4 = wasm_memory_load(ctx_case_index:4, (loadaddr + 4));
+    sp1_128[64,64] = zext(isolated_value_1);
+}
+:v128.load32x2_u loadaddr64 is ctx_case_index & opc=0xFD; opc2_6; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128[0,64] = zext(isolated_value_0);
+	local isolated_value_1:4 = wasm_memory_load(ctx_case_index:4, (loadaddr64 + 4));
+    sp1_128[64,64] = zext(isolated_value_1);
+}
+
+# [i32] -> [v128]
+:v128.load8_splat loadaddr is ctx_case_index & opc=0xFD; opc2_7; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    local tmp:1 = isolated_value_0;
     sp1_128[0,8] = tmp;
     sp1_128[8,8] = tmp;
     sp1_128[16,8] = tmp;
@@ -251,8 +310,9 @@ shuf_disp: laneidx0_3 laneidx4_7 laneidx8_11 laneidx12_15 is laneidx0_3 ; laneid
     sp1_128[112,8] = tmp;
     sp1_128[120,8] = tmp;
 }
-:v128.load8_splat loadaddr64 is opc=0xFD; opc2_7; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    local tmp:1 = *[memory64]:1 loadaddr64;
+:v128.load8_splat loadaddr64 is ctx_case_index & opc=0xFD; opc2_7; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    local tmp:1 = isolated_value_0;
     sp1_128[0,8] = tmp;
     sp1_128[8,8] = tmp;
     sp1_128[16,8] = tmp;
@@ -272,8 +332,9 @@ shuf_disp: laneidx0_3 laneidx4_7 laneidx8_11 laneidx12_15 is laneidx0_3 ; laneid
 }
 
 # [i32] -> [v128]
-:v128.load16_splat loadaddr is opc=0xFD; opc2_8; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    local tmp:2 = *[memory]:2 loadaddr;
+:v128.load16_splat loadaddr is ctx_case_index & opc=0xFD; opc2_8; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    local tmp:2 = isolated_value_0;
     sp1_128[0,16] = tmp;
     sp1_128[16,16] = tmp;
     sp1_128[32,16] = tmp;
@@ -283,8 +344,9 @@ shuf_disp: laneidx0_3 laneidx4_7 laneidx8_11 laneidx12_15 is laneidx0_3 ; laneid
     sp1_128[96,16] = tmp;
     sp1_128[112,16] = tmp;
 }
-:v128.load16_splat loadaddr64 is opc=0xFD; opc2_8; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    local tmp:2 = *[memory64]:2 loadaddr64;
+:v128.load16_splat loadaddr64 is ctx_case_index & opc=0xFD; opc2_8; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    local tmp:2 = isolated_value_0;
     sp1_128[0,16] = tmp;
     sp1_128[16,16] = tmp;
     sp1_128[32,16] = tmp;
@@ -296,15 +358,17 @@ shuf_disp: laneidx0_3 laneidx4_7 laneidx8_11 laneidx12_15 is laneidx0_3 ; laneid
 }
 
 # [i32] -> [v128]
-:v128.load32_splat loadaddr is opc=0xFD; opc2_9; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    local tmp:4 = *[memory]:4 loadaddr;
+:v128.load32_splat loadaddr is ctx_case_index & opc=0xFD; opc2_9; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    local tmp:4 = isolated_value_0;
     sp1_128[0,32] = tmp;
     sp1_128[32,32] = tmp;
     sp1_128[64,32] = tmp;
     sp1_128[96,32] = tmp;
 }
-:v128.load32_splat loadaddr64 is opc=0xFD; opc2_9; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    local tmp:4 = *[memory64]:4 loadaddr64;
+:v128.load32_splat loadaddr64 is ctx_case_index & opc=0xFD; opc2_9; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    local tmp:4 = isolated_value_0;
     sp1_128[0,32] = tmp;
     sp1_128[32,32] = tmp;
     sp1_128[64,32] = tmp;
@@ -312,23 +376,27 @@ shuf_disp: laneidx0_3 laneidx4_7 laneidx8_11 laneidx12_15 is laneidx0_3 ; laneid
 }
 
 # [i32] -> [v128]
-:v128.load64_splat loadaddr is opc=0xFD; opc2_10; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    local tmp:8 = *[memory]:8 loadaddr;
+:v128.load64_splat loadaddr is ctx_case_index & opc=0xFD; opc2_10; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:8 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    local tmp:8 = isolated_value_0;
     sp1_128[0,64] = tmp;
     sp1_128[64,64] = tmp;
 }
-:v128.load64_splat loadaddr64 is opc=0xFD; opc2_10; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    local tmp:8 = *[memory64]:8 loadaddr64;
+:v128.load64_splat loadaddr64 is ctx_case_index & opc=0xFD; opc2_10; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:8 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    local tmp:8 = isolated_value_0;
     sp1_128[0,64] = tmp;
     sp1_128[64,64] = tmp;
 }
 
 # [i32 v128] -> []
-:v128.store storeaddr is opc=0xFD; opc2_11; storeaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    *[memory]:16 storeaddr = sp1_128;
+:v128.store storeaddr is ctx_case_index & opc=0xFD; opc2_11; storeaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+    local isolated_value_0:16 = sp1_128;
+    wasm_memory_store(ctx_case_index:4, storeaddr, isolated_value_0);
 }
-:v128.store storeaddr64 is opc=0xFD; opc2_11; storeaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    *[memory64]:16 storeaddr64 = sp1_128;
+:v128.store storeaddr64 is ctx_case_index & opc=0xFD; opc2_11; storeaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+    local isolated_value_0:16 = sp1_128;
+    wasm_memory_store(ctx_case_index:4, storeaddr64, isolated_value_0);
 }
 
 # [] -> [v128]
@@ -773,91 +841,111 @@ define pcodeop v128_bitselect;
 }
 
 # [i32 v128] -> [v128]
-:v128.load8_lane loadaddr2 sp2_lane8 is opc=0xFD; opc2_84; loadaddr2; sp1_128; sp2_128; sp2_lane8; ctx_mem64=0; ctx_is_directive=0 {
+:v128.load8_lane loadaddr2 sp2_lane8 is ctx_case_index & opc=0xFD; opc2_84; loadaddr2; sp1_128; sp2_128; sp2_lane8; ctx_mem64=0; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane8 = *[memory]:1 loadaddr2;
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr2);
+    sp2_lane8 = isolated_value_0;
 }
-:v128.load8_lane loadaddr2_64 sp2_lane8 is opc=0xFD; opc2_84; loadaddr2_64; sp1_128; sp2_128; sp2_lane8; ctx_mem64=3; ctx_is_directive=0 {
+:v128.load8_lane loadaddr2_64 sp2_lane8 is ctx_case_index & opc=0xFD; opc2_84; loadaddr2_64; sp1_128; sp2_128; sp2_lane8; ctx_mem64=3; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane8 = *[memory64]:1 loadaddr2_64;
+	local isolated_value_0:1 = wasm_memory_load(ctx_case_index:4, loadaddr2_64);
+    sp2_lane8 = isolated_value_0;
 }
 
 # [i32 v128] -> [v128]
-:v128.load16_lane loadaddr2 sp2_lane16 is opc=0xFD; opc2_85; loadaddr2; sp1_128; sp2_128; sp2_lane16; ctx_mem64=0; ctx_is_directive=0 {
+:v128.load16_lane loadaddr2 sp2_lane16 is ctx_case_index & opc=0xFD; opc2_85; loadaddr2; sp1_128; sp2_128; sp2_lane16; ctx_mem64=0; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane16 = *[memory]:2 loadaddr2;
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr2);
+    sp2_lane16 = isolated_value_0;
 }
-:v128.load16_lane loadaddr2_64 sp2_lane16 is opc=0xFD; opc2_85; loadaddr2_64; sp1_128; sp2_128; sp2_lane16; ctx_mem64=3; ctx_is_directive=0 {
+:v128.load16_lane loadaddr2_64 sp2_lane16 is ctx_case_index & opc=0xFD; opc2_85; loadaddr2_64; sp1_128; sp2_128; sp2_lane16; ctx_mem64=3; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane16 = *[memory64]:2 loadaddr2_64;
+	local isolated_value_0:2 = wasm_memory_load(ctx_case_index:4, loadaddr2_64);
+    sp2_lane16 = isolated_value_0;
 }
 
 # [i32 v128] -> [v128]
-:v128.load32_lane loadaddr2 sp2_lane32 is opc=0xFD; opc2_86; loadaddr2; sp1_128; sp2_128; sp2_lane32; ctx_mem64=0; ctx_is_directive=0 {
+:v128.load32_lane loadaddr2 sp2_lane32 is ctx_case_index & opc=0xFD; opc2_86; loadaddr2; sp1_128; sp2_128; sp2_lane32; ctx_mem64=0; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane32 = *[memory]:4 loadaddr2;
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr2);
+    sp2_lane32 = isolated_value_0;
 }
-:v128.load32_lane loadaddr2_64 sp2_lane32 is opc=0xFD; opc2_86; loadaddr2_64; sp1_128; sp2_128; sp2_lane32; ctx_mem64=3; ctx_is_directive=0 {
+:v128.load32_lane loadaddr2_64 sp2_lane32 is ctx_case_index & opc=0xFD; opc2_86; loadaddr2_64; sp1_128; sp2_128; sp2_lane32; ctx_mem64=3; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane32 = *[memory64]:4 loadaddr2_64;
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr2_64);
+    sp2_lane32 = isolated_value_0;
 }
 
 # [i32 v128] -> [v128]
-:v128.load64_lane loadaddr2 sp2_lane64 is opc=0xFD; opc2_87; loadaddr2; sp1_128; sp2_128; sp2_lane64; ctx_mem64=0; ctx_is_directive=0 {
+:v128.load64_lane loadaddr2 sp2_lane64 is ctx_case_index & opc=0xFD; opc2_87; loadaddr2; sp1_128; sp2_128; sp2_lane64; ctx_mem64=0; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane64 = *[memory]:8 loadaddr2;
+	local isolated_value_0:8 = wasm_memory_load(ctx_case_index:4, loadaddr2);
+    sp2_lane64 = isolated_value_0;
 }
-:v128.load64_lane loadaddr2_64 sp2_lane64 is opc=0xFD; opc2_87; loadaddr2_64; sp1_128; sp2_128; sp2_lane64; ctx_mem64=3; ctx_is_directive=0 {
+:v128.load64_lane loadaddr2_64 sp2_lane64 is ctx_case_index & opc=0xFD; opc2_87; loadaddr2_64; sp1_128; sp2_128; sp2_lane64; ctx_mem64=3; ctx_is_directive=0 {
     sp2_128 = sp1_128;
-    sp2_lane64 = *[memory64]:8 loadaddr2_64;
+	local isolated_value_0:8 = wasm_memory_load(ctx_case_index:4, loadaddr2_64);
+    sp2_lane64 = isolated_value_0;
 }
 
 # [i32 v128] -> []
-:v128.store8_lane storeaddr sp1_lane8 is opc=0xFD; opc2_88; storeaddr; sp1_lane8; ctx_mem64=0; ctx_is_directive=0 {
-    *[memory]:1 storeaddr = sp1_lane8;
+:v128.store8_lane storeaddr sp1_lane8 is ctx_case_index & opc=0xFD; opc2_88; storeaddr; sp1_lane8; ctx_mem64=0; ctx_is_directive=0 {
+    local isolated_value_0:1 = sp1_lane8;
+    wasm_memory_store(ctx_case_index:4, storeaddr, isolated_value_0);
 }
-:v128.store8_lane storeaddr64 sp1_lane8 is opc=0xFD; opc2_88; storeaddr64; sp1_lane8; ctx_mem64=3; ctx_is_directive=0 {
-    *[memory64]:1 storeaddr64 = sp1_lane8;
-}
-
-# [i32 v128] -> []
-:v128.store16_lane storeaddr sp1_lane16 is opc=0xFD; opc2_89; storeaddr; sp1_lane16; ctx_mem64=0; ctx_is_directive=0 {
-    *[memory]:2 storeaddr = sp1_lane16;
-}
-:v128.store16_lane storeaddr64 sp1_lane16 is opc=0xFD; opc2_89; storeaddr64; sp1_lane16; ctx_mem64=3; ctx_is_directive=0 {
-    *[memory64]:2 storeaddr64 = sp1_lane16;
+:v128.store8_lane storeaddr64 sp1_lane8 is ctx_case_index & opc=0xFD; opc2_88; storeaddr64; sp1_lane8; ctx_mem64=3; ctx_is_directive=0 {
+    local isolated_value_0:1 = sp1_lane8;
+    wasm_memory_store(ctx_case_index:4, storeaddr64, isolated_value_0);
 }
 
 # [i32 v128] -> []
-:v128.store32_lane storeaddr sp1_lane32 is opc=0xFD; opc2_90; storeaddr; sp1_lane32; ctx_mem64=0; ctx_is_directive=0 {
-    *[memory]:4 storeaddr = sp1_lane32;
+:v128.store16_lane storeaddr sp1_lane16 is ctx_case_index & opc=0xFD; opc2_89; storeaddr; sp1_lane16; ctx_mem64=0; ctx_is_directive=0 {
+    local isolated_value_0:2 = sp1_lane16;
+    wasm_memory_store(ctx_case_index:4, storeaddr, isolated_value_0);
 }
-:v128.store32_lane storeaddr64 sp1_lane32 is opc=0xFD; opc2_90; storeaddr64; sp1_lane32; ctx_mem64=3; ctx_is_directive=0 {
-    *[memory64]:4 storeaddr64 = sp1_lane32;
+:v128.store16_lane storeaddr64 sp1_lane16 is ctx_case_index & opc=0xFD; opc2_89; storeaddr64; sp1_lane16; ctx_mem64=3; ctx_is_directive=0 {
+    local isolated_value_0:2 = sp1_lane16;
+    wasm_memory_store(ctx_case_index:4, storeaddr64, isolated_value_0);
 }
 
 # [i32 v128] -> []
-:v128.store64_lane storeaddr sp1_lane64 is opc=0xFD; opc2_91; storeaddr; sp1_lane64; ctx_mem64=0; ctx_is_directive=0 {
-    *[memory]:8 storeaddr = sp1_lane64;
+:v128.store32_lane storeaddr sp1_lane32 is ctx_case_index & opc=0xFD; opc2_90; storeaddr; sp1_lane32; ctx_mem64=0; ctx_is_directive=0 {
+    local isolated_value_0:4 = sp1_lane32;
+    wasm_memory_store(ctx_case_index:4, storeaddr, isolated_value_0);
 }
-:v128.store64_lane storeaddr64 sp1_lane64 is opc=0xFD; opc2_91; storeaddr64; sp1_lane64; ctx_mem64=3; ctx_is_directive=0 {
-    *[memory64]:8 storeaddr64 = sp1_lane64;
+:v128.store32_lane storeaddr64 sp1_lane32 is ctx_case_index & opc=0xFD; opc2_90; storeaddr64; sp1_lane32; ctx_mem64=3; ctx_is_directive=0 {
+    local isolated_value_0:4 = sp1_lane32;
+    wasm_memory_store(ctx_case_index:4, storeaddr64, isolated_value_0);
+}
+
+# [i32 v128] -> []
+:v128.store64_lane storeaddr sp1_lane64 is ctx_case_index & opc=0xFD; opc2_91; storeaddr; sp1_lane64; ctx_mem64=0; ctx_is_directive=0 {
+    local isolated_value_0:8 = sp1_lane64;
+    wasm_memory_store(ctx_case_index:4, storeaddr, isolated_value_0);
+}
+:v128.store64_lane storeaddr64 sp1_lane64 is ctx_case_index & opc=0xFD; opc2_91; storeaddr64; sp1_lane64; ctx_mem64=3; ctx_is_directive=0 {
+    local isolated_value_0:8 = sp1_lane64;
+    wasm_memory_store(ctx_case_index:4, storeaddr64, isolated_value_0);
 }
 
 # [i32] -> [v128]
-:v128.load32_zero loadaddr is opc=0xFD; opc2_92; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128 = zext(*[memory]:4 loadaddr);
+:v128.load32_zero loadaddr is ctx_case_index & opc=0xFD; opc2_92; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128 = zext(isolated_value_0);
 }
-:v128.load32_zero loadaddr64 is opc=0xFD; opc2_92; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128 = zext(*[memory64]:4 loadaddr64);
+:v128.load32_zero loadaddr64 is ctx_case_index & opc=0xFD; opc2_92; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:4 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128 = zext(isolated_value_0);
 }
 
 # [i32] -> [v128]
-:v128.load64_zero loadaddr is opc=0xFD; opc2_93; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
-    sp1_128 = zext(*[memory]:8 loadaddr);
+:v128.load64_zero loadaddr is ctx_case_index & opc=0xFD; opc2_93; loadaddr; sp1_128; ctx_mem64=0; ctx_is_directive=0 {
+	local isolated_value_0:8 = wasm_memory_load(ctx_case_index:4, loadaddr);
+    sp1_128 = zext(isolated_value_0);
 }
-:v128.load64_zero loadaddr64 is opc=0xFD; opc2_93; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
-    sp1_128 = zext(*[memory64]:8 loadaddr64);
+:v128.load64_zero loadaddr64 is ctx_case_index & opc=0xFD; opc2_93; loadaddr64; sp1_128; ctx_mem64=3; ctx_is_directive=0 {
+	local isolated_value_0:8 = wasm_memory_load(ctx_case_index:4, loadaddr64);
+    sp1_128 = zext(isolated_value_0);
 }
 
 # [v128] -> [v128]

@@ -19,6 +19,7 @@
     <range space="ram"/>
     <range space="memory"/>
     <range space="memory64"/>
+    <range space="brtable"/>
   </global>
   <stackpointer register="SP" space="memory"/>
   <default_proto>
@@ -74,5 +75,14 @@
     <pcode dynamic="true">
       <input name="regoffset" />
     </pcode>
+  </callotherfixup>
+  <callotherfixup targetop="wasm_memory_load">
+    <pcode dynamic="true"><input name="memory"/><input name="pointer"/><output name="value"/></pcode>
+  </callotherfixup>
+  <callotherfixup targetop="wasm_memory_store">
+    <pcode dynamic="true"><input name="memory"/><input name="pointer"/><input name="value"/></pcode>
+  </callotherfixup>
+  <callotherfixup targetop="brTableTargetCallOther">
+    <pcode dynamic="true"><input name="index"/><output name="target"/></pcode>
   </callotherfixup>
 </compiler_spec>

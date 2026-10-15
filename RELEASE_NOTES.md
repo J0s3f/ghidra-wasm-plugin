@@ -1,4 +1,4 @@
-# Ghidra-WASM 2.8.1
+# Ghidra-WASM 2.8.2
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
@@ -12,6 +12,21 @@ Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
+
+## New in 2.8.2 (since 2.8.1)
+
+* Isolate every linear memory in its own address space. Scalar, SIMD, atomic, and
+  bulk-copy operations preserve memory identity at high offsets and high indices.
+  Zero-sized and grown secondary memories also have independent emulator banks.
+* Preserve all large `br_table` cases and the default. A selector table coalesces
+  repeated targets, avoiding the former 1,023-case truncation and large control-flow graphs.
+* Add behavioral tests for 128 MiB boundaries, memory index 32, memory64 addresses
+  above 4 GiB, SIMD, atomics, copies, zero-sized memories, trapping stores, and
+  16,384-case tables with i64 and mixed i64/v128 label arguments. Node independently
+  checks the results; Ghidra tests cover import, emulation, and native decompilation.
+
+**Upgrade:** reimport existing Wasm programs after installing this patch. The memory
+spaces, instruction context, and selector data require a fresh import.
 
 ## New in 2.8.1 (since 2.8.0)
 
@@ -125,11 +140,7 @@ Reimport a memory64 module if you want the full 64-bit addressing model
 
 * **128 MiB materialisation cap**: memory blocks are capped at 128 MiB with a warning. Decoded
   addressing is exact (memory64 hybrid); data outside the materialised prefix is reported, not
-  materialised. The 128 MiB stride means memories of the same index type can alias beyond a
-  stride, and i32 memory indices above 31 exceed the legacy 32-bit space.
-* **`br_table large`**: one remaining `assert_return` failure in the emulation harness - the
-  `large(10000)` case (a case index at or past the modelled-case cap is modelled as taking the
-  default). Decoding is complete; the bound affects modelled control flow for pathological tables.
+  materialised. Memories remain independent beyond the materialised prefix.
 * **Shared-everything threads**: `global.atomic.*` and shared tables / `table.atomic.*` have no
   mnemonics (the `0xFE` atomic *memory* ops are implemented).
 * **Component-model semantics**: canonical ABI, `canon` ops and component types are not modelled
