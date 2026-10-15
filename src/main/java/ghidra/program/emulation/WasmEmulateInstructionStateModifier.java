@@ -63,6 +63,14 @@ import wasm.format.sections.structures.WasmTableType;
 
 public class WasmEmulateInstructionStateModifier extends EmulateInstructionStateModifier {
 	private AddressFactory memoryAddressFactory;
+	private WasmGCHeap gcHeap;
+	private WasmGCHeap gcHeap(Emulate emulate) {
+		if (gcHeap == null) {
+			gcHeap = new WasmGCHeap(analysisProvider.getModule(), emulate);
+			gcHeap.initialize(emulate);
+		}
+		return gcHeap;
+	}
 
 	private static class WasmFunctionAnalysisProvider {
 		private AddressSpace codeSpace;
@@ -152,16 +160,11 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			return memoryPageSize[memidx];
 		}
 
-		public long getMemorySizeBytes(int memidx) {
-			/* Saturating multiply: a hostile page count or page size must bound the
-			 * emulated memory, never wrap it negative (identical for sane values). */
-			long pages = memoryPages[memidx];
-			long pageSize = memoryPageSize[memidx];
-			if (pages < 0 || pageSize <= 0 || pages > Long.MAX_VALUE / pageSize) {
-				return Long.MAX_VALUE;
-			}
-			return pages * pageSize;
+		public BigInteger getMemoryByteSize(int memidx) {
+			return WasmLoader.unsignedLong(memoryPages[memidx]).multiply(BigInteger.valueOf(memoryPageSize[memidx]));
 		}
+
+		public long getMemoryPages(int memidx) { return memoryPages[memidx]; }
 
 		/**
 		 * WebAssembly {@code memory.grow} semantics: return the previous size in pages, or -1
@@ -297,6 +300,16 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 		registerPcodeOpBehavior("memory_size", new MemorySizeOpBehaviour());
 		registerPcodeOpBehavior("memory_grow", new MemoryGrowOpBehaviour());
+		String[] gcNames = {"struct_new", "struct_new_default", "struct_get", "struct_set",
+			"array_new", "array_new_default", "array_new_fixed", "array_new_data", "array_new_elem",
+			"array_get", "array_set", "array_len", "array_fill", "array_copy", "array_init_data", "array_init_elem",
+			"ref_test", "ref_cast", "wasm_br_on_cast", "ref_eq", "ref_i31", "i31_get_s", "i31_get_u",
+			"any_convert_extern", "extern_convert_any", "data_drop", "elem_drop"};
+		int[] gcArguments = {2,1,4,4,3,2,3,4,4,4,4,1,5,7,6,6,3,3,4,2,1,1,1,1,1,1,1};
+		for (int i = 0; i < gcNames.length; i++) {
+			String name = gcNames[i]; int count = gcArguments[i];
+			registerPcodeOpBehavior(name, (emulate, out, inputs) -> gcHeap(emulate).evaluate(name, out, getArgs(inputs, count, name), emulate));
+		}
 		registerPcodeOpBehavior("memory_copy", (emulate, out, inputs) -> {
 			Varnode[] args = getArgs(inputs, 5, "memory_copy");
 			copyMemory(emulate, args[0], args[1], args[4], args[3], args[2]);
@@ -340,8 +353,8 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 
 	private void checkMemoryRange(int index, long offset, long length) {
 		if (index < 0 || index >= analysisProvider.getMemoryCount()) { throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY); }
-		long size = analysisProvider.getMemorySizeBytes(index);
-		if (Long.compareUnsigned(offset, size) > 0 || Long.compareUnsigned(length, size - offset) > 0) {
+		BigInteger end = WasmLoader.unsignedLong(offset).add(WasmLoader.unsignedLong(length));
+		if (end.compareTo(analysisProvider.getMemoryByteSize(index)) > 0) {
 			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
 		}
 	}
@@ -627,8 +640,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 			long pages = 0;
 			if (analysisProvider != null && memidx >= 0 &&
 				memidx < analysisProvider.getMemoryCount()) {
-				long pageSize = analysisProvider.getMemoryPageSize(memidx);
-				pages = analysisProvider.getMemorySizeBytes(memidx) / pageSize;
+				pages = analysisProvider.getMemoryPages(memidx);
 			}
 			emu.getMemoryState().setValue(out, pages);
 		}
@@ -832,12 +844,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 	/** Check unsigned ranges without overflowing address + size. */
 	private void checkAddressInMemory(Emulate emulate, AddressSpace space, int memidx,
 			long address, int size, boolean isStore) {
-		long addressInMemory = address;
-		long memorySize = analysisProvider.getMemorySizeBytes(memidx);
-		if (Long.compareUnsigned(addressInMemory, memorySize) > 0
-				|| Long.compareUnsigned(size, memorySize - addressInMemory) > 0) {
-			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
-		}
+		checkMemoryRange(memidx, address, size);
 	}
 
 	/**
@@ -1153,11 +1160,8 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		if (!is64Bit) {
 			dynamicBase &= 0xffffffffL;
 		}
-		long ea = dynamicBase + offset;
-		long memorySize = analysisProvider.getMemorySizeBytes((int) memidx);
-		if (Long.compareUnsigned(ea, dynamicBase) < 0
-				|| Long.compareUnsigned(ea, memorySize) > 0
-				|| Long.compareUnsigned(accessWidth, memorySize - ea) > 0) {
+		BigInteger end = WasmLoader.unsignedLong(dynamicBase).add(WasmLoader.unsignedLong(offset)).add(BigInteger.valueOf(accessWidth));
+		if (end.compareTo(analysisProvider.getMemoryByteSize((int) memidx)) > 0) {
 			throw new LowlevelError(TRAP_OUT_OF_BOUNDS_MEMORY);
 		}
 	}
@@ -1230,6 +1234,7 @@ public class WasmEmulateInstructionStateModifier extends EmulateInstructionState
 		if (analysisProvider == null) {
 			analysisProvider = new WasmFunctionAnalysisProvider(emulate.getLanguage().getAddressFactory(), emulate.getMemoryState());
 		}
+		gcHeap(emulate);
 
 		// Set initial context value
 		updateContextValue(emulate, current_address);

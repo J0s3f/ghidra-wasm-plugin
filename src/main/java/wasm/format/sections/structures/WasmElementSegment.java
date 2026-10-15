@@ -115,6 +115,9 @@ public class WasmElementSegment implements StructConverter {
 	public ElementSegmentMode getMode() {
 		return mode;
 	}
+	public java.util.List<ConstantExpression> getExpressions() {
+		return exprs == null ? null : java.util.Collections.unmodifiableList(exprs);
+	}
 
 	public long getTableIndex() {
 		if (tableidx == null) {

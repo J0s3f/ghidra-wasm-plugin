@@ -662,6 +662,140 @@
       "class": "wabt-gap",
       "why": "0000028: error: expected valid block signature type"
     },
+    "RC01_sparse32.wasm": {
+      "class": "valid"
+    },
+    "RC02_sparse64.wasm": {
+      "class": "valid"
+    },
+    "RC03_sparse_overlap.wasm": {
+      "class": "valid"
+    },
+    "RC04_sparse32_upper.wasm": {
+      "class": "valid"
+    },
+    "RC10_reanalysis.wasm": {
+      "class": "valid"
+    },
+    "RC11_inline.wasm": {
+      "class": "valid"
+    },
+    "RC12_inline_nested.wasm": {
+      "class": "valid"
+    },
+    "RC20_struct_mixed.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000014: error: expected valid field type (got -0x8)"
+    },
+    "RC21_struct_empty.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000025: error: unexpected opcode: 0xfb"
+    },
+    "RC22_array_wide.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000031: error: unexpected opcode: 0xfb"
+    },
+    "RC23_array_vector.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000003d: error: unexpected opcode: 0xfb"
+    },
+    "RC24_array_fixed.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000002f: error: unexpected opcode: 0xfb"
+    },
+    "RC25_array_fill_copy.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000d: error: expected valid field type (got -0x8)"
+    },
+    "RC27_cast_null.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000025: error: unexpected opcode: 0xfb"
+    },
+    "RC28_cast_subtypes.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000c: error: unexpected type form (got -0x30)"
+    },
+    "RC29_i31.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000024: error: expected valid local type"
+    },
+    "RC30_extern_roundtrip.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000028: error: unexpected opcode: 0xfb"
+    },
+    "RC31_gc_global.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000020: error: unexpected opcode: 0xfb"
+    },
+    "RC32_array_data.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000d: error: expected valid field type (got -0x8)"
+    },
+    "RC33_array_elem.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000036: error: unexpected opcode: 0xfb"
+    },
+    "RC34_nominal_call.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000c: error: unexpected type form (got -0x30)"
+    },
+    "RC35_recursive_cast.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000c: error: unexpected type form (got -0x32)"
+    },
+    "RC36_cast_branches.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000c: error: unexpected type form (got -0x30)"
+    },
+    "RC40_named_types.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000002b: error: unexpected opcode: 0xfb"
+    },
+    "RC50_interior_struct.wasm": {
+      "class": "valid"
+    },
+    "RC51_simd_struct.wasm": {
+      "class": "valid"
+    },
+    "RC52_global_struct.wasm": {
+      "class": "valid"
+    },
+    "RC53_local_struct.wasm": {
+      "class": "valid"
+    },
+    "RC54_indirect_struct.wasm": {
+      "class": "valid"
+    },
+    "RC55_wide_struct.wasm": {
+      "class": "valid"
+    },
+    "RC56_memory_separation.wasm": {
+      "class": "valid"
+    },
+    "RC60_null_struct.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000029: error: unexpected opcode: 0xfb"
+    },
+    "RC61_null_cast.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000027: error: unexpected opcode: 0xfb"
+    },
+    "RC62_wrong_cast.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000002d: error: unexpected opcode: 0xfb"
+    },
+    "RC63_array_bounds.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000028: error: unexpected opcode: 0xfb"
+    },
+    "RC64_dropped_data.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 000000d: error: expected valid field type (got -0x8)"
+    },
+    "RC65_copy_atomic.wasm": {
+      "class": "wabt-gap",
+      "why": "wabt: 0000022: error: unexpected opcode: 0xfb"
+    },
     "RN01_refnull_exn.wasm": {
       "class": "valid"
     },

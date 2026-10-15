@@ -39,6 +39,7 @@ public class WasmGlobalEntry implements StructConverter {
 	public WasmGlobalType getGlobalType() {
 		return type;
 	}
+	public ConstantExpression getExpression() { return expr; }
 
 	public byte[] asBytes(WasmModule module) {
 		return expr.asBytes(module);

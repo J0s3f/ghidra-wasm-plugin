@@ -73,6 +73,7 @@ public class InjectPayloadWasmPush extends InjectPayloadCallother {
 		 * slot, matching the popCallOther side of doBranch.
 		 */
 		boolean packedContiguously = baseAddress.equals(program.getRegister("o0").getAddress());
+		if (packedContiguously) { WasmCallerState.emit(program, con, ops, true); }
 		if (packedContiguously) {
 			int offset = 0;
 			for (int i = 0; i < todo.length; i++) {

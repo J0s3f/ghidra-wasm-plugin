@@ -155,6 +155,14 @@ public class WasmCodeEntry implements StructConverter {
 		return result;
 	}
 
+	public ValType.TypeInfo[] getLocalTypeInfo() {
+		ValType.TypeInfo[] result=new ValType.TypeInfo[(int)declaredLocalCount];int position=0;
+		for(WasmLocalEntry local:locals) {
+			Arrays.fill(result,position,position+local.getCount(),local.getTypeInfo());position+=local.getCount();
+		}
+		return result;
+	}
+
 	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
 		for (WasmLocalEntry local : locals) { local.resolveReferenceTypes(resolver); }
 	}

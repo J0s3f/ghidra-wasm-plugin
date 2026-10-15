@@ -74,6 +74,8 @@ public class WasmFuncType implements StructConverter {
 	public ValType[] getParamTypes() {
 		return paramTypes;
 	}
+	public ValType.TypeInfo[] getParamTypeInfo() { return paramTypeInfo.clone(); }
+	public ValType.TypeInfo[] getReturnTypeInfo() { return returnTypeInfo.clone(); }
 
 	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
 		for (int i = 0; i < paramTypes.length; i++) { paramTypes[i] = paramTypeInfo[i].resolve(resolver); }

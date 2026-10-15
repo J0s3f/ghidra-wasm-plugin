@@ -29,3 +29,20 @@ for(const [name,wanted] of Object.entries({isolation32:0x4411,isolation_index32:
   assert.equal(instance.exports['test_'+name](),wanted,name);
 }
 console.log('28 independent memory-isolation and large br_table execution checks passed');
+const released=JSON.parse(fs.readFileSync(path.join(root,'released-expected.json'),'utf8'));
+for(const [file,wanted] of Object.entries(released)) {
+  const instance=new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(path.join(root,file))));
+  assert.equal(instance.exports.test(),wanted,file);
+}
+console.log(`${Object.keys(released).length} released-core execution checks passed`);
+
+const traps=JSON.parse(fs.readFileSync(path.join(root,'released-traps.json'),'utf8'));
+for(const file of Object.keys(traps)) {
+  const instance=new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(path.join(root,file))));
+  assert.throws(()=>instance.exports.test(),WebAssembly.RuntimeError,file);
+  if(instance.exports.after) assert.equal(instance.exports.after(),8,'Trapping array.copy makes no partial writes');
+}
+for(const file of fs.readdirSync(path.join(root,'released-invalid'))) assert.equal(WebAssembly.validate(fs.readFileSync(path.join(root,'released-invalid',file))),false,file);
+console.log(`${Object.keys(traps).length} released-core trap checks and nominal negative fixtures verified`);
+
+for(const file of fs.readdirSync(path.join(root,'released-validtypes'))) assert.equal(WebAssembly.validate(fs.readFileSync(path.join(root,'released-validtypes',file))),true,file);

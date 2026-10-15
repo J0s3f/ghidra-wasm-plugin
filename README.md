@@ -43,7 +43,8 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
 - **Garbage collection**: `rec`/`sub`/`struct`/`array` types, the full `0xFB`
   instruction set (`struct.new`/`struct.get`/`array.new`/`array.get`/`i31.*`,
   `ref.test`/`ref.cast`/`br_on_cast`/`br_on_cast_fail`, `any.convert_extern`/
-  `extern.convert_any`), GC constant expressions
+  `extern.convert_any`), executable GC heap semantics in the emulator, GC constant
+  expressions, and nominal subtype/nullability diagnostics
 - **Function references**: `call_ref`, `return_call_ref`, `ref.as_non_null`,
   `br_on_null`, `br_on_non_null`; precise `(ref null ht)` / `(ref ht)` type model
 - **Multi-value**: blocks with type-index blocktypes, functions returning multiple
@@ -51,7 +52,8 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
 - **Multi-memory**: every declared memory has an independent address space, including
   zero-sized memories, large offsets, and memory indices above 31
 - **memory64**: full 64-bit effective addresses in `memory64` and per-memory spaces;
-  scalar, SIMD, atomic, and copy operations preserve the selected memory
+  scalar, SIMD, atomic, and copy operations preserve the selected memory; active
+  data segments above the eager zero prefix load into sparse blocks, including above 4 GiB
 - **Extended constant expressions**: `i32`/`i64` `add`/`sub`/`mul` in initializers
 - **Stack switching / JSPI**: `cont.new`, `cont.bind`, `resume`, `suspend`, `switch`
   (decoded; `cont` types parse in the type section)
@@ -68,8 +70,10 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
   types through stack slots
 - **Call-graph-aware struct synthesis**: `WasmStructSynthAnalyzer` clusters
   constant-offset accesses per pointer class across the call graph, synthesizes
-  Ghidra structs, and retypes parameters (352 structs, 255 retyped parameters,
-  591 → 437 raw offset accesses on the reference module)
+  Ghidra structs, and retypes parameters, locals, and global bases. Interior-pointer
+  offsets propagate through direct calls and statically resolved, immutable tables;
+  scalar field types and SIMD access widths are preserved. Historical v1 measurements
+  were 352 structs and 255 retyped parameters on the reference module.
 - **B9 warning**: a module that declares content but yields nothing decoded logs
   "Module accepted but nothing was decoded"
 
@@ -119,7 +123,7 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 | --- | --- |
 | `check-local.ps1` | The local gate: build + install, run the full probe suite, check the fixture decompile baseline and the real-module baseline. Enforces the pinned Ghidra install and build stamp. |
 | `run_probes.ps1` | Generates all probe modules (`gen_*.py` + `probes_*.py`), imports them headlessly, and reports per-program metrics. |
-| `gen_feature_probes.py` + `probes_*.py` | Byte-level probe generators for every supported feature (223 probes). |
+| `gen_feature_probes.py` + `probes_*.py` | Byte-level probe generators for every supported feature (260 probes). |
 | `check-results.py` | Compares probe-run metrics against `expected-results.json`; `--update` re-records. |
 | `check-fixture-validity.py` | External-oracle classification of every probe (wabt `wasm-validate`, optionally binaryen `wasm-dis`); supports `--timeout`, `--update`, `oracle_skip`. |
 | `spectest/run_spectest.ps1` | Runs the official WebAssembly spec testsuite (core subset) through the loader/decompiler headlessly. |
@@ -139,7 +143,7 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 | Workflow | What it enforces |
 | --- | --- |
 | `.github/workflows/build.yml` | Builds the extension against Ghidra 12.1.4 and 12.1.3. |
-| `.github/workflows/probes.yml` | Runs the 223-probe suite + fixture decompile baseline + fixture-validity gate (wabt). |
+| `.github/workflows/probes.yml` | Runs the 260-probe suite + fixture decompile baseline + fixture-validity gate (wabt). |
 | `.github/workflows/spectest.yml` | Runs the spec core subset (271 modules) and checks the decode/decompile baseline. |
 | `.github/workflows/release.yml` | Builds and publishes release assets on tag push (`v*`). |
 
@@ -193,34 +197,20 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 
 See [MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) for a feature-by-feature inventory of what the plugin
 does and does not understand in modern WebAssembly, how each gap was measured, and the planned
-fix order. In summary, the still-open items are:
+fix order. The released-core follow-up on this branch adds sparse high-address data
+loading, GC heap emulation and nominal type diagnostics, broader structure recovery,
+safe direct-function inlining, repeatable C-stack reanalysis, and named block/heap operands.
+Context updates are batched, and unchanged reanalysis preserves existing instructions.
 
-- **Shared-everything threads**: `global.atomic.*`, shared tables / `table.atomic.*` have no
-  mnemonics (the 0xFE atomic *memory* ops are implemented).
-- **Component-model semantics**: canonical ABI, `canon` ops, component types are not modelled
-  (core-module extraction only, by design).
-- **Struct-synthesis v1 limits**: `call_indirect` targets not followed, delta arguments skipped,
-  only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN`.
-- **128 MiB materialisation cap**: the loader maps at most 128 MiB per memory and
-  reports data outside that prefix. Addressing and emulator banks remain independent
-  beyond the mapped prefix; large memories no longer alias neighboring memories.
-- **Cosmetic listings**: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` and the `ht=`
-  operands of `ref.test`/`ref.cast`/`br_on_cast*` still print numerically (`ref.null` abstract heap
-  types now print by name).
+The remaining proposal work is shared-everything threads, component-model semantics,
+and strict custom-page-size validation. See the inventory for their specification status.
+Structure recovery remains conservative for dynamic targets, unknown arithmetic, and
+control-flow joins. This analysis tool accepts spec-invalid modules and emits diagnostics;
+it is not a complete validator or a production WebAssembly runtime.
 
-In addition:
-
-- Currently, inlining functions (via marking them "In Line") is not supported
-  and will confuse the decompiler. This is because the inlined function's
-  references to stack and local variables will affect the caller. I tried to solve
-  this limitation by injecting code to save and restore stack and locals on
-  function entry/exit, but ran into a Ghidra limitation — the decompiler does not
-  inject "uponentry" Pcode into inlined functions.
-- Currently, there is no way to change the C stack pointer after initial analysis
-  (attempting to re-analyze the program with a new C stack pointer will not change
-  anything).
-- Initial analysis and disassembly can be very slow. This is primarily because
-  Ghidra is quite slow at setting large numbers of context registers.
+Run `pwsh -NoProfile -File test-scripts/run-regressions.ps1` against the pinned Ghidra
+installation for execution, decompiler, parser, and harness regressions. The
+[regression guide](test-scripts/regressions/README.md) describes the released-core cases.
 
 ## Internals
 

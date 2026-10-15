@@ -32,6 +32,8 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.ProgramContext;
 import ghidra.util.Msg;
 import wasm.format.WasmEnums.ValType;
+import wasm.format.WasmEnums.ValType.TypeInfo;
+import wasm.format.WasmTypeGraph;
 import wasm.format.WasmEnums.WasmExternalKind;
 import wasm.format.WasmModule;
 import wasm.format.sections.structures.WasmFuncType;
@@ -61,6 +63,30 @@ public class WasmFunctionAnalysis {
 	private WasmFuncSignature func;
 	/* null in the value stack means Unknown */
 	private List<ValType> valueStack = new ArrayList<>();
+	private List<TypeInfo> nominalStack = new ArrayList<>();
+	private TypeInfo[] localTypeInfo;
+	private WasmTypeGraph typeGraph;
+	private final List<String> typeDiagnostics=new ArrayList<>();
+	public List<String> getTypeDiagnostics() {return java.util.Collections.unmodifiableList(typeDiagnostics);}
+	private void checkType(Address address,TypeInfo actual,TypeInfo expected) {
+		if(actual!=null && expected!=null && !typeGraph.isSubtype(actual,expected)) {
+			String message="Nominal type mismatch at "+address+": got "+describe(actual)+", expected "+describe(expected);
+			typeDiagnostics.add(message);Msg.warn(this,message+" (import remains lenient)");
+		}
+	}
+	private static String describe(TypeInfo type) {return type.heapType==null?type.type.toString():"(ref "+(type.nullable?"null ":"")+type.heapType+")";}
+	private void checkTop(Address address,TypeInfo expected) {if(!nominalStack.isEmpty()) checkType(address,nominalStack.get(nominalStack.size()-1),expected);}
+	private void checkTuple(Address address,TypeInfo[] expected,int above) {
+		int base=nominalStack.size()-expected.length-above;
+		if(base<0) return;
+		for(int i=0;i<expected.length;i++) checkType(address,nominalStack.get(base+i),expected[i]);
+	}
+	private void preciseTop(TypeInfo info) {if(!nominalStack.isEmpty()) nominalStack.set(nominalStack.size()-1,info);}
+	void gcPreciseTop(TypeInfo info) {preciseTop(info);}
+	void gcCheckTop(Address address,TypeInfo info) {checkTop(address,info);}
+	void gcCheckTuple(Address address,TypeInfo[] info,int above) {checkTuple(address,info,above);}
+	void gcDiagnostic(Address address,String message) {String text=address+": "+message;typeDiagnostics.add(text);Msg.warn(this,text+" (import remains lenient)");}
+
 	private List<ControlFrame> controlStack = new ArrayList<>();
 	private Map<Address, StackEffect> stackEffects = new HashMap<>();
 	private Map<Address, Long> globalGetSets = new HashMap<>();
@@ -134,29 +160,43 @@ public class WasmFunctionAnalysis {
 			if (value < 0 || value > (1L << reg.getWidth()) - 1) {
 				throw new ArithmeticException("Context register value " + value + " is out of range");
 			}
-			contextValues.put(address, contextValues.get(address).or(BigInteger.valueOf(value).shiftLeft(reg.getShift())));
+			BigInteger mask = BigInteger.ONE.shiftLeft(reg.getWidth()).subtract(BigInteger.ONE).shiftLeft(reg.getShift());
+			contextValues.put(address, contextValues.get(address).andNot(mask).or(BigInteger.valueOf(value).shiftLeft(reg.getShift())));
 		}
 
 		public BigInteger getContext(Address address) {
 			return contextValues.get(address);
 		}
 
+		public boolean differs(Program program) {
+			Register base = program.getProgramContext().getBaseContextRegister();
+			for (var entry : contextValues.entrySet()) {
+				RegisterValue current = program.getProgramContext().getRegisterValue(base, entry.getKey());
+				if (current == null || !entry.getValue().equals(current.getUnsignedValue())) { return true; }
+			}
+			return false;
+		}
+
 		public void commitContext(Program program) {
 			ProgramContext context = program.getProgramContext();
 			Register contextRegister = context.getBaseContextRegister();
-			for (Map.Entry<Address, BigInteger> entry : contextValues.entrySet()) {
-				Address address = entry.getKey();
-				if (program.getListing().getInstructionContaining(address) != null)
-					continue;
-
+			var entries = new ArrayList<>(contextValues.entrySet());
+			entries.sort(Map.Entry.comparingByKey());
+			for (int i = 0; i < entries.size();) {
+				var entry = entries.get(i);
+				Address start = entry.getKey(), end = start;
+				// Equal adjacent instruction contexts share one database update, including
+				// immediate bytes between them. Context fields are all explicitly noflow.
+				while (++i < entries.size() && entries.get(i).getValue().equals(entry.getValue())) {
+					end = entries.get(i).getKey();
+				}
 				RegisterValue value = new RegisterValue(contextRegister, entry.getValue());
 				try {
-					context.setRegisterValue(address, address, value);
+					context.setRegisterValue(start, end, value);
 				} catch (ContextChangeException e) {
-					Msg.error(this, "Failed to set context register at " + address, e);
+					throw new IllegalStateException("Failed to set context register at " + start, e);
 				}
 			}
-			contextValues.clear();
 		}
 
 		public void setIsReturn(Address address, int value) {
@@ -304,6 +344,7 @@ public class WasmFunctionAnalysis {
 	private static class BlockType {
 		ValType[] params;
 		ValType[] returns;
+		TypeInfo[] nominalParams,nominalReturns;
 
 		public BlockType(WasmFuncSignature func) {
 			/* A function's parameters are in local variables rather than the stack */
@@ -337,6 +378,7 @@ public class WasmFunctionAnalysis {
 				WasmFuncType type = analysis.getType((int) blocktype);
 				params = type.getParamTypes();
 				returns = type.getReturnTypes();
+				nominalParams=type.getParamTypeInfo();nominalReturns=type.getReturnTypeInfo();
 			}
 		}
 	}
@@ -355,6 +397,7 @@ public class WasmFunctionAnalysis {
 		BlockKind blockKind;
 		BlockType blockType;
 		List<ValType> initialStack;
+		List<TypeInfo> initialNominalStack;
 		/** A list of instruction address which branch to this block. */
 		List<Address> branchAddresses = new ArrayList<>();
 		boolean unreachable = false;
@@ -371,6 +414,7 @@ public class WasmFunctionAnalysis {
 			this.blockKind = BlockKind.FUNCTION;
 			this.blockType = blockType;
 			this.initialStack = new ArrayList<>();
+			this.initialNominalStack = new ArrayList<>();
 		}
 
 		public ControlFrame(Address address, BlockKind blockKind, BlockType blockType, List<ValType> stack) {
@@ -378,6 +422,7 @@ public class WasmFunctionAnalysis {
 			this.blockKind = blockKind;
 			this.blockType = blockType;
 			this.initialStack = new ArrayList<>(stack);
+			this.initialNominalStack = new ArrayList<>(nominalStack);
 		}
 
 		public ValType[] getBranchArguments() {
@@ -523,15 +568,19 @@ public class WasmFunctionAnalysis {
 		ValType.BlockTypeInfo info = ValType.readBlockType(reader);
 		if (info.typeIndex >= 0) {
 			WasmFuncType type = analysis.getType((int) info.typeIndex);
-			return new BlockType(type.getParamTypes(), type.getReturnTypes());
+			BlockType result=new BlockType(type.getParamTypes(),type.getReturnTypes());
+			result.nominalParams=type.getParamTypeInfo();result.nominalReturns=type.getReturnTypeInfo();return result;
 		}
-		return new BlockType(info.heapType == null ? info.type : analysis.getModule().resolveHeapType(info.heapType));
+		BlockType result=new BlockType(info.heapType==null?info.type:analysis.getModule().resolveHeapType(info.heapType));
+		if(info.type!=null) result.nominalReturns=new TypeInfo[]{info.heapType==null?TypeInfo.value(info.type):TypeInfo.reference(info.heapType,info.nullable)};
+		return result;
 	}
 	// #endregion
 
 	// #region Value stack manipulation
 	private void pushValue(Address instAddress, ValType type) {
 		valueStack.add(type);
+		nominalStack.add(type!=null && !type.isReferenceType()?TypeInfo.value(type):null);
 	}
 
 	private ValType popValue(Address instAddress) {
@@ -546,6 +595,7 @@ public class WasmFunctionAnalysis {
 				return null;
 			throw new ValidationException(instAddress, "pop from empty stack");
 		}
+		nominalStack.remove(nominalStack.size()-1);
 		return valueStack.remove(valueStack.size() - 1);
 	}
 
@@ -589,6 +639,7 @@ public class WasmFunctionAnalysis {
 		if (valueStack.size() <= curBlock.initialStack.size()) {
 			return null;
 		}
+		nominalStack.remove(nominalStack.size()-1);
 		return valueStack.remove(valueStack.size() - 1);
 	}
 
@@ -616,6 +667,7 @@ public class WasmFunctionAnalysis {
 		}
 		controlStack.add(block);
 		pushValues(instAddress, block.blockType.params);
+		if(block.blockType.nominalParams!=null) for(int i=0;i<block.blockType.nominalParams.length;i++) nominalStack.set(nominalStack.size()-block.blockType.nominalParams.length+i,block.blockType.nominalParams[i]);
 	}
 
 	private ControlFrame popBlock(Address instAddress) {
@@ -623,6 +675,7 @@ public class WasmFunctionAnalysis {
 			throw new ValidationException(instAddress, "pop from empty block stack");
 		}
 		ControlFrame block = getBlock(instAddress, 0);
+		if(block.blockType.nominalReturns!=null) checkTuple(instAddress,block.blockType.nominalReturns,0);
 		popValues(instAddress, block.blockType.returns);
 		if (valueStack.size() != block.initialStack.size()) {
 			// @@GC: a function body that leaves an extra operand behind (for example a GC
@@ -641,6 +694,7 @@ public class WasmFunctionAnalysis {
 				}
 			}
 			valueStack = new ArrayList<>(block.initialStack);
+			nominalStack = new ArrayList<>(block.initialNominalStack);
 		}
 		controlStack.remove(controlStack.size() - 1);
 		return block;
@@ -657,6 +711,7 @@ public class WasmFunctionAnalysis {
 	private void markUnreachable(Address instAddress) {
 		ControlFrame curBlock = getBlock(instAddress, 0);
 		valueStack = new ArrayList<>(curBlock.initialStack);
+		nominalStack = new ArrayList<>(curBlock.initialNominalStack);
 		curBlock.unreachable = true;
 	}
 	// #endregion
@@ -809,7 +864,7 @@ public class WasmFunctionAnalysis {
 
 	/** Convert a BlockTypeInfo (the reader-level form of a block type) into a BlockType. */
 	private static BlockType blockTypeFromInfo(WasmAnalysis analysis, ValType.BlockTypeInfo info) {
-		if (info.heapType != null) { return new BlockType(analysis.getModule().resolveHeapType(info.heapType)); }
+		if (info.heapType != null) {var block=new BlockType(analysis.getModule().resolveHeapType(info.heapType));block.nominalReturns=new TypeInfo[]{TypeInfo.reference(info.heapType,info.nullable)};return block;}
 		if (info.typeIndex >= 0) {
 			return new BlockType(analysis, info.typeIndex);
 		}
@@ -938,16 +993,26 @@ public class WasmFunctionAnalysis {
 	void gcSetOperandSize(Address instAddress, ValType type) {
 		contextreg.setOperandSize(instAddress, type);
 	}
+	void gcSetInputCount(Address address, long count) {
+		contextreg.setRegister(address, ContextRegister.REG_CASE_INDEX, count);
+	}
 
 	/**
 	 * br_on_cast / br_on_cast_fail: a conditional branch on a reference, modelled
 	 * like br_if. It pops the cast reference and leaves a (cast) reference on the
 	 * fall-through path. Exact cast typing / nullability refinement is not modelled.
 	 */
-	void gcConditionalRefBranch(Address instAddress, long labelidx, ValType ref) {
+	void gcConditionalRefBranch(Address instAddress, long labelidx, ValType ref,TypeInfo source,TypeInfo target,boolean fail) {
+		checkTop(instAddress,source);
 		popValue(instAddress);
 		ControlFrame block = getBlock(instAddress, labelidx);
 		ValType[] arguments = block.getBranchArguments();
+			TypeInfo[] nominal=block.blockKind==BlockKind.LOOP?block.blockType.nominalParams:block.blockType.nominalReturns;
+			TypeInfo remainder=TypeInfo.reference(source.heapType,source.nullable && !target.nullable);
+			if(nominal!=null && nominal.length>0) {
+				checkTuple(instAddress,java.util.Arrays.copyOf(nominal,nominal.length-1),0);
+				checkType(instAddress,fail?remainder:target,nominal[nominal.length-1]);
+			}
 		if (arguments.length == 0) { throw new ValidationException(instAddress, "reference branch requires a reference result"); }
 		ValType[] prefix = java.util.Arrays.copyOf(arguments, arguments.length - 1);
 		popValues(instAddress, prefix);
@@ -955,6 +1020,7 @@ public class WasmFunctionAnalysis {
 		block.addBranch(instAddress);
 		pushValues(instAddress, prefix);
 		pushValue(instAddress, ref);
+		preciseTop(fail?target:remainder);
 	}
 	// @@GC ---------------------------------------------------------------------
 
@@ -1338,12 +1404,14 @@ public class WasmFunctionAnalysis {
 
 		case 0x02: /* block bt */ {
 			BlockType blocktype = readBlockType(analysis, reader);
+			if(blocktype.nominalParams!=null) checkTuple(instAddress,blocktype.nominalParams,0);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.BLOCK, blocktype, valueStack));
 			break;
 		}
 		case 0x03: /* loop bt */ {
 			BlockType blocktype = readBlockType(analysis, reader);
+			if(blocktype.nominalParams!=null) checkTuple(instAddress,blocktype.nominalParams,0);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.LOOP, blocktype, valueStack));
 			break;
@@ -1351,6 +1419,7 @@ public class WasmFunctionAnalysis {
 		case 0x04: /* if bt */ {
 			BlockType blocktype = readBlockType(analysis, reader);
 			popValue(instAddress, ValType.i32);
+			if(blocktype.nominalParams!=null) checkTuple(instAddress,blocktype.nominalParams,0);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.IF, blocktype, valueStack));
 			break;
@@ -1376,6 +1445,7 @@ public class WasmFunctionAnalysis {
 			/* Mirror readBlockType for block/loop/if: a try block type may be a multi-byte (ref
 			   null ht)/(ref ht) value type (0x63/0x64), or a multi-byte s33 type index. */
 			BlockType blocktype = readBlockType(analysis, reader);
+			if(blocktype.nominalParams!=null) checkTuple(instAddress,blocktype.nominalParams,0);
 			popValues(instAddress, blocktype.params);
 			pushBlock(instAddress, this.new ControlFrame(instAddress, BlockKind.TRY, blocktype, valueStack));
 			break;
@@ -1410,6 +1480,7 @@ public class WasmFunctionAnalysis {
 				throw new ValidationException(instAddress, "delegate without matching try");
 			}
 			pushValues(instAddress, block.blockType.returns);
+			if(block.blockType.nominalReturns!=null) for(int i=0;i<block.blockType.nominalReturns.length;i++) nominalStack.set(nominalStack.size()-block.blockType.nominalReturns.length+i,block.blockType.nominalReturns[i]);
 			block.setEnd(instAddress);
 			break;
 		}
@@ -1429,6 +1500,7 @@ public class WasmFunctionAnalysis {
 			// this stack effect will only be used by the final end
 			setStackEffect(instAddress, valueStack.size(), block.blockType.returns, 0, null);
 			pushValues(instAddress, block.blockType.returns);
+			if(block.blockType.nominalReturns!=null) for(int i=0;i<block.blockType.nominalReturns.length;i++) nominalStack.set(nominalStack.size()-block.blockType.nominalReturns.length+i,block.blockType.nominalReturns[i]);
 			block.setEnd(instAddress);
 			if (controlStack.isEmpty()) {
 				contextreg.setIsReturn(instAddress, 1);
@@ -1441,6 +1513,8 @@ public class WasmFunctionAnalysis {
 
 			ControlFrame block = getBlock(instAddress, labelidx);
 			ValType[] arguments = block.getBranchArguments();
+			TypeInfo[] nominal=block.blockKind==BlockKind.LOOP?block.blockType.nominalParams:block.blockType.nominalReturns;
+			if(nominal!=null) checkTuple(instAddress,nominal,0);
 			popValues(instAddress, arguments);
 			setStackEffect(instAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 			block.addBranch(instAddress);
@@ -1454,6 +1528,8 @@ public class WasmFunctionAnalysis {
 
 			ControlFrame block = getBlock(instAddress, labelidx);
 			ValType[] arguments = block.getBranchArguments();
+			TypeInfo[] nominal=block.blockKind==BlockKind.LOOP?block.blockType.nominalParams:block.blockType.nominalReturns;
+			if(nominal!=null) checkTuple(instAddress,nominal,0);
 			popValues(instAddress, arguments);
 			setStackEffect(instAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 			block.addBranch(instAddress);
@@ -1486,6 +1562,8 @@ public class WasmFunctionAnalysis {
 				}
 				// Validate every label, including duplicates, before coalescing its branch.
 				ValType[] arguments = block.getBranchArguments();
+			TypeInfo[] nominal=block.blockKind==BlockKind.LOOP?block.blockType.nominalParams:block.blockType.nominalReturns;
+			if(nominal!=null) checkTuple(instAddress,nominal,0);
 				ValType[] actualArgs = popValues(caseAddress, arguments);
 				if (compact && !isDefault && representative != null) {
 					contextreg.setBrTableCaseIgnored(caseAddress);
@@ -1501,6 +1579,7 @@ public class WasmFunctionAnalysis {
 			break;
 		}
 		case 0x0F: /* return */ {
+			checkTuple(instAddress,analysis.getModule().getFunctionType(func.getFuncIdx()).getReturnTypeInfo(),0);
 			popValues(instAddress, func.getReturns());
 			setStackEffect(instAddress, valueStack.size(), func.getReturns(), 0, null);
 			markUnreachable(instAddress);
@@ -1511,10 +1590,12 @@ public class WasmFunctionAnalysis {
 			WasmFuncSignature targetFunc = analysis.getFunction((int) funcidx);
 			ValType[] params = targetFunc.getParams();
 			ValType[] returns = targetFunc.getReturns();
+			checkTuple(instAddress,analysis.getModule().getFunctionType((int)funcidx).getParamTypeInfo(),0);
 			popValues(instAddress, params);
 			setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), returns);
 			contextreg.setBranchTarget(instAddress, targetFunc.getStartAddr());
 			pushValues(instAddress, returns);
+			var results=analysis.getModule().getFunctionType((int)funcidx).getReturnTypeInfo();for(int i=0;i<results.length;i++) nominalStack.set(nominalStack.size()-results.length+i,results[i]);
 			break;
 		}
 		case 0x11: /* call_indirect x y */ {
@@ -1528,9 +1609,11 @@ public class WasmFunctionAnalysis {
 			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			ValType[] params = type.getParamTypes();
 			ValType[] returns = type.getReturnTypes();
+			checkTuple(instAddress,type.getParamTypeInfo(),0);
 			popValues(instAddress, params);
 			setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), returns);
 			pushValues(instAddress, returns);
+			var results=type.getReturnTypeInfo();for(int i=0;i<results.length;i++) nominalStack.set(nominalStack.size()-results.length+i,results[i]);
 			break;
 		}
 
@@ -1538,6 +1621,7 @@ public class WasmFunctionAnalysis {
 			long funcidx = readLeb128(reader);
 			WasmFuncSignature targetFunc = analysis.getFunction((int) funcidx);
 			ValType[] params = targetFunc.getParams();
+			checkTuple(instAddress,analysis.getModule().getFunctionType((int)funcidx).getParamTypeInfo(),0);
 			popValues(instAddress, params);
 			setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), targetFunc.getReturns());
 			contextreg.setBranchTarget(instAddress, targetFunc.getStartAddr());
@@ -1553,6 +1637,7 @@ public class WasmFunctionAnalysis {
 			WasmFuncType type = analysis.getType((int) typeidx);
 			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			ValType[] params = type.getParamTypes();
+			checkTuple(instAddress,type.getParamTypeInfo(),0);
 			popValues(instAddress, params);
 			setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), type.getReturnTypes());
 			markUnreachable(instAddress);
@@ -1580,16 +1665,21 @@ public class WasmFunctionAnalysis {
 			WasmFuncType type = analysis.getType((int) typeidx);
 			ValType[] params = type.getParamTypes();
 			ValType[] returns = type.getReturnTypes();
+			checkTop(instAddress,TypeInfo.reference(typeidx,true));
+			checkTuple(instAddress,type.getParamTypeInfo(),1);
 			if (popReferenceAndArgs(instAddress, params)) {
 				setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), returns);
 			}
 			pushValues(instAddress, returns);
+			var results=type.getReturnTypeInfo();for(int i=0;i<results.length;i++) nominalStack.set(nominalStack.size()-results.length+i,results[i]);
 			break;
 		}
 		case 0x15: /* return_call_ref x (tail calls through a typed reference) */ {
 			long typeidx = readLeb128(reader);
 			WasmFuncType type = analysis.getType((int) typeidx);
 			ValType[] params = type.getParamTypes();
+			checkTop(instAddress,TypeInfo.reference(typeidx,true));
+			checkTuple(instAddress,type.getParamTypeInfo(),1);
 			if (popReferenceAndArgs(instAddress, params)) {
 				setStackEffect(instAddress, valueStack.size(), params, valueStack.size(), type.getReturnTypes());
 			}
@@ -1618,11 +1708,15 @@ public class WasmFunctionAnalysis {
 			if (count != 1) {
 				throw new ValidationException(instAddress, "only select t is supported");
 			}
-			ValType t = ValType.readFromReader(reader, analysis.getModule()::resolveHeapType);
+			TypeInfo info=ValType.readTypeInfo(reader);
+			ValType t=info.resolve(analysis.getModule()::resolveHeapType);
 			popValue(instAddress, ValType.i32);
+			checkTop(instAddress,info);
 			popValue(instAddress, t);
+			checkTop(instAddress,info);
 			popValue(instAddress, t);
 			pushValue(instAddress, t);
+			preciseTop(info);
 			break;
 		}
 
@@ -1631,12 +1725,14 @@ public class WasmFunctionAnalysis {
 			ValType type = func.getLocals()[(int) localidx];
 			contextreg.setOperandSize(instAddress, type);
 			pushValue(instAddress, type);
+			preciseTop(localTypeInfo[(int)localidx]);
 			break;
 		}
 		case 0x21: /* local.set x */ {
 			long localidx = readLeb128(reader);
 			ValType type = func.getLocals()[(int) localidx];
 			contextreg.setOperandSize(instAddress, type);
+			checkTop(instAddress,localTypeInfo[(int)localidx]);
 			popValue(instAddress, type);
 			break;
 		}
@@ -1644,8 +1740,10 @@ public class WasmFunctionAnalysis {
 			long localidx = readLeb128(reader);
 			ValType type = func.getLocals()[(int) localidx];
 			contextreg.setOperandSize(instAddress, type);
+			checkTop(instAddress,localTypeInfo[(int)localidx]);
 			popValue(instAddress, type);
 			pushValue(instAddress, type);
+			preciseTop(localTypeInfo[(int)localidx]);
 			break;
 		}
 		case 0x23: /* global.get x */ {
@@ -1654,6 +1752,7 @@ public class WasmFunctionAnalysis {
 			contextreg.setOperandSize(instAddress, type);
 			globalGetSets.put(instAddress, globalidx);
 			pushValue(instAddress, type);
+			preciseTop(analysis.getModule().getGlobalType((int)globalidx).getTypeInfo());
 			break;
 		}
 		case 0x24: /* global.set x */ {
@@ -1661,6 +1760,7 @@ public class WasmFunctionAnalysis {
 			ValType type = analysis.getGlobalType((int) globalidx);
 			contextreg.setOperandSize(instAddress, type);
 			globalGetSets.put(instAddress, globalidx);
+			checkTop(instAddress,analysis.getModule().getGlobalType((int)globalidx).getTypeInfo());
 			popValue(instAddress, type);
 			break;
 		}
@@ -1670,11 +1770,13 @@ public class WasmFunctionAnalysis {
 			ValType type = analysis.getTableType((int) tableidx);
 			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			pushValue(instAddress, type);
+			preciseTop(analysis.getModule().getTableType((int)tableidx).getElementTypeInfo());
 			break;
 		}
 		case 0x26: /* table.set x */ {
 			long tableidx = readLeb128(reader);
 			ValType type = analysis.getTableType((int) tableidx);
+			checkTop(instAddress,analysis.getModule().getTableType((int)tableidx).getElementTypeInfo());
 			popValue(instAddress, type);
 			popValue(instAddress, setTableIndexContext(analysis, instAddress, tableidx));
 			break;
@@ -1951,8 +2053,10 @@ public class WasmFunctionAnalysis {
 
 		case 0xD0: /* ref.null ht */ {
 			/* A bare s33 heap type; concrete indices resolve to their abstract family. */
-			ValType reftype = analysis.getModule().resolveHeapType(readSignedLeb128(reader));
+			long heap=readSignedLeb128(reader);
+			ValType reftype = analysis.getModule().resolveHeapType(heap);
 			pushValue(instAddress, reftype);
+			preciseTop(TypeInfo.reference(heap,true));
 			break;
 		}
 		case 0xD1: /* ref.is_null */
@@ -1964,6 +2068,7 @@ public class WasmFunctionAnalysis {
 			WasmFuncSignature targetFunc = analysis.getFunction((int) funcidx);
 			contextreg.setBranchTarget(instAddress, targetFunc.getStartAddr());
 			pushValue(instAddress, ValType.funcref);
+			preciseTop(TypeInfo.reference(analysis.getModule().getFunctionTypeIndex((int)funcidx),false));
 			break;
 		}
 		case 0xD3: /* ref.eq (GC): [(ref null eq) (ref null eq)] -> [i32] */
@@ -1979,28 +2084,40 @@ public class WasmFunctionAnalysis {
 			 * Same 4-byte reference, only non-nullable. ValType does not carry
 			 * nullability, so the value stack type is unchanged.
 			 */
+			TypeInfo precise=nominalStack.isEmpty()?null:nominalStack.get(nominalStack.size()-1);
 			ValType ref = popValue(instAddress);
 			pushValue(instAddress, (ref != null) ? ref : ValType.externref);
+			if(precise!=null) preciseTop(TypeInfo.reference(precise.heapType!=null?precise.heapType:precise.type.typeByte-0x80L,false));
 			break;
 		}
 		case 0xD5: /* br_on_null l: [t* (ref null ht)] -> [t* (ref ht)]; branch takes [t*] */ {
 			long labelidx = readLeb128(reader);
+			TypeInfo precise=nominalStack.isEmpty()?null:nominalStack.get(nominalStack.size()-1);
 			ValType ref = popValue(instAddress);
 			ControlFrame block = getBlock(instAddress, labelidx);
 			ValType[] arguments = block.getBranchArguments();
+			TypeInfo[] nominal=block.blockKind==BlockKind.LOOP?block.blockType.nominalParams:block.blockType.nominalReturns;
+			if(nominal!=null) checkTuple(instAddress,nominal,0);
 			popValues(instAddress, arguments);
 			setStackEffect(instAddress, valueStack.size(), arguments, block.initialStack.size(), arguments);
 			block.addBranch(instAddress);
 			pushValues(instAddress, arguments);
 			/* fall-through keeps the (now non-null) reference */
 			pushValue(instAddress, (ref != null) ? ref : ValType.externref);
+			if(precise!=null) preciseTop(TypeInfo.reference(precise.heapType!=null?precise.heapType:precise.type.typeByte-0x80L,false));
 			break;
 		}
 		case 0xD6: /* br_on_non_null l: [t* (ref null ht)] -> [t*]; branch takes [t* (ref ht)] */ {
 			long labelidx = readLeb128(reader);
+			TypeInfo precise=nominalStack.isEmpty()?null:nominalStack.get(nominalStack.size()-1);
 			popValue(instAddress);
 			ControlFrame block = getBlock(instAddress, labelidx);
 			ValType[] arguments = block.getBranchArguments();
+			TypeInfo[] nominal=block.blockKind==BlockKind.LOOP?block.blockType.nominalParams:block.blockType.nominalReturns;
+			if(nominal!=null && nominal.length>0) {
+				checkTuple(instAddress,java.util.Arrays.copyOf(nominal,nominal.length-1),0);
+				if(precise!=null) checkType(instAddress,TypeInfo.reference(precise.heapType!=null?precise.heapType:precise.type.typeByte-0x80L,false),nominal[nominal.length-1]);
+			}
 			if (arguments.length == 0) { throw new ValidationException(instAddress, "reference branch requires a reference result"); }
 			ValType[] prefix = java.util.Arrays.copyOf(arguments, arguments.length - 1);
 			popValues(instAddress, prefix);
@@ -2708,6 +2825,10 @@ public class WasmFunctionAnalysis {
 	}
 
 	public void analyzeFunction(WasmAnalysis analysis, BinaryReader reader) throws IOException {
+		typeGraph=new WasmTypeGraph(analysis.getModule());
+		var functionType=analysis.getModule().getFunctionType(func.getFuncIdx());
+		var params=functionType.getParamTypeInfo();var locals=analysis.getModule().getFunctionCode(func.getFuncIdx()).getLocalTypeInfo();
+		localTypeInfo=new TypeInfo[params.length+locals.length];System.arraycopy(params,0,localTypeInfo,0,params.length);System.arraycopy(locals,0,localTypeInfo,params.length,locals.length);
 		Address startAddress = func.getStartAddr();
 		long functionLength = func.getEndAddr().subtract(func.getStartAddr());
 
@@ -2725,7 +2846,8 @@ public class WasmFunctionAnalysis {
 		}
 
 		instAddress = startAddress.add(reader.getPointerIndex());
-		pushBlock(instAddress, new ControlFrame(instAddress, new BlockType(func)));
+		BlockType functionBlock=new BlockType(func);functionBlock.nominalReturns=functionType.getReturnTypeInfo();
+		pushBlock(instAddress, new ControlFrame(instAddress, functionBlock));
 		while (reader.getPointerIndex() <= functionLength) {
 			instAddress = startAddress.add(reader.getPointerIndex());
 			long position = reader.getPointerIndex();
@@ -2752,7 +2874,18 @@ public class WasmFunctionAnalysis {
 		return contextreg.getContext(address);
 	}
 
-	public void applyContext(Program program, int cStackGlobal) {
+	public boolean applyContext(Program program, int cStackGlobal) {
+		for (Map.Entry<Address, Long> entry : globalGetSets.entrySet()) {
+			contextreg.setIsGlobalSp(entry.getKey(), entry.getValue() == cStackGlobal);
+		}
+		boolean changed = contextreg.differs(program);
+		if (changed && program.getListing().getInstructionAt(func.getStartAddr()) != null) {
+			program.getListing().clearCodeUnits(func.getStartAddr(), func.getEndAddr(), false);
+			var function=program.getFunctionManager().getFunctionAt(func.getStartAddr());
+			if(function!=null) for(var variable:function.getLocalVariables()) {
+				if(variable.isStackVariable() && variable.getSource()==ghidra.program.model.symbol.SourceType.ANALYSIS) function.removeVariable(variable);
+			}
+		}
 		for (var entry : brTables.entrySet()) {
 			var address = program.getAddressFactory().getAddressSpace("brtable").getAddress(getBrTableOffset(entry.getKey()));
 			byte[] bytes = new byte[entry.getValue().length * 4];
@@ -2772,11 +2905,7 @@ public class WasmFunctionAnalysis {
 				throw new IllegalStateException("Unable to materialize br_table at " + entry.getKey(), e);
 			}
 		}
-		for (Map.Entry<Address, Long> entry : globalGetSets.entrySet()) {
-			if (entry.getValue() == cStackGlobal) {
-				contextreg.setIsGlobalSp(entry.getKey(), entry.getValue() == cStackGlobal);
-			}
-		}
-		contextreg.commitContext(program);
+		if (changed) { contextreg.commitContext(program); }
+		return changed;
 	}
 }

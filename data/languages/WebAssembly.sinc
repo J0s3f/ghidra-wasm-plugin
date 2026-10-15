@@ -91,6 +91,7 @@ define pcodeop wasm_memory_store;
 define pcodeop brTableTargetCallOther;
 
 @include "Leb128.sinc"
+@include "AbstractHeapTypes.sinc"
 
 # This is a silly hack because I couldn't work out how to use Leb128 itself
 # in the disassembly actions section of another constructor...
@@ -183,6 +184,10 @@ sp3_128: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 3) * $(REG_SIZ
 # @@STR: the widest string instruction (stringview_wtf8.encode_*) pops four values.
 sp4_32: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 4) * $(REG_SIZE);] {
 	export *[register]:4 tmp_sp;
+}
+
+sp5_32: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 5) * $(REG_SIZE);] {
+ export *[register]:4 tmp_sp;
 }
 
 sp4_64: tmp_sp is ctx_sp [tmp_sp = $(REG_STACK_BASE) + (ctx_sp - 4) * $(REG_SIZE);] {
@@ -291,6 +296,26 @@ local_count4: value is topbit=1 & v0; topbit=1 & v1; topbit=1 & v2; topbit=0 & v
 local_count5: value is topbit=1 & v0; topbit=1 & v1; topbit=1 & v2; topbit=1 & v3; topbit=0 & v4 [ value = (v0 << 0) | (v1 << 7) | (v2 << 14) | (v3 << 21) | (v4 << 28); ] { export *[const]:8 value; }
 :.local "count="^local_count5 "type="^local_reftype is local_count5; local_reftype; ctx_is_directive=1; ctx_directive_type=$(DIRECTIVE_LOCAL) { }
 
+block_type: "void" is bytev=0x40 { local type_value:8 = 0x40; export type_value; }
+block_type: "i32" is bytev=0x7f { local type_value:8 = 0x7f; export type_value; }
+block_type: "i64" is bytev=0x7e { local type_value:8 = 0x7e; export type_value; }
+block_type: "f32" is bytev=0x7d { local type_value:8 = 0x7d; export type_value; }
+block_type: "f64" is bytev=0x7c { local type_value:8 = 0x7c; export type_value; }
+block_type: "v128" is bytev=0x7b { local type_value:8 = 0x7b; export type_value; }
+block_type: "funcref" is bytev=0x70 { local type_value:8 = 0x70; export type_value; }
+block_type: "externref" is bytev=0x6f { local type_value:8 = 0x6f; export type_value; }
+block_type: "anyref" is bytev=0x6e { local type_value:8 = 0x6e; export type_value; }
+block_type: "eqref" is bytev=0x6d { local type_value:8 = 0x6d; export type_value; }
+block_type: "i31ref" is bytev=0x6c { local type_value:8 = 0x6c; export type_value; }
+block_type: "structref" is bytev=0x6b { local type_value:8 = 0x6b; export type_value; }
+block_type: "arrayref" is bytev=0x6a { local type_value:8 = 0x6a; export type_value; }
+block_type: "exnref" is bytev=0x69 { local type_value:8 = 0x69; export type_value; }
+block_type: "nullref" is bytev=0x71 { local type_value:8 = 0x71; export type_value; }
+block_type: "nullexternref" is bytev=0x72 { local type_value:8 = 0x72; export type_value; }
+block_type: "nullfuncref" is bytev=0x73 { local type_value:8 = 0x73; export type_value; }
+block_type: "nullexnref" is bytev=0x74 { local type_value:8 = 0x74; export type_value; }
+block_type: ULeb128 is ULeb128 { export ULeb128; }
+
 ## Control instructions
 :unreachable is opc=0x00; ctx_is_directive=0 {
 	trap();
@@ -299,11 +324,11 @@ local_count5: value is topbit=1 & v0; topbit=1 & v1; topbit=1 & v2; topbit=1 & v
 :nop is opc=0x01; ctx_is_directive=0 {
 }
 
-:block "blocktype="^ULeb128 is opc=0x02; ULeb128; ctx_is_directive=0 {
+:block "blocktype="^block_type is opc=0x02; block_type; ctx_is_directive=0 {
 }
-:loop "blocktype="^ULeb128 is opc=0x03; ULeb128; ctx_is_directive=0 {
+:loop "blocktype="^block_type is opc=0x03; block_type; ctx_is_directive=0 {
 }
-:if "blocktype="^ULeb128 is opc=0x04; ULeb128; br_target; sp1_32; ctx_is_directive=0 {
+:if "blocktype="^block_type is opc=0x04; block_type; br_target; sp1_32; ctx_is_directive=0 {
 	if(sp1_32 != 0) goto inst_next;
 	doBranch(br_target);
 }
@@ -311,6 +336,8 @@ local_count5: value is topbit=1 & v0; topbit=1 & v1; topbit=1 & v2; topbit=1 & v
 # @@FR/@@GC: a block type may also be a multi-byte (ref null ht) / (ref ht) value type
 # (0x63/0x64 followed by the s33 heaptype). The plain ULeb128 forms above consume only the
 # first byte, which desynchronises the rest of the body, so add the explicit multi-byte forms.
+multi_blocktype: "ref null "^abstract_heaptype is bytev=0x63; abstract_heaptype { export abstract_heaptype; }
+multi_blocktype: "ref "^abstract_heaptype is bytev=0x64; abstract_heaptype { export abstract_heaptype; }
 multi_blocktype: SLeb128 is bytev=0x63; SLeb128 {
 	export SLeb128;
 }
@@ -437,22 +464,22 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 ## wasm_exception_caught(), passing the exception's payload when it is a single value (ctx_operand_size). Later
 ## handlers are reached only by exceptions, so the decompiler does not show them. catch/catch_all end the preceding
 ## code with a branch to the end of the try, like else.
-:try "blocktype="^ULeb128 is opc=0x06; ULeb128; ctx_case_index=0; ctx_is_directive=0 {
+:try "blocktype="^block_type is opc=0x06; block_type; ctx_case_index=0; ctx_is_directive=0 {
 }
-:try "blocktype="^ULeb128 br_target is opc=0x06; ULeb128; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
+:try "blocktype="^block_type br_target is opc=0x06; block_type; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
 	nop();
 	local caught:1 = wasm_exception_caught();
 	if (caught == 0) goto inst_next;
 	goto br_target;
 }
-:try "blocktype="^ULeb128 br_target is opc=0x06; ULeb128; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
+:try "blocktype="^block_type br_target is opc=0x06; block_type; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
 	nop();
 	local caught:1 = wasm_exception_caught();
 	if (caught == 0) goto inst_next;
 	sp0_32 = wasm_exception_payload();
 	goto br_target;
 }
-:try "blocktype="^ULeb128 br_target is opc=0x06; ULeb128; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
+:try "blocktype="^block_type br_target is opc=0x06; block_type; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
 	nop();
 	local caught:1 = wasm_exception_caught();
 	if (caught == 0) goto inst_next;

@@ -38,6 +38,8 @@ public class PcodeInjectLibraryWasm extends PcodeInjectLibrary {
 	public InjectPayload allocateInject(String sourceName, String name, int tp) {
 		if (tp == InjectPayload.CALLOTHERFIXUP_TYPE) {
 			switch (name) {
+			case "struct_new": return new InjectPayloadWasmGCNew(sourceName, false);
+			case "array_new_fixed": return new InjectPayloadWasmGCNew(sourceName, true);
 			case "brTableTargetCallOther":
 				return new InjectPayloadWasmBrTable(sourceName);
 			case "funcEntryCallOther":

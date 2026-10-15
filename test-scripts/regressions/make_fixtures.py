@@ -2,7 +2,17 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'test-scripts'))
 from wasm_probe_lib import *
+from released_core_fixtures import fixtures as released_fixtures, EXPECTED as released_expected, TRAPS as released_traps, invalid_fixtures, valid_type_graphs
 set_output_dir(sys.argv[1] if len(sys.argv)>1 else str(Path(__file__).parent / 'fixtures'))
+for name,data in released_fixtures().items():
+    write(name,data)
+import json
+Path(sys.argv[1],'released-expected.json').write_text(json.dumps(released_expected))
+Path(sys.argv[1],'released-traps.json').write_text(json.dumps(released_traps))
+invalid_dir=Path(sys.argv[1],'released-invalid');invalid_dir.mkdir(exist_ok=True)
+for name,data in invalid_fixtures().items(): (invalid_dir/name).write_bytes(data)
+valid_dir=Path(sys.argv[1],'released-validtypes');valid_dir.mkdir(exist_ok=True)
+for name,data in valid_type_graphs().items(): (valid_dir/name).write_bytes(data)
 
 def simple(filename, result, code, extra=(), locals_raw=b'\x00'):
     raw = locals_raw + code + END

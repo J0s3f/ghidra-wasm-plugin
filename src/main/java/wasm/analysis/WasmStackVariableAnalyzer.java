@@ -131,7 +131,7 @@ public class WasmStackVariableAnalyzer extends AbstractAnalyzer {
 		return true;
 	}
 
-	private static DataType getMemoryDataType(String mnemonic) {
+	static DataType getMemoryDataType(String mnemonic) {
 		switch (mnemonic) {
 		case "i32.load":
 		case "i32.store":

@@ -1,6 +1,6 @@
 # Modern WebAssembly support: inventory, gaps and roadmap
 
-Status of this document: **updated through released v2.8.2 (2026-10-15)**. (The per-workstream
+Status of this document: **released v2.8.2 baseline plus unreleased released-core fixes (2026-10-15)**. (The per-workstream
 `REPORT-*.md` files referenced throughout live on the `archive/reports` branch; the machine-checked
 expectations stay here as data: `test-scripts/expected-results.json` for the probe gate.) See the status table
 below. The inventory was produced from `main` (originally commit `430cbe2`, plugin built against
@@ -32,7 +32,7 @@ integration assertions, 22 bounded-heap parser assertions, and 234 independent N
 | 4. real-world corpus sweep | **merged** (`REPORT-H.md`; 15/15 modules import, 5591/5591 functions decompile - see §6.1) |
 | 4. robustness sweep (malformed inputs) | **merged** (`REPORT-J.md`; 56-module corpus - see §6.2; two real bugs found and reproduced) |
 | 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
-| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are diagnosed |
+| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are now loaded sparsely by the unreleased follow-up |
 | Spec-suite gates (positive + negative) | **merged** (`REPORT-G.md`, `REPORT-NS.md`): 271 core modules, 0 real undefined bytes, 0 decompile failures; 2948 negative modules classified |
 | Spec assert emulation | **implemented** (`REPORT-H3.md`); the historical v2.8.1 aggregate was assert_return 2514/1, assert_trap 183/0. The large-`br_table` truncation was fixed in v2.8.2 and covered by new execution tests; the full 33-suite assertion aggregate has not been remeasured. |
 | Stack switching / strings / wide arith / `memory.discard` | **merged** (`REPORT-H5.md`): all decode; `cont` types parse (`REPORT-CT.md`) |
@@ -42,7 +42,7 @@ integration assertions, 22 bounded-heap parser assertions, and 234 independent N
 | Call-graph struct synthesis | **merged** (`REPORT-STRUCTS.md`): 352 structs, 255 retyped parameters on the real module; 591 → 437 raw offset accesses |
 | Dedicated memory address spaces | **released in v2.8.2**: memory 0 uses `memory` / `memory64`; each secondary memory has an independent overlay. No index stride or aliasing at large offsets; index 32, memory64 high addresses, and zero-sized/grown memories are regression-tested. |
 | B9 warning | **merged** (`REPORT-HARD.md`): "Module accepted but nothing was decoded" when a module declares content but yields nothing |
-| Fixture-validity gate | **merged**: 223 probes — 129 valid / 64 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
+| Fixture-validity gate | **merged**: 260 probes — 143 valid / 87 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
 
 ## 1. How this inventory was produced
 
@@ -51,7 +51,7 @@ Two independent sources, so that a claim can always be re-checked:
 1. **Code inventory** — the SLEIGH opcode tables (`data/languages/*.sinc`, `WebAssembly.slaspec`), the
    module/section parsers (`src/main/java/wasm/format/**`) and the analyzers
    (`src/main/java/wasm/analysis/**`).
-2. **Empirical probes** — 223 hand-encoded modules, one per feature, imported headlessly into Ghidra
+2. **Empirical probes** — 260 hand-encoded modules, one per feature, imported headlessly into Ghidra
    and measured. `test-scripts/gen_feature_probes.py` + `test-scripts/probes_*.py` generate them;
    `test-scripts/WasmFeatureReport.java` reports `funcs/instrs/undefined_bytes/decompiled` per
    program, `ListProgram.java` prints the disassembly and `DumpAll.java` the decompiled C.
@@ -121,7 +121,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | GC type entries (`struct`/`array`/`rec`/`sub`) | fixed (`REPORT-E`): real Ghidra structures/arrays; probes `E01`-`E20` |
 | GC instructions (`0xFB`) | fixed (`REPORT-E`): `struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`; probes `E10`-`E18` |
 | New exception handling (`try_table`, `throw_ref`, `exnref`) | fixed (`REPORT-F`): probes `11`, `30`-`39` |
-| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`, v2.8.1): concrete indices resolve to their reference families and branch arguments relocate correctly. Full nominal validation remains outside the model (see 2.3). |
+| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`, v2.8.1): concrete indices resolve to their reference families and branch arguments relocate correctly. Nominal subtype/nullability diagnostics and heap execution are added by the unreleased follow-up (see 2.3). |
 | Extended-const and GC constant expressions | fixed (`REPORT-SF` + `B14`): probes `19`, `20`, `22`-`27`, `B07`-`B15` |
 | Stack switching / JSPI (`cont.new` ... `switch`) | fixed (`REPORT-H5` + `REPORT-CT`): probes `H01`-`H10` (continuation *types* now parse too, so all ten classify as `wabt-gap`) |
 | JS string builtins / stringref (`0xFB >= 0x80`) | fixed (`REPORT-H5`): probes `S01`-`S10`; unassigned sub-opcodes render as `unimplemented (reserved)` |
@@ -141,14 +141,24 @@ on 2026-10-15. Implementation in an engine does not by itself make a proposal pa
 
 | Item | Remaining limitation | Released specification or proposal? |
 | --- | --- | --- |
-| **128 MiB materialisation cap** | The loader reports but does not load data beyond the capped prefix. Addresses and emulator banks remain independent beyond it. | Affects released core linear memory, including Core 3.0 memory64; an implementation resource limit. |
-| **GC validation / emulation** | Concrete references resolve to abstract families; full nominal validation and GC heap execution are outside the model. | GC and typed references are released Core 3.0 features. This plugin is not a complete validator/runtime. |
-| **Struct-synthesis v1 limits** | Indirect-call targets and delta arguments are skipped; only parameters are retyped; globals/SIMD lanes and precise field types remain limited. | Tool-quality limitations affecting released core modules, not draft instructions. |
-| **Inlining / C-stack reanalysis** | Ghidra function inlining is unsupported; changing the C-stack setting after initial analysis does not reliably regenerate context. | Tool integration / ABI limitations, independent of proposal status. |
-| **Listings / performance** | Some block and GC heap-type operands print numerically; initial context analysis can be slow. | Tool usability limitations affecting released instructions; legacy `try` is a separate older encoding. |
 | **Shared-everything threads** | `global.atomic.*`, shared tables, and `table.atomic.*` have no mnemonics; atomic linear-memory operations are implemented. | Active Phase 1 proposal, distinct from ordinary threads. |
 | **Component-model semantics** | Canonical ABI, `canon` operations, and component types are not modeled; core-module extraction only. | Active Phase 1 proposal, outside released core. Stable subsets nevertheless ship in [WASI Developer Preview releases](https://github.com/WebAssembly/component-model#milestones). |
 | **Custom page-size validation** | Page-size-aware loading is implemented; exotic exponents are accepted leniently, while external oracles exercise 1 B / 64 KiB. | Active Phase 3 proposal. |
+
+The released-core follow-up is implemented on this branch and is **not yet released**:
+
+| Previous limitation | Implemented behavior and regression evidence |
+| --- | --- |
+| Data above the 128 MiB prefix | All in-bounds active data segments load at their actual addresses using sparse blocks. Overlap order, the 32-bit upper boundary, independent memory64, and data above 4 GiB are checked by `RC01`–`RC04`. The eager zero prefix remains a resource policy; it no longer drops high-address data. |
+| GC heap execution / nominal typing | Per-emulator identities, packed/mixed-width fields, sparse arrays, bulk array operations, casts, i31, extern conversions, GC initializers, data/element segments, and traps execute. Recursive-group equivalence, declared subtyping, variance and nullability inform runtime casts and diagnostic stack checks. `RC20`–`RC36` and `RC60`–`RC65` compare behavior with Node; six intentionally invalid declarations/flows remain importable and produce diagnostics. |
+| Struct recovery | Weighted call constraints retain interior-pointer offsets; callers and callees receive the appropriate layout views. Locals/global bases, fixed indirect targets, scalar field types, narrow SIMD accesses and eight-byte pointer storage are covered by `RC50`–`RC56`. Conflicting alias constraints and accesses spanning distinct memories are excluded. Dynamic or externally mutable tables and unknown control-flow joins remain conservative inference boundaries. |
+| Inlining / C-stack reanalysis | Caller locals and live operand slots are saved around marked direct inline calls, including nested calls and live vectors (`RC11`, `RC12`). Changing or clearing the selected global rebuilds instruction context and removes stale inferred stack variables while preserving user-defined ones; repeated unchanged analysis preserves disassembly (`RC10`). |
+| Listings / initial context overhead | Released abstract heap and block value types print by name, including legal padded heap encodings. Equal context runs use one database update; unchanged context avoids redisassembly. `RC40` and the full probe/decode regressions cover decoding. No whole-program speedup percentage is claimed. |
+
+These are analysis/emulation capabilities, not a complete production validator/runtime. Native
+GC decompilation uses explicit aggregate userops with all constructor operands exposed; object
+storage is implemented in the emulator. Host allocation limits still apply. The full memory64
+2^64-byte extent is tested arithmetically without allocating that many bytes.
 
 The large-`br_table` case truncation and memory stride aliasing are **closed in v2.8.2**.
 Tables now retain every case and the default, coalescing repeated labels through selector data.
@@ -160,11 +170,11 @@ multi-byte exception block signatures, and constant-expression markup are also n
 
 The authoritative per-probe expectations are machine-checked data, not prose:
 
-* `test-scripts/expected-results.json` - the probe gate (**223 probes**: 205 probed-imported
+* `test-scripts/expected-results.json` - the probe gate (**260 probes**: 242 probed-imported
   + 18 expected import failures; `funcs`/`instrs`/`undefined_bytes`/`decompiled`/`decompile_failed`
   per probe), enforced by `.github/workflows/probes.yml` and locally by `test-scripts/check-local.ps1`.
 * `test-scripts/fixture-validity.json` - the external-oracle classification of every probe (see 6.5):
-  **129 valid / 64 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
+  **143 valid / 87 wabt-gap / 17 unsupported / 13 invalid**; 13 probes carry
   `oracle_skip: ["binaryen"]`.
 * Real module `rasterbator_rs_bg.wasm`: `functions=437 decompiled=437 failed=0 instructions=61658
   undefined_bytes=156` - the 156 bytes are 39 import stubs x 4, i.e. **0 real decode gaps**; checked on
@@ -194,7 +204,7 @@ Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.loc
 * **Clang/LLVM ≥ 19** — emits the **new EH** (`try_table`): covered (plus `throw_ref`, `exnref`).
 * **Emscripten `-pthread`** — works; shared-memory limits flags decode fully.
 * **Emscripten `MEMORY64` / wasm64 targets** — full i64 decoded addresses in `memory64`,
-  including above 4 GiB; the materialisation cap remains, while stride aliasing was fixed in v2.8.2 (item 11).
+  including above 4 GiB; high active data loads sparsely beyond the eager zero prefix; stride aliasing was fixed in v2.8.2 (item 11).
 * **Emscripten `-sASYNCIFY=2` (JSPI)** — stack switching decodes (`cont.new`/`resume`/`switch`);
   `cont` types parse.
 
@@ -327,15 +337,15 @@ space named `memory_N` or `memory64_N`, including zero-sized declarations.
   and initializes independent banks for the program's secondary memories. Unmapped overlay
   pages cannot fall back to the primary memory; newly grown pages read their own zeroes.
 
-The materialisation cap is **still 128 MiB per memory**. Data outside that prefix is
-reported rather than loaded. The cap no longer defines memory identity: high offsets and
-indices above 31 do not alias adjacent memories. Bulk/string/atomic wait intrinsics still
+The eager zero prefix is bounded at **128 MiB per memory**. The unreleased follow-up loads
+active data outside that prefix into sparse blocks. The prefix does not define memory identity:
+high offsets and indices above 31 do not alias adjacent memories. Bulk/string/atomic wait intrinsics still
 have operation-specific emulator support limits; the plugin is not a full Wasm runtime.
 
 `B8_04_mem64_over4g` and `B8_05_mem64_just_over4g` originally loaded address zero despite their
 large declarations. Their operands now exercise EAs `0x100000030` and `0x100000010` respectively.
 Before/after listings, regression numbers, constructor/emulation assertions and exact commands
-are in `REPORT-MEM64-HYBRID-CODEX.md`; the 223-probe expectations and validity classifications
+are in `REPORT-MEM64-HYBRID-CODEX.md`; the 260-probe expectations and validity classifications
 remain the acceptance baseline.
 
 ## 5. Adding a probe (how to extend this document)
@@ -472,12 +482,12 @@ A probe that is not recorded, or whose verdict changes, fails the gate; `--updat
 both-reject probes must be declared `--invalid` or `--unsupported`, so a real bug cannot be recorded
 silently.
 
-Classification of the **223 probes** (current state):
+Classification of the **260 probes** (current state):
 
 | class | count | meaning |
 | --- | --- | --- |
-| `valid` | 129 | accepted by both oracles |
-| `wabt-gap` | 64 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
+| `valid` | 143 | accepted by both oracles |
+| `wabt-gap` | 87 | wabt 1.0.42 is behind the final GC / typed-reference / stack-switching encodings; binaryen accepts |
 | `unsupported` | 17 | neither oracle implements the feature (components, string builtins, `memory.discard`) |
 | `invalid` | 13 | deliberately invalid negative probes (malformed / overflowing bodies) |
 
@@ -507,9 +517,9 @@ conformant form: `instrs 1, undefined_bytes 27`). `REPORT-H7.md` maps each abstr
 `ref.null` s33 immediate in SLEIGH; `E15` now decodes with `instrs 17, undefined_bytes 0`.
 
 The v2.8.1 follow-up preserves concrete heap indices until their func/struct/array/cont family
-can be resolved, and fixes reference-branch argument relocation. Full nominal GC validation
-and heap emulation remain outside the plugin's model; the historical placeholder description
-above should not be read as the current implementation.
+can be resolved, and fixes reference-branch argument relocation. The unreleased follow-up
+adds a nominal type graph, diagnostic stack checks, and GC heap emulation (see 2.3). The
+historical placeholder description above should not be read as the current implementation.
 
 ## 7. References
 

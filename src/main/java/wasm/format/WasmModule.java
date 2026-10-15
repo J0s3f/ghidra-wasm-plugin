@@ -210,7 +210,7 @@ public class WasmModule {
 	// #endregion
 
 	// #region Sections which represent vectors of entries
-	private WasmTypeSection getTypeSection() {
+	public WasmTypeSection getTypeSection() {
 		return (WasmTypeSection) sectionMap.get(WasmSectionId.SEC_TYPE);
 	}
 
@@ -339,6 +339,10 @@ public class WasmModule {
 			return getType(imports.get(funcidx).getFunctionType());
 		}
 		return getType(getFunctionSection().getTypeIdx(funcidx - imports.size()));
+	}
+	public int getFunctionTypeIndex(int funcidx) {
+		List<WasmImportEntry> imports = getImports(WasmExternalKind.EXT_FUNCTION);
+		return funcidx < imports.size() ? imports.get(funcidx).getFunctionType() : getFunctionSection().getTypeIdx(funcidx - imports.size());
 	}
 
 	public WasmCodeEntry getFunctionCode(int funcidx) {

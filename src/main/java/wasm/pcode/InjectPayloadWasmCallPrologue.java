@@ -49,6 +49,7 @@ public class InjectPayloadWasmCallPrologue extends InjectPayloadWasmPop {
 	@Override
 	public PcodeOp[] getPcode(Program program, InjectContext con) {
 		PcodeOpEmitter ops = new PcodeOpEmitter(program.getLanguage(), con.baseAddr);
+		WasmCallerState.emit(program, con, ops, false);
 		emitPops(program, con, ops);
 		emitVarargLoads(program, con, ops);
 		return ops.getPcodeOps();

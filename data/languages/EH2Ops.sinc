@@ -35,17 +35,17 @@ eh_label: ULeb128 is ULeb128 {
 	export ULeb128;
 }
 
-:try_table "blocktype="^ULeb128 "catches="^count is opc=0x1f; ULeb128; count; ctx_case_index=0; ctx_is_directive=0 {
+:try_table "blocktype="^block_type "catches="^count is opc=0x1f; block_type; count; ctx_case_index=0; ctx_is_directive=0 {
 }
 
-:try_table "blocktype="^ULeb128 br_target is opc=0x1f; ULeb128; count; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
+:try_table "blocktype="^block_type br_target is opc=0x1f; block_type; count; br_target; ctx_case_index=1; ctx_operand_size=0; ctx_is_directive=0 {
 	nop();
 	local caught:1 = wasm_exception_caught();
 	if (caught == 0) goto inst_next;
 	goto br_target;
 }
 
-:try_table "blocktype="^ULeb128 br_target is opc=0x1f; ULeb128; count; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
+:try_table "blocktype="^block_type br_target is opc=0x1f; block_type; count; br_target; sp0_32; ctx_case_index=1; ctx_operand_size=4; ctx_is_directive=0 {
 	nop();
 	local caught:1 = wasm_exception_caught();
 	if (caught == 0) goto inst_next;
@@ -53,7 +53,7 @@ eh_label: ULeb128 is ULeb128 {
 	goto br_target;
 }
 
-:try_table "blocktype="^ULeb128 br_target is opc=0x1f; ULeb128; count; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
+:try_table "blocktype="^block_type br_target is opc=0x1f; block_type; count; br_target; sp0_64; ctx_case_index=1; ctx_operand_size=8; ctx_is_directive=0 {
 	nop();
 	local caught:1 = wasm_exception_caught();
 	if (caught == 0) goto inst_next;

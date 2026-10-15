@@ -362,6 +362,13 @@ public class WasmGCType extends WasmFuncType {
 		return kind;
 	}
 
+	@Override public ValType.TypeInfo[] getParamTypeInfo() {
+		WasmFuncType source = signatureSource(); return source == null ? new ValType.TypeInfo[0] : source.getParamTypeInfo();
+	}
+	@Override public ValType.TypeInfo[] getReturnTypeInfo() {
+		WasmFuncType source = signatureSource(); return source == null ? new ValType.TypeInfo[0] : source.getReturnTypeInfo();
+	}
+
 	@Override
 	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
 		if (funcType != null) { funcType.resolveReferenceTypes(resolver); }

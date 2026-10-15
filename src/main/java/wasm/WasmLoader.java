@@ -16,6 +16,8 @@
 package wasm;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -846,9 +848,8 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 			if (length != declared) {
 				Msg.warn(WasmLoader.class, "Memory " + memidx + (mem.is64Bit() ? " (i64 index)" : "")
 						+ " declares " + (declared == Long.MAX_VALUE ? "an unrepresentably large" : "" + declared)
-						+ " byte(s)" + pageNote + " but is mapped to " + length + " byte(s) (the loader's "
-						+ MAX_MEMORY_BLOCK_BYTES + "-byte materialisation bound); accesses beyond the "
-						+ "mapped size are not modelled (see REPORT-HARD.md)");
+						+ " byte(s)" + pageNote + "; eagerly initializing " + length
+						+ " zero bytes. Data segments beyond this prefix are loaded into sparse blocks.");
 			} else if (mem.hasCustomPageSize()) {
 				Msg.info(WasmLoader.class, "Memory " + memidx + (mem.is64Bit() ? " (i64 index)" : "")
 						+ " declares a custom page size of " + pageSize + " byte(s) (2^"
@@ -878,8 +879,50 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 */
 	public static void loadDataToMemory(Program program, WasmModule module, int dataidx, int memidx, long offset, TaskMonitor monitor) throws Exception {
 		WasmDataSegment dataSegment = module.getDataSegments().get(dataidx);
-		Address memStart = getMemoryAddress(program.getAddressFactory(), module, memidx, offset);
-		program.getMemory().setBytes(memStart, dataSegment.getData());
+		WasmResizableLimits limits = getMemoryLimits(module, memidx);
+		if (limits == null) { throw new IOException("Unknown memory " + memidx); }
+		long addressOffset = limits.is64Bit() ? offset : offset & 0xffffffffL;
+		BigInteger start = unsignedLong(addressOffset);
+		BigInteger size = unsignedLong(limits.getInitial()).multiply(BigInteger.valueOf(getMemoryPageSize(limits)));
+		byte[] bytes = dataSegment.getData();
+		if (start.add(BigInteger.valueOf(bytes.length)).compareTo(size) > 0) {
+			throw new IOException("Data segment " + dataidx + " exceeds memory " + memidx + " initial size");
+		}
+		// Only allocate actual segment bytes outside the eager zero prefix. This keeps
+		// a tiny memory64 module sparse while preserving high and overlapping segments.
+		int done = 0;
+		var memory = program.getMemory();
+		while (done < bytes.length) {
+			monitor.checkCancelled();
+			Address address = getMemoryAddress(program.getAddressFactory(), memidx, addressOffset + done, limits.is64Bit());
+			MemoryBlock block = memory.getBlock(address);
+			int count = bytes.length - done;
+			if (block != null) {
+				count = (int) Math.min(count, block.getEnd().subtract(address) + 1);
+				if (!block.isInitialized()) {
+					if (!block.getStart().equals(address)) { memory.split(block, address); block = memory.getBlock(address); }
+					if (block.getSize() > count) { memory.split(block, address.add(count)); }
+					memory.convertToInitialized(block, (byte) 0);
+				}
+				memory.setBytes(address, bytes, done, count);
+			} else {
+				for (MemoryBlock next : memory.getBlocks()) {
+					if (next.getStart().getAddressSpace().equals(address.getAddressSpace()) && next.getStart().compareTo(address) > 0) {
+						long gap = next.getStart().subtract(address);
+						if (gap > 0) { count = (int) Math.min(count, gap); }
+					}
+				}
+				block = memory.createInitializedBlock(".memory" + memidx + ".data." + Long.toUnsignedString(addressOffset + done, 16),
+					address, new ByteArrayInputStream(bytes, done, count), count, monitor, false);
+				block.setRead(true); block.setWrite(false); block.setExecute(false);
+				block.setSourceName("Wasm data segment " + dataidx);
+			}
+			done += count;
+		}
+	}
+
+	public static BigInteger unsignedLong(long value) {
+		return value >= 0 ? BigInteger.valueOf(value) : BigInteger.valueOf(value & Long.MAX_VALUE).setBit(63);
 	}
 
 	private void loadDataSegments(Program program, FileBytes fileBytes, WasmModule module, TaskMonitor monitor) {
@@ -1159,6 +1202,9 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	private void doLoad(ByteProvider provider, Program program, TaskMonitor monitor) throws Exception {
 		BinaryReader reader = new BinaryReader(provider, true);
 		WasmModule module = new WasmModule(reader);
+		for (String diagnostic : new wasm.format.WasmTypeGraph(module).diagnostics()) {
+			Msg.warn(this, "Wasm type validation: " + diagnostic + " (import remains lenient)");
+		}
 
 		validateLocalsBudget(module);
 

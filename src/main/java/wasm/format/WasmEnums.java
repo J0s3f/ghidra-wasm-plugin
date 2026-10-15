@@ -245,9 +245,12 @@ public class WasmEnums {
 			public final ValType type;
 			public final Long heapType;
 			public final int encodedLength;
-			private TypeInfo(ValType type, Long heapType, int encodedLength) {
-				this.type = type; this.heapType = heapType; this.encodedLength = encodedLength;
+			public final boolean nullable;
+			private TypeInfo(ValType type, Long heapType, int encodedLength, boolean nullable) {
+				this.type = type; this.heapType = heapType; this.encodedLength = encodedLength; this.nullable = nullable;
 			}
+			public static TypeInfo reference(long heap, boolean nullable) { return new TypeInfo(forHeapType(heap), heap, 0, nullable); }
+			public static TypeInfo value(ValType type) { return new TypeInfo(type, null, 0, type.ordinal() >= funcref.ordinal()); }
 			public ValType resolve(java.util.function.LongFunction<ValType> resolver) {
 				return heapType == null ? type : resolver.apply(heapType);
 			}
@@ -261,7 +264,7 @@ public class WasmEnums {
 				throw new IOException("Invalid value type byte " + b);
 			}
 			return new TypeInfo(heap == null ? fromByte(b) : forHeapType(heap), heap,
-					(int) (reader.getPointerIndex() - start));
+					(int) (reader.getPointerIndex() - start), b != 0x64 && (heap != null || b >= 0x68 && b <= 0x74));
 		}
 
 		public static ValType readFromReader(BinaryReader reader, java.util.function.LongFunction<ValType> resolver)
@@ -289,6 +292,7 @@ public class WasmEnums {
 			public final ValType type;
 			public final long typeIndex;
 			public final Long heapType;
+			public boolean nullable=true;
 
 			private BlockTypeInfo(ValType type, long typeIndex) {
 				this(type, typeIndex, null);
@@ -304,7 +308,7 @@ public class WasmEnums {
 			int b = reader.readNextUnsignedByte();
 			if (b == 0x63 || b == 0x64) {
 				long heapType = reader.readNext(LEB128Info::signed).asLong();
-				return new BlockTypeInfo(forHeapType(heapType), -1, heapType);
+				BlockTypeInfo info=new BlockTypeInfo(forHeapType(heapType),-1,heapType);info.nullable=b==0x63;return info;
 			}
 			/* Re-encode the first byte and decode the whole immediate as a signed LEB, so a
 			   multi-byte type index is consumed correctly. */

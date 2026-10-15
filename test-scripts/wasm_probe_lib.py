@@ -81,7 +81,7 @@ HT_EXN = 0x69                            # exnref (legacy/new EH)
 
 def functype(params, results) -> bytes:
     """0x60 params results; params/results are lists of single-byte valtypes."""
-    return b"\x60" + vec([bytes([p]) for p in params]) + vec([bytes([r]) for r in results])
+    return b"\x60" + vec([(bytes([p]) if isinstance(p,int) else p) for p in params]) + vec([(bytes([r]) if isinstance(r,int) else r) for r in results])
 
 
 def _heaptype_enc(ht) -> bytes:
@@ -387,7 +387,7 @@ def elem_section(segments) -> bytes:
 def body(code: bytes, locals_=()) -> bytes:
     """locals_: list of (count, valtype) groups."""
     if locals_:
-        inner = vec([uleb(c) + bytes([vt]) for (c, vt) in locals_]) + code
+        inner = vec([uleb(c) + (bytes([vt]) if isinstance(vt, int) else vt) for (c, vt) in locals_]) + code
     else:
         inner = uleb(0) + code
     return uleb(len(inner)) + inner

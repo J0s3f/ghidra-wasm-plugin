@@ -54,6 +54,8 @@ public class WasmLocalEntry implements StructConverter {
 		return count.asLong();
 	}
 
+	public ValType.TypeInfo getTypeInfo() { return typeInfo; }
+
 	public ValType getType() {
 		return type;
 	}

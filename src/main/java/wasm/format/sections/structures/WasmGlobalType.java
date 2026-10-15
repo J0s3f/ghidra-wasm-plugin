@@ -43,6 +43,8 @@ public class WasmGlobalType implements StructConverter {
 	// byte.) GC's own variant of this helper was dropped during the merge in favour of the shared
 	// reader used by every other valtype call site.
 
+	public ValType.TypeInfo getTypeInfo() { return typeInfo; }
+
 	public ValType getType() {
 		return type;
 	}

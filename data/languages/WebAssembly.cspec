@@ -85,4 +85,10 @@
   <callotherfixup targetop="brTableTargetCallOther">
     <pcode dynamic="true"><input name="index"/><output name="target"/></pcode>
   </callotherfixup>
+  <callotherfixup targetop="struct_new">
+    <pcode dynamic="true"><input name="type"/><input name="operands"/><output name="reference"/></pcode>
+  </callotherfixup>
+  <callotherfixup targetop="array_new_fixed">
+    <pcode dynamic="true"><input name="type"/><input name="count"/><input name="operands"/><output name="reference"/></pcode>
+  </callotherfixup>
 </compiler_spec>

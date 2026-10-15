@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
@@ -46,7 +45,6 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.Parameter;
-import ghidra.program.model.listing.ParameterImpl;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.Reference;
@@ -56,53 +54,15 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * Call-graph-aware struct synthesis for WebAssembly linear-memory pointers.
- * <p>
- * Wasm parameters that carry a linear-memory address arrive as plain
- * {@code undefined4} (i32) values. The decompiler then shows every field
- * access as {@code *(int *)(param + 0xNN)}, which is the 591-access gap
- * measured by {@code type_recovery_metric.py} on the real module. This
- * analyzer exploits wasm's static structure to recover the pointee types:
- * <ol>
- *   <li><b>Collect accesses</b> – for every function, simulate the operand
- *       stack to find constant-offset {@code i32.load}/{@code i32.store}
- *       (and i64 / f32 / f64 / sub-word variants) whose base address is a
- *       plain {@code local.get N} or {@code local.get N; i32.const K; i32.add}.
- *       Record {@code (funcIdx, localIdx, offset, width)}.</li>
- *   <li><b>Pointer identity via the call graph</b> – for every direct
- *       {@code call F}, link the caller's argument source (when pushed as a
- *       plain {@code local.get N}) to the callee's parameter index. Union-find
- *       merges the linked {@code (funcIdx, localIdx)} nodes into pointer
- *       classes.</li>
- *   <li><b>Synthesize</b> – for every class with accesses at &ge; 2 distinct
- *       offsets, create a Ghidra {@link Structure} (named
- *       {@code wasm_struct_<n>}) with fields at the observed offsets/widths
- *       (gaps filled with {@code undefined1[n]}), then retype the member
- *       functions' <b>parameters</b> to {@code PointerDataType(struct)}.
- *       Never clobbers a non-undefined existing type.</li>
- * </ol>
- * <h3>Coverage / limits (v1)</h3>
- * <ul>
- *   <li>Only <b>direct</b> {@code call} instructions are followed.
- *       {@code call_indirect} is skipped (documented).</li>
- *   <li>Arguments pushed as {@code local.get N; i32.const K; i32.add} are
- *       <b>skipped</b> (the delta is not propagated through the call graph).</li>
- *   <li>Accesses whose base is a computed address (not a plain local) are
- *       skipped.</li>
- *   <li>Only <b>parameters</b> are retyped in v1; non-parameter locals are
- *       left as-is (documented).</li>
- *   <li>Structures are capped at {@value #MAX_FIELDS} fields; classes with
- *       more are skipped.</li>
- *   <li>The stack simulation is linear (no control-flow merge); on any
- *       unrecognised instruction the simulated stack is cleared, which is
- *       conservative (misses accesses but never produces wrong ones).</li>
- * </ul>
+ * Recovers conservative structure views from constant-offset linear-memory accesses.
+ * Weighted call constraints preserve interior pointers; inconsistent alias cycles are
+ * discarded. Unknown control flow and indirect targets intentionally stop inference.
  */
 public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 	private static final String NAME = "Wasm Struct Synthesis Analyzer";
 	private static final String DESCRIPTION =
 		"Synthesize Ghidra structures from constant-offset memory accesses " +
-		"through wasm pointer parameters, linked via the call graph.";
+		"through wasm pointers, linked via weighted call constraints.";
 
 	/** Maximum number of fields in a synthesized structure. */
 	private static final int MAX_FIELDS = 64;
@@ -129,15 +89,15 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 
 		static StackValue local(int idx) { return new StackValue(ValueKind.LOCAL, idx, 0, null); }
 		static StackValue constant(long v) { return new StackValue(ValueKind.CONST, -1, v, null); }
-		static StackValue global(int idx) { return new StackValue(ValueKind.GLOBAL, idx, 0, null); }
+		static StackValue global(int idx) { return new StackValue(ValueKind.GLOBAL, -idx-1, 0, null); }
 		static StackValue unknown() { return new StackValue(ValueKind.UNKNOWN, -1, 0, null); }
 
 		static StackValue add(StackValue a, StackValue b) {
 			// local + const  or  const + local
-			if (a.kind == ValueKind.LOCAL && b.kind == ValueKind.CONST) {
+			if ((a.kind == ValueKind.LOCAL || a.kind == ValueKind.GLOBAL) && b.kind == ValueKind.CONST) {
 				return new StackValue(ValueKind.ADD, a.localIndex, b.constValue, a);
 			}
-			if (a.kind == ValueKind.CONST && b.kind == ValueKind.LOCAL) {
+			if (a.kind == ValueKind.CONST && (b.kind == ValueKind.LOCAL || b.kind == ValueKind.GLOBAL)) {
 				return new StackValue(ValueKind.ADD, b.localIndex, a.constValue, b);
 			}
 			// add(base, delta) + const  or  const + add(base, delta)
@@ -150,12 +110,13 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			return unknown();
 		}
 
-		/** Resolve to (localIndex, totalDelta) if this is a LOCAL or ADD-of-LOCAL, else null. */
+		/** Resolve a local or global pointer plus a representable constant displacement. */
 		int[] resolveLocal() {
-			if (kind == ValueKind.LOCAL) {
+			if (kind == ValueKind.LOCAL || kind == ValueKind.GLOBAL) {
 				return new int[] { localIndex, 0 };
 			}
-			if (kind == ValueKind.ADD && base != null && base.kind == ValueKind.LOCAL) {
+			if (kind == ValueKind.ADD && base != null && (base.kind == ValueKind.LOCAL || base.kind == ValueKind.GLOBAL)) {
+				if(constValue<Integer.MIN_VALUE || constValue>Integer.MAX_VALUE) return null;
 				return new int[] { localIndex, (int) constValue };
 			}
 			return null;
@@ -169,11 +130,15 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		final int localIndex;
 		final int offset;
 		final int width;
+		final DataType type;
+		final int memory;
 
-		AccessRecord(int localIndex, int offset, int width) {
+		AccessRecord(int localIndex, int offset, int width, DataType type, int memory) {
 			this.localIndex = localIndex;
 			this.offset = offset;
 			this.width = width;
+			this.type = type;
+			this.memory = memory;
 		}
 	}
 
@@ -183,97 +148,47 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		final int callerLocalIdx;
 		final int calleeFuncIdx;
 		final int calleeParamIdx;
+		final int delta;
 
-		CallLink(int callerFuncIdx, int callerLocalIdx, int calleeFuncIdx, int calleeParamIdx) {
+		CallLink(int callerFuncIdx, int callerLocalIdx, int calleeFuncIdx, int calleeParamIdx, int delta) {
 			this.callerFuncIdx = callerFuncIdx;
 			this.callerLocalIdx = callerLocalIdx;
 			this.calleeFuncIdx = calleeFuncIdx;
 			this.calleeParamIdx = calleeParamIdx;
+			this.delta = delta;
 		}
 	}
 
 	/* ---------- union-find ---------- */
 
 	private static final class UnionFind {
-		private final Map<Long, Long> parent = new HashMap<>();
-
-		private static long key(int funcIdx, int localIdx) {
-			return ((long) funcIdx << 32) | (localIdx & 0xFFFFFFFFL);
-		}
-
-		void add(int funcIdx, int localIdx) {
-			parent.putIfAbsent(key(funcIdx, localIdx), key(funcIdx, localIdx));
-		}
-
-		int find(int funcIdx, int localIdx) {
-			long k = key(funcIdx, localIdx);
-			long p = parent.getOrDefault(k, k);
-			if (p == k) {
-				return localIdx; // not tracked, return self
+		private final Map<Long, Long> parent = new HashMap<>(), weights = new HashMap<>();
+		private final Set<Long> inconsistent = new HashSet<>();
+		private static long key(int f, int l) { return ((long) (l<0?-1:f) << 32) | (l & 0xffffffffL); }
+		void add(int f, int l) { long k=key(f,l); parent.putIfAbsent(k,k); weights.putIfAbsent(k,0L); }
+		private long findRoot(long key) {
+			long root=key,total=0;
+			while(parent.getOrDefault(root,root)!=root) {
+				total=Math.addExact(total,weights.get(root));root=parent.get(root);
 			}
-			// path compression
-			long root = p;
-			while (true) {
-				long next = parent.getOrDefault(root, root);
-				if (next == root) break;
-				root = next;
-			}
-			parent.put(k, root);
-			return (int) (root & 0xFFFFFFFFL);
-		}
-
-		int findFunc(int funcIdx, int localIdx) {
-			long k = key(funcIdx, localIdx);
-			long p = parent.getOrDefault(k, k);
-			if (p == k) return funcIdx;
-			long root = p;
-			while (true) {
-				long next = parent.getOrDefault(root, root);
-				if (next == root) break;
-				root = next;
-			}
-			parent.put(k, root);
-			return (int) (root >>> 32);
-		}
-
-		void union(int f1, int l1, int f2, int l2) {
-			long k1 = key(f1, l1);
-			long k2 = key(f2, l2);
-			parent.putIfAbsent(k1, k1);
-			parent.putIfAbsent(k2, k2);
-			long r1 = findRoot(k1);
-			long r2 = findRoot(k2);
-			if (r1 != r2) {
-				// deterministic: smaller key becomes parent
-				if (r1 < r2) {
-					parent.put(r2, r1);
-				} else {
-					parent.put(r1, r2);
-				}
-			}
-		}
-
-		private long findRoot(long k) {
-			long root = k;
-			while (true) {
-				long next = parent.getOrDefault(root, root);
-				if (next == root) break;
-				root = next;
-			}
-			// path compression
-			while (k != root) {
-				long next = parent.getOrDefault(k, k);
-				parent.put(k, root);
-				k = next;
+			while(key!=root) {
+				long next=parent.get(key),edge=weights.get(key);
+				parent.put(key,root);weights.put(key,total);
+				total=Math.subtractExact(total,edge);key=next;
 			}
 			return root;
 		}
 
-		/** Get the root key for a node. */
-		long rootKey(int funcIdx, int localIdx) {
-			long k = key(funcIdx, localIdx);
-			if (!parent.containsKey(k)) return k;
-			return findRoot(k);
+		long rootKey(int f,int l) { add(f,l); return findRoot(key(f,l)); }
+		long displacement(int f,int l) { rootKey(f,l); return weights.get(key(f,l)); }
+		boolean valid(long root) { return !inconsistent.contains(root); }
+		// Address(callee) = address(caller) + delta.
+		void union(int f1,int l1,int f2,int l2,long delta) {
+			long r1=rootKey(f1,l1),w1=displacement(f1,l1),r2=rootKey(f2,l2),w2=displacement(f2,l2);
+			long shift=Math.subtractExact(Math.addExact(w1,delta),w2);
+			if(r1==r2) { if(shift!=0) inconsistent.add(r1); return; }
+			parent.put(r2,r1); weights.put(r2,shift);
+			if(inconsistent.contains(r2)) inconsistent.add(r1);
 		}
 	}
 
@@ -310,6 +225,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		long startTime = System.currentTimeMillis();
 
 		WasmAnalysis state = WasmAnalysis.getState(program);
+		boolean mutableTables=tableMayChange(program);
 		List<WasmFuncSignature> signatures = state.getFunctions();
 
 		monitor.setMessage("Wasm struct synthesis: collecting accesses");
@@ -326,7 +242,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 
 			FuncAccesses fa = new FuncAccesses(sig.getFuncIdx());
 			try {
-				simulateFunction(program, state, func, sig, fa);
+				simulateFunction(program, state, func, sig, fa, mutableTables);
 			} catch (Exception e) {
 				Msg.debug(this, "Stack simulation failed for " + sig.getName() + ": " + e.getMessage());
 			}
@@ -358,7 +274,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		for (FuncAccesses fa : funcAccessesMap.values()) {
 			for (CallLink link : fa.callLinks) {
 				uf.union(link.callerFuncIdx, link.callerLocalIdx,
-						link.calleeFuncIdx, link.calleeParamIdx);
+						link.calleeFuncIdx, link.calleeParamIdx, link.delta);
 			}
 		}
 
@@ -367,6 +283,8 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 
 		// Map: rootKey -> set of (offset, width) pairs
 		Map<Long, TreeMap<Integer, Integer>> rootAccesses = new HashMap<>();
+		Map<Long, Map<Integer, DataType>> rootTypes = new HashMap<>();
+		Map<Long, Set<Integer>> rootMemories = new HashMap<>();
 		// Map: rootKey -> set of member nodes (funcIdx, localIdx)
 		Map<Long, Set<Long>> rootMembers = new HashMap<>();
 
@@ -376,7 +294,13 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 				rootAccesses.computeIfAbsent(root, k -> new TreeMap<>());
 				TreeMap<Integer, Integer> offsets = rootAccesses.get(root);
 				// Keep the max width for each offset
-				offsets.merge(acc.offset, acc.width, Math::max);
+				long position = Math.addExact(uf.displacement(fa.funcIdx, acc.localIndex), acc.offset);
+				if (position < Integer.MIN_VALUE || position > Integer.MAX_VALUE) continue;
+				int offset=(int) position;
+				offsets.merge(offset, acc.width, Math::max);
+				rootTypes.computeIfAbsent(root,k->new HashMap<>()).merge(offset, acc.type,
+					(a,b)->a.isEquivalent(b)?a:getFieldType(Math.max(a.getLength(),b.getLength())));
+				rootMemories.computeIfAbsent(root,k->new HashSet<>()).add(acc.memory);
 
 				rootMembers.computeIfAbsent(root, k -> new HashSet<>());
 				rootMembers.get(root).add(UnionFind.key(fa.funcIdx, acc.localIndex));
@@ -406,6 +330,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		for (long root : sortedRoots) {
 			monitor.checkCancelled();
 			TreeMap<Integer, Integer> offsets = rootAccesses.get(root);
+			if (!uf.valid(root) || rootMemories.get(root).size()!=1) continue;
 			if (offsets.size() < MIN_OFFSETS) continue;
 			if (offsets.size() > MAX_FIELDS) {
 				Msg.debug(this, "Skipping struct with " + offsets.size() + " fields (cap=" + MAX_FIELDS + ")");
@@ -414,7 +339,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 
 			// Create the structure
 			String structName = "wasm_struct_" + structCount;
-			Structure struct = createStructure(program, structName, offsets);
+			Structure struct = createStructure(program, structName, offsets, rootTypes.get(root));
 			if (struct == null) continue;
 
 			structNames.add(structName);
@@ -433,15 +358,42 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 				int funcIdx = (int) (memberKey >>> 32);
 				int localIdx = (int) (memberKey & 0xFFFFFFFFL);
 
+				if(funcIdx==-1) {
+					int global=-localIdx-1;
+					var address=wasm.WasmLoader.getGlobalAddress(program.getAddressFactory(),global);
+					var data=program.getListing().getDataAt(address);
+					if(data!=null && Undefined.isUndefined(data.getDataType()) && (data.getLength()==4 || data.getLength()==8)) {
+						var pointer=new PointerDataType(struct,data.getLength(),program.getDataTypeManager());
+						program.getListing().clearCodeUnits(address,address.add(data.getLength()-1),false);
+						try {program.getListing().createData(address,pointer);retypeCount++;}
+						catch(ghidra.program.model.util.CodeUnitInsertionException e) {Msg.debug(this,"Could not retype global",e);}
+					}
+					continue;
+				}
 				WasmFuncSignature sig = signatures.get(funcIdx);
 				if (sig.isImport()) continue;
-				if (localIdx >= sig.getParams().length) continue; // not a parameter
+				if(localIdx>=sig.getLocals().length) continue;
 
 				Function func = program.getListing().getFunctionAt(sig.getStartAddr());
 				if (func == null) continue;
 
 				try {
-					if (retypeParameter(func, localIdx, struct)) {
+					long displacement=uf.displacement(funcIdx,localIdx);
+					Structure view=struct;
+					if(displacement!=0) {
+						TreeMap<Integer,Integer> shifted=new TreeMap<>();
+						Map<Integer,DataType> shiftedTypes=new HashMap<>();
+						for(var field:offsets.entrySet()) {
+							long offset=field.getKey()-displacement;
+							if(offset>=0 && offset<=Integer.MAX_VALUE) {
+								shifted.put((int)offset,field.getValue());
+								shiftedTypes.put((int)offset,rootTypes.get(root).get(field.getKey()));
+							}
+						}
+						if(shifted.size()<MIN_OFFSETS) continue;
+						view=createStructure(program,structName+"_view_"+Long.toHexString(memberKey),shifted,shiftedTypes);
+					}
+					if (view!=null && retypeLocal(func, sig, localIdx, view)) {
 						retypeCount++;
 					}
 				} catch (Exception e) {
@@ -463,10 +415,9 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 	/* ---------- stack simulation ---------- */
 
 	private void simulateFunction(Program program, WasmAnalysis state, Function func,
-			WasmFuncSignature sig, FuncAccesses fa) {
+			WasmFuncSignature sig, FuncAccesses fa, boolean mutableTables) {
 		InstructionIterator iter = program.getListing().getInstructions(func.getBody(), true);
 		List<StackValue> stack = new ArrayList<>();
-		long baseLocalOffset = getBaseLocalOffset(program);
 
 		while (iter.hasNext()) {
 			Instruction instr = iter.next();
@@ -475,7 +426,7 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			try {
 				switch (mnemonic) {
 					case "local.get": {
-						int localIdx = getLocalIndexFromInstr(instr, baseLocalOffset);
+						int localIdx = (int)readIndex(instr,1);
 						if (localIdx >= 0) {
 							stack.add(StackValue.local(localIdx));
 						} else {
@@ -485,13 +436,17 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 					}
 					case "local.set":
 					case "local.tee": {
-						if (!stack.isEmpty()) stack.remove(stack.size() - 1);
-						if (mnemonic.equals("local.tee")) {
-							// local.tee pushes the same value back; we don't know what it is
-							stack.add(StackValue.unknown());
-						}
+						StackValue value=stack.isEmpty()?StackValue.unknown():stack.remove(stack.size()-1);
+						int index=(int)readIndex(instr,1);
+						int[] source=value.resolveLocal();
+						if(source!=null) fa.callLinks.add(new CallLink(sig.getFuncIdx(),source[0],sig.getFuncIdx(),index,source[1]));
+						if(mnemonic.equals("local.tee")) stack.add(StackValue.local(index));
 						break;
 					}
+					case "v128.const":
+					case "f32.const":
+					case "f64.const":
+						stack.add(StackValue.unknown());break;
 					case "i32.const":
 					case "i64.const": {
 						long val = getConstValue(instr);
@@ -510,9 +465,10 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 						break;
 					}
 					case "global.get": {
-						stack.add(StackValue.unknown()); // skip global-based accesses in v1
+						stack.add(StackValue.global((int)readIndex(instr,1)));
 						break;
 					}
+					case "global.set":
 					case "drop": {
 						if (!stack.isEmpty()) stack.remove(stack.size() - 1);
 						break;
@@ -522,10 +478,15 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 						break;
 					}
 					case "call_indirect": {
-						// Skip call_indirect in v1: pop the table index and clear args conservatively
-						if (!stack.isEmpty()) stack.remove(stack.size() - 1); // pop table index
-						stack.clear();
-						stack.add(StackValue.unknown()); // return value (approximate)
+						StackValue index=stack.isEmpty()?StackValue.unknown():stack.remove(stack.size()-1);
+						long table=readIndex(instr,2);
+						WasmFuncSignature target=null;
+						if(index.kind==ValueKind.CONST && index.constValue>=0 && !mutableTables) {
+							long address=Integer.toUnsignedLong(program.getMemory().getInt(wasm.WasmLoader.getTableAddress(program.getAddressFactory(),(int)table,index.constValue)));
+							target=state.getFunctionByAddress(program.getAddressFactory().getDefaultAddressSpace().getAddress(address));
+						}
+						if(target!=null && new wasm.format.WasmTypeGraph(state.getModule()).isHeapSubtype(state.getModule().getFunctionTypeIndex(target.getFuncIdx()),readIndex(instr,1))) linkArguments(sig,target,stack,fa);
+						else stack.clear();
 						break;
 					}
 					default:
@@ -558,15 +519,21 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			stack.clear();
 			return;
 		}
-		int offset = (int) offsetScalar.getUnsignedValue();
+		long rawOffset=offsetScalar.getUnsignedValue();
+		if(rawOffset<0 || rawOffset>Integer.MAX_VALUE) {stack.clear();return;}
+		int offset = (int) rawOffset;
 		boolean isStore = mnemonic.contains(".store");
+		if(!isStore && mnemonic.endsWith("_lane")) {
+			if(stack.isEmpty()) return;
+			stack.remove(stack.size()-1); // lane loads consume the old vector too
+		}
 
 		if (isStore) {
 			// store: pop value, pop address
 			if (stack.size() >= 2) {
 				stack.remove(stack.size() - 1); // value
 				StackValue addr = stack.remove(stack.size() - 1);
-				recordAccess(addr, offset, width, fa);
+				recordAccess(addr, offset, width, accessType(mnemonic,width), memoryIndex(instr), fa);
 			} else {
 				stack.clear();
 			}
@@ -574,19 +541,20 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			// load: pop address, push result
 			if (!stack.isEmpty()) {
 				StackValue addr = stack.remove(stack.size() - 1);
-				recordAccess(addr, offset, width, fa);
+				recordAccess(addr, offset, width, accessType(mnemonic,width), memoryIndex(instr), fa);
 			}
 			stack.add(StackValue.unknown()); // loaded value
 		}
 	}
 
-	private void recordAccess(StackValue addr, int memOffset, int width, FuncAccesses fa) {
+	private void recordAccess(StackValue addr, int memOffset, int width, DataType type, int memory, FuncAccesses fa) {
 		int[] resolved = addr.resolveLocal();
 		if (resolved == null) return; // not a plain local
 		int localIdx = resolved[0];
 		int delta = resolved[1];
-		int effectiveOffset = memOffset + delta;
-		fa.accesses.add(new AccessRecord(localIdx, effectiveOffset, width));
+		long effectiveOffset = (long)memOffset + delta;
+		if(effectiveOffset<0 || effectiveOffset+width>Integer.MAX_VALUE) return;
+		fa.accesses.add(new AccessRecord(localIdx, (int)effectiveOffset, width, type, memory));
 	}
 
 	private void handleCall(Program program, WasmAnalysis state, WasmFuncSignature callerSig,
@@ -610,6 +578,10 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			return;
 		}
 
+		linkArguments(callerSig,calleeSig,stack,fa);
+	}
+	private void linkArguments(WasmFuncSignature callerSig,WasmFuncSignature calleeSig,List<StackValue> stack,FuncAccesses fa) {
+
 		int numParams = calleeSig.getParams().length;
 		int numReturns = calleeSig.getReturns().length;
 
@@ -622,13 +594,13 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			// Record links: arg[i] -> callee param i
 			for (int i = 0; i < numParams; i++) {
 				int[] resolved = args[i].resolveLocal();
-				if (resolved == null) continue; // skip non-local args (including Add with delta)
+				if (resolved == null) continue; // skip non-local/global sources
 				int callerLocal = resolved[0];
 				int delta = resolved[1];
-				if (delta != 0) continue; // skip delta'd args in v1 (documented)
+
 				fa.callLinks.add(new CallLink(
 					callerSig.getFuncIdx(), callerLocal,
-					calleeSig.getFuncIdx(), i));
+					calleeSig.getFuncIdx(), i, delta));
 			}
 		} else {
 			stack.clear();
@@ -648,35 +620,6 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		Register l0_4 = program.getRegister("l0");
 		if (l0_4 != null) return l0_4.getOffset();
 		return 0x10000000L; // fallback to SLEIGH default
-	}
-
-	private static int getLocalIndexFromInstr(Instruction instr, long baseLocalOffset) {
-		for (Object obj : instr.getInputObjects()) {
-			if (obj instanceof Register) {
-				Register reg = (Register) obj;
-				long offset = reg.getOffset();
-				long localIndex = (offset - baseLocalOffset) / 16;
-				if (localIndex >= 0 && localIndex < 4096) {
-					return (int) localIndex;
-				}
-			}
-		}
-		// Fallback: try to parse the operand display string
-		String repr = instr.toString();
-		// e.g. "local.get l0" or "local.get 0"
-		int spaceIdx = repr.indexOf(' ');
-		if (spaceIdx >= 0) {
-			String operand = repr.substring(spaceIdx + 1).trim();
-			if (operand.startsWith("l") && !operand.endsWith("q")) {
-				try {
-					return Integer.parseInt(operand.substring(1));
-				} catch (NumberFormatException e) { /* fall through */ }
-			}
-			try {
-				return Integer.parseInt(operand);
-			} catch (NumberFormatException e) { /* fall through */ }
-		}
-		return -1;
 	}
 
 	private static long getConstValue(Instruction instr) {
@@ -727,11 +670,12 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			return 8;
 		}
 		if (mnemonic.startsWith("v128.load") || mnemonic.startsWith("v128.store")) {
+			if(mnemonic.contains("8x8") || mnemonic.contains("16x4") || mnemonic.contains("32x2")) return 8;
+			if(mnemonic.contains("8_")) return 1;
+			if(mnemonic.contains("16_")) return 2;
+			if(mnemonic.contains("32_")) return 4;
+			if(mnemonic.contains("64_")) return 8;
 			return 16;
-		}
-		// SIMD lane loads/stores - skip in v1 (complex)
-		if (mnemonic.startsWith("v128.") && (mnemonic.contains("lane") || mnemonic.contains("splat") || mnemonic.contains("zero"))) {
-			return 0; // skip
 		}
 		// Atomic loads/stores - treat like their base width
 		if (mnemonic.contains("atomic")) {
@@ -746,9 +690,53 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		return 0;
 	}
 
+	private static long readIndex(Instruction instruction,int which) {
+		try {
+			var reader=new ghidra.app.util.bin.BinaryReader(new ghidra.app.util.bin.ByteArrayProvider(instruction.getBytes()),true);
+			reader.readNextByte();long value=0;
+			for(int i=0;i<which;i++) value=reader.readNext(ghidra.program.model.data.LEB128::unsigned);
+			return value;
+		} catch(Exception e) {throw new IllegalArgumentException(e);}
+	}
+	private static boolean tableMayChange(Program program) {
+		for(var ins:program.getListing().getInstructions(true)) {
+			String op=ins.getMnemonicString();
+			if(op.startsWith("table.") && !op.equals("table.get") && !op.equals("table.size")) return true;
+		}
+		var module=WasmAnalysis.getState(program).getModule();
+		return !module.getImports(wasm.format.WasmEnums.WasmExternalKind.EXT_TABLE).isEmpty() || !module.getExports(wasm.format.WasmEnums.WasmExternalKind.EXT_TABLE).isEmpty();
+	}
+	private boolean retypeLocal(Function function,WasmFuncSignature signature,int index,Structure structure) throws Exception {
+		if(index<signature.getParams().length) return retypeParameter(function,index,structure);
+		int size=signature.getLocals()[index].getSize();
+		if(size!=4 && size!=8) return false;
+		long offset=getBaseLocalOffset(function.getProgram())+index*16L;
+		for(var variable:function.getLocalVariables()) if(variable.isRegisterVariable() && variable.getRegister().getOffset()==offset) {
+			if(!Undefined.isUndefined(variable.getDataType())) return false;
+			variable.setDataType(new PointerDataType(structure,size,function.getProgram().getDataTypeManager()),SourceType.ANALYSIS);return true;
+		}
+		var register=function.getProgram().getLanguage().getRegister(function.getProgram().getAddressFactory().getRegisterSpace().getAddress(offset),size);
+		if(register==null) return false;
+		function.addLocalVariable(new ghidra.program.model.listing.LocalVariableImpl("local_"+index,0,
+			new PointerDataType(structure,size,function.getProgram().getDataTypeManager()),register,function.getProgram()),SourceType.ANALYSIS);
+		return true;
+	}
+
+	private static int memoryIndex(Instruction instruction) {
+		var value=instruction.getProgram().getProgramContext().getValue(instruction.getProgram().getRegister("ctx_case_index"),instruction.getAddress(),false);
+		return value==null?0:value.intValue();
+	}
+	private static DataType accessType(String mnemonic,int width) {
+		DataType type=WasmStackVariableAnalyzer.getMemoryDataType(mnemonic);
+		return type.getLength()==width?type:getFieldType(width);
+	}
+
 	/* ---------- struct synthesis ---------- */
 
 	private Structure createStructure(Program program, String name, TreeMap<Integer, Integer> offsets) {
+		return createStructure(program,name,offsets,Map.of());
+	}
+	private Structure createStructure(Program program, String name, TreeMap<Integer, Integer> offsets, Map<Integer,DataType> types) {
 		DataTypeManager dtm = program.getDataTypeManager();
 		CategoryPath category = new CategoryPath("/wasm");
 
@@ -789,7 +777,8 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			}
 
 			// Add field
-			DataType fieldType = getFieldType(width);
+			DataType fieldType=types.getOrDefault(offset,getFieldType(width));
+			if(fieldType.getLength()!=width || offsets.subMap(offset,false,offset+width,false).size()>0) fieldType=getFieldType(width);
 			String fieldName = "field_" + offset;
 			struct.add(fieldType, fieldName, null);
 			fieldCount++;
@@ -842,25 +831,16 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 		// Don't retype if already a pointer to a struct
 		if (currentType instanceof PointerDataType) {
 			DataType targetType = ((PointerDataType) currentType).getDataType();
+			if(param.getSource()==SourceType.USER_DEFINED || targetType!=null && !Undefined.isUndefined(targetType) && targetType!=ghidra.program.model.data.DefaultDataType.DEFAULT) return false;
 			if (targetType instanceof Structure) {
 				return false; // already a struct pointer
 			}
 		}
 
-		PointerDataType ptrType = new PointerDataType(struct);
+		PointerDataType ptrType = new PointerDataType(struct, currentType.getLength(), func.getProgram().getDataTypeManager());
 
-		// Build new parameter list
-		List<Parameter> newParams = new ArrayList<>();
-		for (int i = 0; i < params.length; i++) {
-			if (i == paramIndex) {
-				newParams.add(new ParameterImpl(params[i].getName(), ptrType, func.getProgram()));
-			} else {
-				newParams.add(new ParameterImpl(params[i].getName(), params[i].getDataType(), func.getProgram()));
-			}
-		}
+		param.setDataType(ptrType, SourceType.ANALYSIS);
 
-		func.replaceParameters(newParams,
-			Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, true, SourceType.ANALYSIS);
 		return true;
 	}
 }

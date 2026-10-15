@@ -1481,6 +1481,302 @@
       "decompile_failed": 0,
       "import_ok": true
     },
+    "RC01_sparse32.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC02_sparse64.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC03_sparse_overlap.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC04_sparse32_upper.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC10_reanalysis.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC11_inline.wasm": {
+      "funcs": 2,
+      "instrs": 19,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC12_inline_nested.wasm": {
+      "funcs": 3,
+      "instrs": 22,
+      "undefined_bytes": 0,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC20_struct_mixed.wasm": {
+      "funcs": 1,
+      "instrs": 29,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC21_struct_empty.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC22_array_wide.wasm": {
+      "funcs": 1,
+      "instrs": 20,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC23_array_vector.wasm": {
+      "funcs": 1,
+      "instrs": 20,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC24_array_fixed.wasm": {
+      "funcs": 1,
+      "instrs": 19,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC25_array_fill_copy.wasm": {
+      "funcs": 1,
+      "instrs": 24,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC27_cast_null.wasm": {
+      "funcs": 1,
+      "instrs": 14,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC28_cast_subtypes.wasm": {
+      "funcs": 1,
+      "instrs": 19,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC29_i31.wasm": {
+      "funcs": 1,
+      "instrs": 20,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC30_extern_roundtrip.wasm": {
+      "funcs": 1,
+      "instrs": 15,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC31_gc_global.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC32_array_data.wasm": {
+      "funcs": 1,
+      "instrs": 28,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC33_array_elem.wasm": {
+      "funcs": 2,
+      "instrs": 26,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC34_nominal_call.wasm": {
+      "funcs": 2,
+      "instrs": 10,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC35_recursive_cast.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC36_cast_branches.wasm": {
+      "funcs": 1,
+      "instrs": 18,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC40_named_types.wasm": {
+      "funcs": 1,
+      "instrs": 19,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC50_interior_struct.wasm": {
+      "funcs": 3,
+      "instrs": 19,
+      "undefined_bytes": 0,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC51_simd_struct.wasm": {
+      "funcs": 2,
+      "instrs": 14,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC52_global_struct.wasm": {
+      "funcs": 1,
+      "instrs": 9,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC53_local_struct.wasm": {
+      "funcs": 1,
+      "instrs": 12,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC54_indirect_struct.wasm": {
+      "funcs": 3,
+      "instrs": 18,
+      "undefined_bytes": 0,
+      "decompiled": 3,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC55_wide_struct.wasm": {
+      "funcs": 2,
+      "instrs": 13,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC56_memory_separation.wasm": {
+      "funcs": 2,
+      "instrs": 13,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC60_null_struct.wasm": {
+      "funcs": 1,
+      "instrs": 4,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC61_null_cast.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC62_wrong_cast.wasm": {
+      "funcs": 1,
+      "instrs": 7,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC63_array_bounds.wasm": {
+      "funcs": 1,
+      "instrs": 6,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC64_dropped_data.wasm": {
+      "funcs": 1,
+      "instrs": 8,
+      "undefined_bytes": 0,
+      "decompiled": 1,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
+    "RC65_copy_atomic.wasm": {
+      "funcs": 2,
+      "instrs": 14,
+      "undefined_bytes": 0,
+      "decompiled": 2,
+      "decompile_failed": 0,
+      "import_ok": true
+    },
     "RN01_refnull_exn.wasm": {
       "funcs": 1,
       "instrs": 3,
@@ -1794,7 +2090,7 @@
       "import_ok": false
     }
   },
-  "probe_count": 223,
+  "probe_count": 260,
   "fixture": {
     "wasm": "test-scripts/fixtures/wasm_fixture.wasm",
     "summary": "functions=4 decompiled=4 failed=0 instructions=24",

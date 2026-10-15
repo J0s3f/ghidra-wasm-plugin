@@ -325,10 +325,11 @@ public class RegressionTest {
       var fields=row.split("\t");numericExpected.put(Integer.parseInt(fields[0]),new BigInteger(fields[1]));
     }
     int failures=0;
+    try {ReleasedCoreRegressionTest.invalid(Path.of(args[0]).getParent());} catch(Throwable e) {failures++;e.printStackTrace(System.out);}
     for (String arg:args) {
       System.out.println("REVIEW FILE "+arg);
       ProgramDB p=null;
-      try {p=load(Path.of(arg));inspect(p);emulate(p);PatchRegressionTest.run(p);} catch(Throwable e) {failures++;e.printStackTrace(System.out);} finally {if(p!=null)p.release(owner);}
+      try {p=load(Path.of(arg));inspect(p);emulate(p);PatchRegressionTest.run(p);ReleasedCoreRegressionTest.run(p);} catch(Throwable e) {failures++;e.printStackTrace(System.out);} finally {if(p!=null)p.release(owner);}
     }
     System.out.println("Assertions: "+assertions+"; failed fixtures: "+failures);
     System.exit(failures==0?0:1);

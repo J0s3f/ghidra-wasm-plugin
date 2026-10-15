@@ -81,6 +81,19 @@ public class WasmAnalysis {
 	private List<WasmFuncSignature> functions = null;
 	private Map<Address, WasmFuncSignature> functionsByAddress = new HashMap<>();
 	private Map<Address, WasmFunctionAnalysis> functionAnalyses = new HashMap<>();
+	private final Map<Address, Long> callerSaveOffsets = new HashMap<>();
+	private long nextCallerSaveOffset = 0x10000000L;
+
+	/** Reserve disjoint unique varnodes above compiler-generated scratch, within this language's u32 unique space. */
+	public synchronized long getCallerSaveOffset(Address site, long bytes) {
+		Long existing = callerSaveOffsets.get(site);
+		if (existing != null) { return existing; }
+		if (bytes > 0x100000000L - nextCallerSaveOffset) { throw new IllegalStateException("Inline caller-save space exhausted"); }
+		long offset = nextCallerSaveOffset;
+		nextCallerSaveOffset += Math.max(bytes, 16);
+		callerSaveOffsets.put(site, offset);
+		return offset;
+	}
 
 	public WasmAnalysis(AddressFactory addressFactory, WasmModule module) {
 		this.module = module;

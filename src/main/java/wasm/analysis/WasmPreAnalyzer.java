@@ -175,11 +175,6 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 		});
 		disassembler.setRepeatPatternLimit(-1);
 
-		/*
-		 * TODO: Support reanalyzing changed functions, to handle patches and
-		 * significant function changes.
-		 * TODO: Support reanalyzing to change C stack pointer
-		 */
 		for (Function function : program.getListing().getFunctions(set, true)) {
 			if (monitor.isCancelled()) {
 				break;
@@ -199,10 +194,11 @@ public class WasmPreAnalyzer extends AbstractAnalyzer {
 			}
 
 			try {
-				funcAnalysis.applyContext(program, programCStackGlobal);
+				boolean changed = funcAnalysis.applyContext(program, programCStackGlobal);
 				AddressSet funcSet = new AddressSet(
 					funcAnalysis.getSignature().getStartAddr(),
 					funcAnalysis.getSignature().getEndAddr());
+				if (!changed && program.getListing().getUndefinedRanges(funcSet, false, monitor).isEmpty()) { continue; }
 				disassembler.disassemble(funcSet, funcSet, false);
 
 				AutoAnalysisManager.getAnalysisManager(program).codeDefined(funcSet);

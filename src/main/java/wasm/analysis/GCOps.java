@@ -22,6 +22,8 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.data.LEB128;
 import ghidra.util.Msg;
 import wasm.format.WasmEnums.ValType;
+import wasm.format.WasmEnums.ValType.TypeInfo;
+import wasm.format.WasmTypeGraph;
 import wasm.format.sections.structures.WasmFuncType;
 import wasm.format.sections.structures.WasmGCType;
 
@@ -74,20 +76,28 @@ public final class GCOps {
 			BinaryReader reader) throws IOException {
 		owner.gcMarkPresent();
 		long opcode = reader.readNextUnsignedVarIntExact(LEB128::unsigned);
+		long operands=reader.getPointerIndex();
+		try {nominalInputs(owner,analysis,instAddress,(int)opcode,reader);}
+		catch(RuntimeException e) {owner.gcDiagnostic(instAddress,"Invalid GC type operand: "+e.getMessage());}
+		finally {reader.setPointerIndex(operands);}
 		switch ((int) opcode) {
 			case 0x00: { // struct.new t: [t^n] -> [(ref t)]
 				long t = readLeb(reader);
 				int n = fieldCount(analysis, t);
+				owner.gcSetInputCount(instAddress, n);
 				for (int i = 0; i < n; i++) {
 					owner.gcPop(instAddress);
 				}
 				owner.gcPush(instAddress, ValType.structref);
+				owner.gcPreciseTop(TypeInfo.reference(t,false));
 				break;
 			}
-			case 0x01: // struct.new_default t: [] -> [(ref t)]
-				readLeb(reader);
+			case 0x01: { // struct.new_default t: [] -> [(ref t)]
+				long t=readLeb(reader);
 				owner.gcPush(instAddress, ValType.structref);
+				owner.gcPreciseTop(TypeInfo.reference(t,false));
 				break;
+			}
 			case 0x02: // struct.get t f: [(ref null t)] -> [field]
 			case 0x03: // struct.get_s t f: [(ref null t)] -> [i32]
 			case 0x04: { // struct.get_u t f
@@ -97,6 +107,7 @@ public final class GCOps {
 				ValType result = signed ? ValType.i32 : fieldValType(analysis, t, f);
 				owner.gcPop(instAddress);
 				owner.gcPush(instAddress, result);
+				if(!signed) {var gc=gcType(analysis,t);if(gc!=null) owner.gcPreciseTop(WasmTypeGraph.storage(gc.getFieldStorage((int)f)));}
 				owner.gcSetOperandSize(instAddress, result);
 				break;
 			}
@@ -115,32 +126,39 @@ public final class GCOps {
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPop(instAddress);
 				owner.gcPush(instAddress, ValType.arrayref);
+				owner.gcPreciseTop(TypeInfo.reference(t,false));
 				owner.gcSetOperandSize(instAddress, elem);
 				break;
 			}
-			case 0x07: // array.new_default t: [i32] -> [(ref t)]
-				readLeb(reader);
+			case 0x07: { // array.new_default t: [i32] -> [(ref t)]
+				long t=readLeb(reader);
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPush(instAddress, ValType.arrayref);
+				owner.gcPreciseTop(TypeInfo.reference(t,false));
 				break;
+			}
 			case 0x08: { // array.new_fixed t n: [field^n] -> [(ref t)]
 				long t = readLeb(reader);
 				long n = readLeb(reader);
+				owner.gcSetInputCount(instAddress, n);
 				for (long i = 0; i < n; i++) {
 					owner.gcPop(instAddress);
 				}
 				owner.gcPush(instAddress, ValType.arrayref);
+				owner.gcPreciseTop(TypeInfo.reference(t,false));
 				owner.gcSetOperandSize(instAddress, elemValType(analysis, t));
 				break;
 			}
 			case 0x09: // array.new_data t d: [i32 i32] -> [(ref t)]
-			case 0x0A: // array.new_elem t e: [i32 i32] -> [(ref t)]
-				readLeb(reader);
+			case 0x0A: { // array.new_elem t e: [i32 i32] -> [(ref t)]
+				long t=readLeb(reader);
 				readLeb(reader);
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPush(instAddress, ValType.arrayref);
+				owner.gcPreciseTop(TypeInfo.reference(t,false));
 				break;
+			}
 			case 0x0B: // array.get t: [(ref null t) i32] -> [field]
 			case 0x0C: // array.get_s t: -> [i32]
 			case 0x0D: { // array.get_u t
@@ -150,6 +168,7 @@ public final class GCOps {
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPop(instAddress);
 				owner.gcPush(instAddress, result);
+				if(!signed) {var gc=gcType(analysis,t);if(gc!=null) owner.gcPreciseTop(WasmTypeGraph.storage(gc.getElementStorage()));}
 				owner.gcSetOperandSize(instAddress, result);
 				break;
 			}
@@ -202,31 +221,36 @@ public final class GCOps {
 				break;
 			case 0x16: // ref.cast (ref ht): [(ref null ht')] -> [(ref ht)]
 			case 0x17: { // ref.cast (ref null ht)
-				ValType castType = analysis.getModule().resolveHeapType(reader.readNext(LEB128::signed));
+				long heap=reader.readNext(LEB128::signed);
+				ValType castType = analysis.getModule().resolveHeapType(heap);
 				owner.gcPop(instAddress);
 				owner.gcPush(instAddress, castType);
+				owner.gcPreciseTop(TypeInfo.reference(heap,opcode==0x17));
 				break;
 			}
 			case 0x18: // br_on_cast castop l ht1 ht2
 			case 0x19: { // br_on_cast_fail castop l ht1 ht2
-				reader.readNextUnsignedByte(); // castop (nullability flags)
+				int flags=reader.readNextUnsignedByte(); // castop (nullability flags)
 				long labelidx = readLeb(reader);
-				ValType source = analysis.getModule().resolveHeapType(reader.readNext(LEB128::signed));
-				ValType target = analysis.getModule().resolveHeapType(reader.readNext(LEB128::signed));
-				owner.gcConditionalRefBranch(instAddress, labelidx, opcode == 0x18 ? source : target);
+				long from=reader.readNext(LEB128::signed),to=reader.readNext(LEB128::signed);
+				ValType source=analysis.getModule().resolveHeapType(from),target=analysis.getModule().resolveHeapType(to);
+				owner.gcConditionalRefBranch(instAddress,labelidx,opcode==0x18?source:target,TypeInfo.reference(from,(flags&1)!=0),TypeInfo.reference(to,(flags&2)!=0),opcode==0x19);
 				break;
 			}
 			case 0x1A: // any.convert_extern: [(ref null extern)] -> [(ref null any)]
 				owner.gcPop(instAddress);
 				owner.gcPush(instAddress, REF);
+				owner.gcPreciseTop(TypeInfo.reference(-18,true));
 				break;
 			case 0x1B: // extern.convert_any: [(ref null any)] -> [(ref null extern)]
 				owner.gcPop(instAddress);
 				owner.gcPush(instAddress, ValType.externref);
+				owner.gcPreciseTop(TypeInfo.reference(-17,true));
 				break;
 			case 0x1C: // ref.i31: [i32] -> [(ref i31)]
 				owner.gcPop(instAddress, ValType.i32);
 				owner.gcPush(instAddress, ValType.i31ref);
+				owner.gcPreciseTop(TypeInfo.reference(-20,false));
 				break;
 			case 0x1D: // i31.get_s: [(ref null i31)] -> [i32]
 			case 0x1E: // i31.get_u
@@ -238,6 +262,44 @@ public final class GCOps {
 						+ " at " + instAddress + " (operand length unknown)");
 				break;
 		}
+	}
+
+	private static void nominalInputs(WasmFunctionAnalysis owner,WasmAnalysis analysis,Address address,int opcode,BinaryReader reader) throws IOException {
+		if(opcode<=0x13 && opcode!=0x0f) {
+			long index=readLeb(reader);var type=gcType(analysis,index);
+			if(type==null) return;
+			TypeInfo ref=TypeInfo.reference(index,true);
+			if(opcode<=5) {
+				if(opcode<=1) {
+					TypeInfo[] fields=new TypeInfo[type.getFieldCount()];
+					for(int i=0;i<fields.length;i++) {
+						fields[i]=WasmTypeGraph.storage(type.getFieldStorage(i));
+						if(opcode==1 && fields[i].type.isReferenceType() && !fields[i].nullable) owner.gcDiagnostic(address,"Non-defaultable struct field "+i);
+					}
+					if(opcode==0) owner.gcCheckTuple(address,fields,0);
+				} else {
+					var field=type.getFieldStorage((int)readLeb(reader));
+					if(opcode==5) {
+						owner.gcCheckTop(address,WasmTypeGraph.storage(field));
+						if(!field.isMutable()) owner.gcDiagnostic(address,"Write to immutable struct field");
+					}
+					owner.gcCheckTuple(address,new TypeInfo[]{ref},opcode==5?1:0);
+				}
+			} else {
+				var element=type.getElementStorage();TypeInfo value=WasmTypeGraph.storage(element);
+				switch(opcode) {
+					case 6: owner.gcCheckTuple(address,new TypeInfo[]{value},1);break;
+					case 7: if(value.type.isReferenceType() && !value.nullable) owner.gcDiagnostic(address,"Non-defaultable array element");break;
+					case 8: {long count=readLeb(reader);if(count<=1000000) {TypeInfo[] values=new TypeInfo[(int)count];java.util.Arrays.fill(values,value);owner.gcCheckTuple(address,values,0);}break;}
+					case 11: case 12: case 13: owner.gcCheckTuple(address,new TypeInfo[]{ref},1);break;
+					case 14: owner.gcCheckTop(address,value);owner.gcCheckTuple(address,new TypeInfo[]{ref},2);break;
+					case 16: owner.gcCheckTuple(address,new TypeInfo[]{value},1);owner.gcCheckTuple(address,new TypeInfo[]{ref},3);break;
+					case 17: {long source=readLeb(reader);owner.gcCheckTuple(address,new TypeInfo[]{TypeInfo.reference(source,true)},2);owner.gcCheckTuple(address,new TypeInfo[]{ref},4);break;}
+					case 18: case 19: owner.gcCheckTuple(address,new TypeInfo[]{ref},3);break;
+				}
+				if((opcode==14 || opcode>=16) && !element.isMutable()) owner.gcDiagnostic(address,"Write to immutable array");
+			}
+		} else if(opcode==0x1d || opcode==0x1e) owner.gcCheckTop(address,TypeInfo.reference(-20,true));
 	}
 
 	private static long readLeb(BinaryReader reader) throws IOException {

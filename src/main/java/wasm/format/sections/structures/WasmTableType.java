@@ -52,6 +52,7 @@ public class WasmTableType implements StructConverter {
 		elemType = elemTypeInfo.resolve(resolver);
 	}
 
+	public ValType.TypeInfo getElementTypeInfo() {return elemTypeInfo;}
 	public ValType getElementType() {
 		return elemType;
 	}

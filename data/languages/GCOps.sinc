@@ -2,7 +2,7 @@
 #
 # All instructions here use the 0xFB prefix, followed by a LEB128 u32 opcode (reusing the shared
 # opc2_N sub-constructors from Leb128_opc2.sinc). References are modelled as 32-bit opaque values on
-# the virtual stack; no real GC heap semantics are attempted. Where a value's width depends on the
+# the virtual stack; the emulator supplies GC heap semantics. Where a value's width depends on the
 # field/element type (struct.get/set, array.get/set/fill/new) the pre-analyzer sets ctx_operand_size
 # to the value's size (4/8/16) and there is one constructor per width -- the same mechanism used by
 # local.get/global.get/select.
@@ -11,12 +11,14 @@
 
 # ---------------------------------------------------------------- pcodeops
 define pcodeop struct_new;
+define pcodeop wasm_struct_new;
 define pcodeop struct_new_default;
 define pcodeop struct_get;
 define pcodeop struct_set;
 define pcodeop array_new;
 define pcodeop array_new_default;
 define pcodeop array_new_fixed;
+define pcodeop wasm_array_new_fixed;
 define pcodeop array_new_data;
 define pcodeop array_new_elem;
 define pcodeop array_get;
@@ -39,6 +41,8 @@ define pcodeop i31_get_u;
 # ---------------------------------------------------------------- operands
 # Heap type: a concrete type index (>= 0) or an abstract heap type encoded as a negative s33.
 # It is displayed as its raw signed value (e.g. -18 = anyref, -16 = funcref); see REPORT-E.md.
+heaptype: abstract_heaptype is abstract_heaptype { export abstract_heaptype; }
+heaptype2: abstract_heaptype is abstract_heaptype { export abstract_heaptype; }
 heaptype: SLeb128 is SLeb128 {
 	export SLeb128;
 }
@@ -62,8 +66,11 @@ gccastop: "cast="^ULeb128 is ULeb128 {
 }
 
 # ---------------------------------------------------------------- struct
-:struct.new "type="^typeidx is opc=0xFB; opc2_0; typeidx; sp1_32; ctx_is_directive=0 {
-	sp1_32 = struct_new(typeidx:4, sp1_32);
+gc_result: target is ctx_sp & ctx_case_index [target = $(REG_STACK_BASE) + (ctx_sp - ctx_case_index) * $(REG_SIZE);] {
+ export *[register]:4 target;
+}
+:struct.new "type="^typeidx is opc=0xFB; opc2_0; typeidx; gc_result; ctx_is_directive=0 {
+ gc_result = struct_new(typeidx:4, &:4 gc_result);
 }
 
 :struct.new_default "type="^typeidx is opc=0xFB; opc2_1; typeidx; sp0_32; ctx_is_directive=0 {
@@ -71,20 +78,20 @@ gccastop: "cast="^ULeb128 is ULeb128 {
 }
 
 :struct.get "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_2; typeidx; fieldidx; sp1_32; ctx_is_directive=0; ctx_operand_size=4 {
-	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32, 0:4);
 }
 :struct.get "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_2; typeidx; fieldidx; sp1_32; sp1_64; ctx_is_directive=0; ctx_operand_size=8 {
-	sp1_64 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+	sp1_64 = struct_get(typeidx:4, fieldidx:4, sp1_32, 0:4);
 }
 :struct.get "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_2; typeidx; fieldidx; sp1_32; sp1_128; ctx_is_directive=0; ctx_operand_size=16 {
-	sp1_128 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+	sp1_128 = struct_get(typeidx:4, fieldidx:4, sp1_32, 0:4);
 }
 
 :struct.get_s "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_3; typeidx; fieldidx; sp1_32; ctx_is_directive=0; ctx_operand_size=4 {
-	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32, 1:4);
 }
 :struct.get_u "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_4; typeidx; fieldidx; sp1_32; ctx_is_directive=0; ctx_operand_size=4 {
-	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32);
+	sp1_32 = struct_get(typeidx:4, fieldidx:4, sp1_32, 0:4);
 }
 
 :struct.set "type="^typeidx "field="^fieldidx is opc=0xFB; opc2_5; typeidx; fieldidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
@@ -102,18 +109,18 @@ gccastop: "cast="^ULeb128 is ULeb128 {
 	sp2_32 = array_new(typeidx:4, sp1_32, sp2_32);
 }
 :array.new "type="^typeidx is opc=0xFB; opc2_6; typeidx; sp1_32; sp2_64; sp2_32; ctx_is_directive=0; ctx_operand_size=8 {
-	sp2_64 = array_new(typeidx:4, sp1_32, sp2_32);
+	sp2_32 = array_new(typeidx:4, sp1_32, sp2_64);
 }
 :array.new "type="^typeidx is opc=0xFB; opc2_6; typeidx; sp1_32; sp2_128; sp2_32; ctx_is_directive=0; ctx_operand_size=16 {
-	sp2_128 = array_new(typeidx:4, sp1_32, sp2_32);
+	sp2_32 = array_new(typeidx:4, sp1_32, sp2_128);
 }
 
 :array.new_default "type="^typeidx is opc=0xFB; opc2_7; typeidx; sp1_32; ctx_is_directive=0 {
 	sp1_32 = array_new_default(typeidx:4, sp1_32);
 }
 
-:array.new_fixed "type="^typeidx "n="^count is opc=0xFB; opc2_8; typeidx; count; sp1_32; ctx_is_directive=0 {
-	sp1_32 = array_new_fixed(typeidx:4, count:4, sp1_32);
+:array.new_fixed "type="^typeidx "n="^count is opc=0xFB; opc2_8; typeidx; count; gc_result; ctx_is_directive=0 {
+ gc_result = array_new_fixed(typeidx:4, count:4, &:4 gc_result);
 }
 
 :array.new_data "type="^typeidx "data="^dataidx is opc=0xFB; opc2_9; typeidx; dataidx; sp1_32; sp2_32; ctx_is_directive=0 {
@@ -125,20 +132,20 @@ gccastop: "cast="^ULeb128 is ULeb128 {
 }
 
 :array.get "type="^typeidx is opc=0xFB; opc2_11; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
-	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32);
+	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32, 0:4);
 }
 :array.get "type="^typeidx is opc=0xFB; opc2_11; typeidx; sp1_32; sp2_32; sp2_64; ctx_is_directive=0; ctx_operand_size=8 {
-	sp2_64 = array_get(typeidx:4, sp1_32, sp2_32);
+	sp2_64 = array_get(typeidx:4, sp1_32, sp2_32, 0:4);
 }
 :array.get "type="^typeidx is opc=0xFB; opc2_11; typeidx; sp1_32; sp2_32; sp2_128; ctx_is_directive=0; ctx_operand_size=16 {
-	sp2_128 = array_get(typeidx:4, sp1_32, sp2_32);
+	sp2_128 = array_get(typeidx:4, sp1_32, sp2_32, 0:4);
 }
 
 :array.get_s "type="^typeidx is opc=0xFB; opc2_12; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
-	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32);
+	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32, 1:4);
 }
 :array.get_u "type="^typeidx is opc=0xFB; opc2_13; typeidx; sp1_32; sp2_32; ctx_is_directive=0; ctx_operand_size=4 {
-	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32);
+	sp2_32 = array_get(typeidx:4, sp1_32, sp2_32, 0:4);
 }
 
 :array.set "type="^typeidx is opc=0xFB; opc2_14; typeidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0; ctx_operand_size=4 {
@@ -155,53 +162,53 @@ gccastop: "cast="^ULeb128 is ULeb128 {
 	sp1_32 = array_len(sp1_32);
 }
 
-:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0; ctx_operand_size=4 {
-	array_fill(typeidx:4, sp1_32, sp2_32, sp3_32);
+:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0; ctx_operand_size=4 {
+	array_fill(typeidx:4, sp4_32, sp3_32, sp2_32, sp1_32);
 }
-:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_64; sp3_32; ctx_is_directive=0; ctx_operand_size=8 {
-	array_fill(typeidx:4, sp1_32, sp2_64, sp3_32);
+:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_64; sp3_32; sp4_32; ctx_is_directive=0; ctx_operand_size=8 {
+	array_fill(typeidx:4, sp4_32, sp3_32, sp2_64, sp1_32);
 }
-:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_128; sp3_32; ctx_is_directive=0; ctx_operand_size=16 {
-	array_fill(typeidx:4, sp1_32, sp2_128, sp3_32);
-}
-
-:array.copy "dst="^typeidx "src="^typeidx2 is opc=0xFB; opc2_17; typeidx; typeidx2; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
-	array_copy(typeidx:4, typeidx2:4, sp1_32, sp2_32, sp3_32);
+:array.fill "type="^typeidx is opc=0xFB; opc2_16; typeidx; sp1_32; sp2_128; sp3_32; sp4_32; ctx_is_directive=0; ctx_operand_size=16 {
+	array_fill(typeidx:4, sp4_32, sp3_32, sp2_128, sp1_32);
 }
 
-:array.init_data "type="^typeidx "data="^dataidx is opc=0xFB; opc2_18; typeidx; dataidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
-	array_init_data(typeidx:4, dataidx:4, sp1_32, sp2_32, sp3_32);
+:array.copy "dst="^typeidx "src="^typeidx2 is opc=0xFB; opc2_17; typeidx; typeidx2; sp1_32; sp2_32; sp3_32; sp4_32; sp5_32; ctx_is_directive=0 {
+	array_copy(typeidx:4, typeidx2:4, sp5_32, sp4_32, sp3_32, sp2_32, sp1_32);
 }
 
-:array.init_elem "type="^typeidx "elem="^elemidx is opc=0xFB; opc2_19; typeidx; elemidx; sp1_32; sp2_32; sp3_32; ctx_is_directive=0 {
-	array_init_elem(typeidx:4, elemidx:4, sp1_32, sp2_32, sp3_32);
+:array.init_data "type="^typeidx "data="^dataidx is opc=0xFB; opc2_18; typeidx; dataidx; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+	array_init_data(typeidx:4, dataidx:4, sp4_32, sp3_32, sp2_32, sp1_32);
+}
+
+:array.init_elem "type="^typeidx "elem="^elemidx is opc=0xFB; opc2_19; typeidx; elemidx; sp1_32; sp2_32; sp3_32; sp4_32; ctx_is_directive=0 {
+	array_init_elem(typeidx:4, elemidx:4, sp4_32, sp3_32, sp2_32, sp1_32);
 }
 
 # ---------------------------------------------------------------- references
 :ref.test "ht="^heaptype is opc=0xFB; opc2_20; heaptype; sp1_32; ctx_is_directive=0 {
-	sp1_32 = ref_test(heaptype:4, sp1_32);
+	sp1_32 = ref_test(heaptype:4, sp1_32, 0:4);
 }
 :ref.test "ht="^heaptype is opc=0xFB; opc2_21; heaptype; sp1_32; ctx_is_directive=0 {
-	sp1_32 = ref_test(heaptype:4, sp1_32);
+	sp1_32 = ref_test(heaptype:4, sp1_32, 1:4);
 }
 
 :ref.cast "ht="^heaptype is opc=0xFB; opc2_22; heaptype; sp1_32; ctx_is_directive=0 {
-	sp1_32 = ref_cast(heaptype:4, sp1_32);
+	sp1_32 = ref_cast(heaptype:4, sp1_32, 0:4);
 }
 :ref.cast "ht="^heaptype is opc=0xFB; opc2_23; heaptype; sp1_32; ctx_is_directive=0 {
-	sp1_32 = ref_cast(heaptype:4, sp1_32);
+	sp1_32 = ref_cast(heaptype:4, sp1_32, 1:4);
 }
 
 :br_on_cast "ht1="^heaptype "ht2="^heaptype2 br_target is opc=0xFB; opc2_24; gccastop; ULeb128; br_target; heaptype; heaptype2; sp1_32; ctx_is_directive=0 {
 	nop();
-	castok:1 = wasm_br_on_cast(heaptype:4, heaptype2:4, sp1_32);
+	castok:1 = wasm_br_on_cast(heaptype:4, heaptype2:4, sp1_32, gccastop:4);
 	if (castok == 0) goto inst_next;
 	doBranch(br_target);
 }
 
 :br_on_cast_fail "ht1="^heaptype "ht2="^heaptype2 br_target is opc=0xFB; opc2_25; gccastop; ULeb128; br_target; heaptype; heaptype2; sp1_32; ctx_is_directive=0 {
 	nop();
-	castok:1 = wasm_br_on_cast(heaptype:4, heaptype2:4, sp1_32);
+	castok:1 = wasm_br_on_cast(heaptype:4, heaptype2:4, sp1_32, gccastop:4);
 	if (castok != 0) goto inst_next;
 	doBranch(br_target);
 }

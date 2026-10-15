@@ -1,0 +1,61 @@
+# Released Core 3.0 abstract heap names, including legal padded signed LEB encodings.
+abstract_heaptype: "exn" is bytev=0x69 { local signed_heap:8 = -23; export signed_heap; }
+abstract_heaptype: "exn" is bytev=0xe9; bytev=0x7f { local signed_heap:8 = -23; export signed_heap; }
+abstract_heaptype: "exn" is bytev=0xe9; bytev=0xff; bytev=0x7f { local signed_heap:8 = -23; export signed_heap; }
+abstract_heaptype: "exn" is bytev=0xe9; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -23; export signed_heap; }
+abstract_heaptype: "exn" is bytev=0xe9; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -23; export signed_heap; }
+abstract_heaptype: "array" is bytev=0x6a { local signed_heap:8 = -22; export signed_heap; }
+abstract_heaptype: "array" is bytev=0xea; bytev=0x7f { local signed_heap:8 = -22; export signed_heap; }
+abstract_heaptype: "array" is bytev=0xea; bytev=0xff; bytev=0x7f { local signed_heap:8 = -22; export signed_heap; }
+abstract_heaptype: "array" is bytev=0xea; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -22; export signed_heap; }
+abstract_heaptype: "array" is bytev=0xea; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -22; export signed_heap; }
+abstract_heaptype: "struct" is bytev=0x6b { local signed_heap:8 = -21; export signed_heap; }
+abstract_heaptype: "struct" is bytev=0xeb; bytev=0x7f { local signed_heap:8 = -21; export signed_heap; }
+abstract_heaptype: "struct" is bytev=0xeb; bytev=0xff; bytev=0x7f { local signed_heap:8 = -21; export signed_heap; }
+abstract_heaptype: "struct" is bytev=0xeb; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -21; export signed_heap; }
+abstract_heaptype: "struct" is bytev=0xeb; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -21; export signed_heap; }
+abstract_heaptype: "i31" is bytev=0x6c { local signed_heap:8 = -20; export signed_heap; }
+abstract_heaptype: "i31" is bytev=0xec; bytev=0x7f { local signed_heap:8 = -20; export signed_heap; }
+abstract_heaptype: "i31" is bytev=0xec; bytev=0xff; bytev=0x7f { local signed_heap:8 = -20; export signed_heap; }
+abstract_heaptype: "i31" is bytev=0xec; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -20; export signed_heap; }
+abstract_heaptype: "i31" is bytev=0xec; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -20; export signed_heap; }
+abstract_heaptype: "eq" is bytev=0x6d { local signed_heap:8 = -19; export signed_heap; }
+abstract_heaptype: "eq" is bytev=0xed; bytev=0x7f { local signed_heap:8 = -19; export signed_heap; }
+abstract_heaptype: "eq" is bytev=0xed; bytev=0xff; bytev=0x7f { local signed_heap:8 = -19; export signed_heap; }
+abstract_heaptype: "eq" is bytev=0xed; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -19; export signed_heap; }
+abstract_heaptype: "eq" is bytev=0xed; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -19; export signed_heap; }
+abstract_heaptype: "any" is bytev=0x6e { local signed_heap:8 = -18; export signed_heap; }
+abstract_heaptype: "any" is bytev=0xee; bytev=0x7f { local signed_heap:8 = -18; export signed_heap; }
+abstract_heaptype: "any" is bytev=0xee; bytev=0xff; bytev=0x7f { local signed_heap:8 = -18; export signed_heap; }
+abstract_heaptype: "any" is bytev=0xee; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -18; export signed_heap; }
+abstract_heaptype: "any" is bytev=0xee; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -18; export signed_heap; }
+abstract_heaptype: "extern" is bytev=0x6f { local signed_heap:8 = -17; export signed_heap; }
+abstract_heaptype: "extern" is bytev=0xef; bytev=0x7f { local signed_heap:8 = -17; export signed_heap; }
+abstract_heaptype: "extern" is bytev=0xef; bytev=0xff; bytev=0x7f { local signed_heap:8 = -17; export signed_heap; }
+abstract_heaptype: "extern" is bytev=0xef; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -17; export signed_heap; }
+abstract_heaptype: "extern" is bytev=0xef; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -17; export signed_heap; }
+abstract_heaptype: "func" is bytev=0x70 { local signed_heap:8 = -16; export signed_heap; }
+abstract_heaptype: "func" is bytev=0xf0; bytev=0x7f { local signed_heap:8 = -16; export signed_heap; }
+abstract_heaptype: "func" is bytev=0xf0; bytev=0xff; bytev=0x7f { local signed_heap:8 = -16; export signed_heap; }
+abstract_heaptype: "func" is bytev=0xf0; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -16; export signed_heap; }
+abstract_heaptype: "func" is bytev=0xf0; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -16; export signed_heap; }
+abstract_heaptype: "none" is bytev=0x71 { local signed_heap:8 = -15; export signed_heap; }
+abstract_heaptype: "none" is bytev=0xf1; bytev=0x7f { local signed_heap:8 = -15; export signed_heap; }
+abstract_heaptype: "none" is bytev=0xf1; bytev=0xff; bytev=0x7f { local signed_heap:8 = -15; export signed_heap; }
+abstract_heaptype: "none" is bytev=0xf1; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -15; export signed_heap; }
+abstract_heaptype: "none" is bytev=0xf1; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -15; export signed_heap; }
+abstract_heaptype: "noextern" is bytev=0x72 { local signed_heap:8 = -14; export signed_heap; }
+abstract_heaptype: "noextern" is bytev=0xf2; bytev=0x7f { local signed_heap:8 = -14; export signed_heap; }
+abstract_heaptype: "noextern" is bytev=0xf2; bytev=0xff; bytev=0x7f { local signed_heap:8 = -14; export signed_heap; }
+abstract_heaptype: "noextern" is bytev=0xf2; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -14; export signed_heap; }
+abstract_heaptype: "noextern" is bytev=0xf2; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -14; export signed_heap; }
+abstract_heaptype: "nofunc" is bytev=0x73 { local signed_heap:8 = -13; export signed_heap; }
+abstract_heaptype: "nofunc" is bytev=0xf3; bytev=0x7f { local signed_heap:8 = -13; export signed_heap; }
+abstract_heaptype: "nofunc" is bytev=0xf3; bytev=0xff; bytev=0x7f { local signed_heap:8 = -13; export signed_heap; }
+abstract_heaptype: "nofunc" is bytev=0xf3; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -13; export signed_heap; }
+abstract_heaptype: "nofunc" is bytev=0xf3; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -13; export signed_heap; }
+abstract_heaptype: "noexn" is bytev=0x74 { local signed_heap:8 = -12; export signed_heap; }
+abstract_heaptype: "noexn" is bytev=0xf4; bytev=0x7f { local signed_heap:8 = -12; export signed_heap; }
+abstract_heaptype: "noexn" is bytev=0xf4; bytev=0xff; bytev=0x7f { local signed_heap:8 = -12; export signed_heap; }
+abstract_heaptype: "noexn" is bytev=0xf4; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -12; export signed_heap; }
+abstract_heaptype: "noexn" is bytev=0xf4; bytev=0xff; bytev=0xff; bytev=0xff; bytev=0x7f { local signed_heap:8 = -12; export signed_heap; }

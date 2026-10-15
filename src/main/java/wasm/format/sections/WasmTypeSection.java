@@ -30,6 +30,8 @@ public class WasmTypeSection extends WasmSection {
 
 	private LEB128Info count;
 	private List<WasmFuncType> types = new ArrayList<WasmFuncType>();
+	private final List<Integer> groupStarts = new ArrayList<>();
+	private final List<Integer> groupSizes = new ArrayList<>();
 
 	public WasmTypeSection(BinaryReader reader) throws IOException {
 		super(reader);
@@ -43,11 +45,14 @@ public class WasmTypeSection extends WasmSection {
 			long pos = reader.getPointerIndex();
 			int form = reader.readNextUnsignedByte();
 			reader.setPointerIndex(pos);
+			int groupStart = types.size();
 			if (form == 0x60) {
 				types.add(new WasmFuncType(reader));
 			} else {
 				types.addAll(WasmGCType.parseTypeEntry(reader));
 			}
+			int groupSize = types.size() - groupStart;
+			for (int member = 0; member < groupSize; member++) { groupStarts.add(groupStart); groupSizes.add(groupSize); }
 		}
 		resolveContinuationTypes();
 	}
@@ -82,6 +87,8 @@ public class WasmTypeSection extends WasmSection {
 	public int getNumTypes() {
 		return types.size();
 	}
+	public int getGroupStart(int index) { return groupStarts.get(index); }
+	public int getGroupSize(int index) { return groupSizes.get(index); }
 
 	@Override
 	protected void addToStructure(StructureBuilder builder) throws DuplicateNameException, IOException {
