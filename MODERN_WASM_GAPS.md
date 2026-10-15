@@ -1,11 +1,17 @@
 # Modern WebAssembly support: inventory, gaps and roadmap
 
-Status of this document: **inventory complete; implementation in progress**. (The per-workstream
+Status of this document: **updated through released v2.8.2 (2026-10-15)**. (The per-workstream
 `REPORT-*.md` files referenced throughout live on the `archive/reports` branch; the machine-checked
 expectations stay here as data: `test-scripts/expected-results.json` for the probe gate.) See the status table
 below. The inventory was produced from `main` (originally commit `430cbe2`, plugin built against
 Ghidra 12.1.4) and is intended as the working base for extending the plugin's coverage toward current
 WebAssembly (Wasm 3.0 + active proposals).
+
+The current implementation includes all 28 repository-review fixes from v2.8.1 and the
+memory-isolation / complete large-`br_table` fixes from v2.8.2. Section 2.3 lists current
+limitations; older measurements below are historical receipts, not a list of current failures.
+The v2.8.2 release passed Build, Probes, Spec suite, and Release workflows, including 68,509
+integration assertions, 22 bounded-heap parser assertions, and 234 independent Node checks.
 
 | Roadmap item | State |
 | --- | --- |
@@ -28,13 +34,13 @@ WebAssembly (Wasm 3.0 + active proposals).
 | 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
 | Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are diagnosed |
 | Spec-suite gates (positive + negative) | **merged** (`REPORT-G.md`, `REPORT-NS.md`): 271 core modules, 0 real undefined bytes, 0 decompile failures; 2948 negative modules classified |
-| Spec assert emulation | **merged** (`REPORT-H3.md`): 33 `.wast` suites, 92/92 modules; assert_return 2514/1, assert_trap 183/0 (`br_table large` was 145/4 before the `MAX_BR_TABLE_CASES` default-target fix, `REPORT-R5-BRTABLE.md`; the 1 remaining is the documented case-index-past-cap residual) |
+| Spec assert emulation | **implemented** (`REPORT-H3.md`); the historical v2.8.1 aggregate was assert_return 2514/1, assert_trap 183/0. The large-`br_table` truncation was fixed in v2.8.2 and covered by new execution tests; the full 33-suite assertion aggregate has not been remeasured. |
 | Stack switching / strings / wide arith / `memory.discard` | **merged** (`REPORT-H5.md`): all decode; `cont` types parse (`REPORT-CT.md`) |
 | Name-section label targets | **merged** (`REPORT-H6.md`): label names become real label symbols at branch targets |
 | Reference typing + `cont` types | **merged** (`REPORT-H7.md`, `REPORT-CT.md`): precise `(ref null ht)` model; subtype-aware validation; `cont` types in the type section |
 | Stack-as-aggregate SROA | **merged** (`REPORT-SROA.md`): frames modelled as aggregates, split by (width, offset) access |
 | Call-graph struct synthesis | **merged** (`REPORT-STRUCTS.md`): 352 structs, 255 retyped parameters on the real module; 591 → 437 raw offset accesses |
-| Dedicated memory address space | **merged** (`REPORT-MEMSPACE.md`): 32-bit `memory` space, 128 MiB stride, ≥ 8 memories supported |
+| Dedicated memory address spaces | **released in v2.8.2**: memory 0 uses `memory` / `memory64`; each secondary memory has an independent overlay. No index stride or aliasing at large offsets; index 32, memory64 high addresses, and zero-sized/grown memories are regression-tested. |
 | B9 warning | **merged** (`REPORT-HARD.md`): "Module accepted but nothing was decoded" when a module declares content but yields nothing |
 | Fixture-validity gate | **merged**: 223 probes — 129 valid / 64 wabt-gap / 17 unsupported / 13 invalid; `oracle_skip` for runaway binaryen cases; `--timeout` support |
 
@@ -115,7 +121,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | GC type entries (`struct`/`array`/`rec`/`sub`) | fixed (`REPORT-E`): real Ghidra structures/arrays; probes `E01`-`E20` |
 | GC instructions (`0xFB`) | fixed (`REPORT-E`): `struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`; probes `E10`-`E18` |
 | New exception handling (`try_table`, `throw_ref`, `exnref`) | fixed (`REPORT-F`): probes `11`, `30`-`39` |
-| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`): probes `12`, `F01`-`F07`; the *type model* is still coarse (see 2.3) |
+| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`, v2.8.1): concrete indices resolve to their reference families and branch arguments relocate correctly. Full nominal validation remains outside the model (see 2.3). |
 | Extended-const and GC constant expressions | fixed (`REPORT-SF` + `B14`): probes `19`, `20`, `22`-`27`, `B07`-`B15` |
 | Stack switching / JSPI (`cont.new` ... `switch`) | fixed (`REPORT-H5` + `REPORT-CT`): probes `H01`-`H10` (continuation *types* now parse too, so all ten classify as `wabt-gap`) |
 | JS string builtins / stringref (`0xFB >= 0x80`) | fixed (`REPORT-H5`): probes `S01`-`S10`; unassigned sub-opcodes render as `unimplemented (reserved)` |
@@ -128,18 +134,27 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 
 ### 2.3 Still open
 
-| Item | State / evidence |
-| --- | --- |
-| **Custom page sizes** - the limits flag decodes and the declared page size sizes the block (see 2.2) | fixed (semantic, `REPORT-PAGESIZE-MUSESPARK.md`); residual: exotic (non-0/16) exponents are honoured leniently, oracles accept only 1 B / 64 KiB |
-| **Shared-everything threads** - `global.atomic.*`, shared tables/`table.atomic.*` have no mnemonics (the `0xFE` atomic *memory* ops are implemented) | open (unimplemented fallback) |
-| **Component-model semantics** - canonical ABI, `canon` ops, component types are not modelled (core-module extraction only) | by design |
-| **`br_table large` assertion cases** - the `MAX_BR_TABLE_CASES` expansion bound used to truncate at the cap *including* the default label, so a br_table with >= 1024 explicit cases lost its DEFAULT target (production control flow, not harness-only). **Fixed** (`REPORT-R5-BRTABLE.md`): at most `MAX_BR_TABLE_CASES - 1` case targets are modelled and the default target is **always** modelled; `br_table` emulation 145/4 -> 148/1. Residual: an input whose index equals a dropped case (>= `MAX_BR_TABLE_CASES - 1`) is modelled as taking the default - one `br_table large` assert_return remains | fixed (residual: case indices past the cap) |
-| **Struct-synthesis v1 limits** - `call_indirect` targets not followed, delta arguments skipped, only parameters retyped, globals/SIMD lanes skipped, fields are `undefinedN` | open (v1 scope, documented in `REPORT-STRUCTS.md`) |
-| **128 MiB materialisation cap** - blocks remain capped with a warning; i64 decoded accesses now retain full 64-bit addresses in `memory64` (item 11). Both spaces use a 128 MiB stride, so large ranges of memories in the same space can alias beyond that stride. High data segments outside the materialised prefix are reported, not materialised. | addressing truncation fixed; cap/stride isolation remain documented limits |
-| **`ref.null` abstract heap types** print numerically (`ref.null heaptype=-0x15`) - restoring names needs named constructors per abstract byte alongside the s33 form, if SLEIGH's pattern rules allow it | **fixed** (`REPORT-REFNULL-MISTRAL.md`): named constructors per Wasm 3.0 absheaptype byte (0x69=exn … 0x74=noexn) added alongside the generic s33 form; SLEIGH's specificity disambiguation prefers the 8-bit-constrained named variants over the 1-bit-constrained single-byte SLeb128, so `ref.null struct`/`ref.null exn`/`ref.null func`/etc. now print by name while concrete type indices still decode via the s33 path byte-identically (`ref.null heaptype=0x1`). 12 new probes `RN01`-`RN12` cover every abstract heap type in a function body. Residual: `blocktype=-0xNN` on `block`/`loop`/`if`/`try`/`try_table` still prints numerically (the `multi_blocktype` immediate table was not extended - optional, cosmetic); `ref.test`/`ref.cast`/`br_on_cast*` `ht=` operands in GCOps.sinc also still print numerically (same pattern could apply there too) |
-| **Multi-byte block signatures on `try`/`try_table`** - decode multi-byte valtypes/type indices now (see 2.2); the typed `BlockTypeInfo` path (grafted from `feat/tryblocktype-catjam`) fully decodes the ref-typed cases (`undefined_bytes` 8 -> 0 on probes `40`/`41`) | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`) |
-| **Extended-const `Data markup conflict` warning** - `WasmLoader.createData` logged "Data markup conflict" on probes `19`, `22`, `27`, `B07`-`B09`, `B14`, `B25` (the row originally named `22`-`24`/`27`; measurement shows it fires on every probe whose global/data initializer is a multi-instruction constant expression, not on the single-instruction const probes `23`/`24`) | fixed (`REPORT-EXTCONST-MISTRAL.md`): `ConstantExpression.toDataType()` double-counted the terminating `end` byte for folded extended-const and unparsed initializers, sizing the enclosing section's `.module` structure one byte too long so it collided with the next section's markup (or overran the `.module` block when the section was last) and left a whole section undissected; the raw-byte array now excludes the trailing `end` byte. Placed bytes/offsets were already correct - only the `.module` structural markup was wrong |
-| **Emulation coverage** - 1 remaining `assert_return` gap (the `br_table large` case index `10000`, which is past the modelled-case cap; the other 3 `br_table large` gaps are now resolved by the default-target fix) | emulator coverage, not decoder gaps (see `REPORT-R5-BRTABLE.md`) |
+"Released core" below means the [live WebAssembly standard](https://webassembly.org/specs/),
+including [Core 3.0, released September 2025](https://webassembly.org/news/2025-09-17-wasm-3.0/).
+Proposal phases were checked against the [official tracker](https://github.com/WebAssembly/proposals)
+on 2026-10-15. Implementation in an engine does not by itself make a proposal part of released core.
+
+| Item | Remaining limitation | Released specification or proposal? |
+| --- | --- | --- |
+| **128 MiB materialisation cap** | The loader reports but does not load data beyond the capped prefix. Addresses and emulator banks remain independent beyond it. | Affects released core linear memory, including Core 3.0 memory64; an implementation resource limit. |
+| **GC validation / emulation** | Concrete references resolve to abstract families; full nominal validation and GC heap execution are outside the model. | GC and typed references are released Core 3.0 features. This plugin is not a complete validator/runtime. |
+| **Struct-synthesis v1 limits** | Indirect-call targets and delta arguments are skipped; only parameters are retyped; globals/SIMD lanes and precise field types remain limited. | Tool-quality limitations affecting released core modules, not draft instructions. |
+| **Inlining / C-stack reanalysis** | Ghidra function inlining is unsupported; changing the C-stack setting after initial analysis does not reliably regenerate context. | Tool integration / ABI limitations, independent of proposal status. |
+| **Listings / performance** | Some block and GC heap-type operands print numerically; initial context analysis can be slow. | Tool usability limitations affecting released instructions; legacy `try` is a separate older encoding. |
+| **Shared-everything threads** | `global.atomic.*`, shared tables, and `table.atomic.*` have no mnemonics; atomic linear-memory operations are implemented. | Active Phase 1 proposal, distinct from ordinary threads. |
+| **Component-model semantics** | Canonical ABI, `canon` operations, and component types are not modeled; core-module extraction only. | Active Phase 1 proposal, outside released core. Stable subsets nevertheless ship in [WASI Developer Preview releases](https://github.com/WebAssembly/component-model#milestones). |
+| **Custom page-size validation** | Page-size-aware loading is implemented; exotic exponents are accepted leniently, while external oracles exercise 1 B / 64 KiB. | Active Phase 3 proposal. |
+
+The large-`br_table` case truncation and memory stride aliasing are **closed in v2.8.2**.
+Tables now retain every case and the default, coalescing repeated labels through selector data.
+Regression coverage includes 16,384 cases with scalar and mixed i64/v128 label arguments,
+independent Node execution, and native Ghidra decompilation. Previously fixed `ref.null` names,
+multi-byte exception block signatures, and constant-expression markup are also not open items.
 
 ### 2.4 Observed baseline (reproducible with the commands above)
 
@@ -157,14 +172,12 @@ The authoritative per-probe expectations are machine-checked data, not prose:
 * Spec suite (core subset): 271/271 imported, 2747/2747 functions decompiled,
   33222 instructions, 428 undefined bytes (all import stubs), 0 decompile failures
   (`test-scripts/spectest-expected.json`, `.github/workflows/spectest.yml`).
-* Emulation assertion harness: 33 `.wast` suites, 92/92 modules;
-  **assert_return 2514/1**, **assert_trap 183/0**. The `br_table` suite alone measured
-  **145/4 -> 148/1** across the `MAX_BR_TABLE_CASES` default-target fix
-  (`REPORT-R5-BRTABLE.md`); the single remaining assert_return failure is the
-  `br_table large` case index `10000`, whose target is a *case* past the modelled-case cap
-  (a documented residual of the bound, not the default target - which is now always modelled).
-  The full 33-suite aggregate is the recorded 2511/4 shifted by the measured br_table delta
-  (+3 successes, -3 failures); only the `large` function exceeds the cap, so no other suite moves.
+* Historical v2.8.1 emulation assertion harness: 33 `.wast` suites, 92/92 modules;
+  **assert_return 2514/1**, **assert_trap 183/0**. The `br_table` suite measured
+  **145/4 -> 148/1** after the earlier default-target fix (`REPORT-R5-BRTABLE.md`).
+  The full aggregate was derived from that measured delta and has not been rerun for
+  v2.8.2. Its remaining case-truncation bug is now fixed; current release evidence is
+  the dedicated large-table regressions and successful CI, not an invented new aggregate.
 
 Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.locals`, `.local`,
 `.case`, `.default`); the real module's 61,658 counted instructions are 60,556 real wasm instructions
@@ -181,7 +194,7 @@ Metric caveat: `instrs` counts the pre-analyzer's marker instructions too (`.loc
 * **Clang/LLVM ≥ 19** — emits the **new EH** (`try_table`): covered (plus `throw_ref`, `exnref`).
 * **Emscripten `-pthread`** — works; shared-memory limits flags decode fully.
 * **Emscripten `MEMORY64` / wasm64 targets** — full i64 decoded addresses in `memory64`,
-  including above 4 GiB; materialisation/stride limits remain (item 11).
+  including above 4 GiB; the materialisation cap remains, while stride aliasing was fixed in v2.8.2 (item 11).
 * **Emscripten `-sASYNCIFY=2` (JSPI)** — stack switching decodes (`cont.new`/`resume`/`switch`);
   `cont` types parse.
 
@@ -296,36 +309,28 @@ core-module extraction only), and custom page sizes (see 2.3).
 
 ### 11. memory64 above 4 GiB: hybrid address spaces — implemented
 
-The authoritative design is now implemented: preserve the 32-bit `memory` space (`size=4`) and
-its i32 arithmetic, and add a separate `memory64` space (`size=8`). The per-instruction
-`ctx_mem64` code selects the memory declaration's index type, including mixed-index modules.
-Code, registers, tables and default pointer sizes retain their existing definitions.
+The 32-bit `memory` and 64-bit `memory64` spaces preserve each declaration's index
+width. Per-instruction `ctx_mem64` handles mixed-index modules. Since v2.8.2, memory 0
+uses the matching base space and every secondary memory uses an independent program
+space named `memory_N` or `memory64_N`, including zero-sized declarations.
 
-* `BasicOps.sinc`, `VectorOps.sinc`, `AtomicOps.sinc`: 23 scalar, 22 SIMD and 66 atomic
-  constructors each have an i32 variant with the original body and an i64 variant using full-width
-  `loadaddr64`/`storeaddr64`/`loadaddr2_64`/`atomicaddr3_64` into `memory64`. Atomic wait/notify
-  keep callothers with full-width addresses. No i64 helper truncates to 32 bits. Numeric and
-  relaxed SIMD roots carry an explicit default context guard to preserve precedence over
-  memory constructors sharing a LEB opcode prefix; their pcode bodies are unchanged.
-* `StringOps.sinc`: 12 memory-taking callothers select the address operand's width per memory;
-  references and counts/results remain i32. `memory.discard` also selects address/count widths.
-  Existing bulk `memory.init/fill/copy` width variants remain; constant-copy injection selects
-  source/destination spaces and pointer widths separately when either memory is i64.
-* `WasmLoader.getMemoryAddress`: module-aware and explicit-index-type overloads place blocks,
-  active/passive data and name labels in the matching space at `memidx * 0x08000000 + offset`.
-  The legacy three-argument overload retains the original i32 arithmetic and clamp. Unsigned
-  i64 address bit patterns are preserved; an overflowing stride addition is rejected.
-* The emulator reads each scalar/SIMD/atomic instruction's memidx, checks LOAD/STORE ranges in
-  their actual space, and reconstructs EAs from saved operand slots to detect lost carries.
-  High addresses do not select another memory by dividing the address by the stride.
+* Scalar, SIMD, and atomic constructors compute full-width offsets without an index stride.
+  Memory-indexed userops resolve to program-specific LOAD/STORE spaces through dynamic
+  decompiler fixups. Atomic wait/notify retain the memory index in their intrinsic arguments.
+* String and bulk operations retain explicit memory indices and the selected pointer widths.
+  Copy expansion uses program spaces for all width pairs and reads the source before writing.
+  Emulator copies preserve overlap in both directions, including across page boundaries.
+* `WasmLoader.getMemoryAddress` uses the selected memory space at the original offset.
+  Secondary memory64 offsets preserve the full unsigned 64-bit bit pattern. Invalid i32
+  offsets retain the loader's warning-and-clamp policy within the selected memory.
+* The emulator checks effective addresses before execution, preserves trapping-store bytes,
+  and initializes independent banks for the program's secondary memories. Unmapped overlay
+  pages cannot fall back to the primary memory; newly grown pages read their own zeroes.
 
-The materialisation cap is **still 128 MiB per memory**. This change fixes decoded addressing;
-it does not allocate multi-GiB blocks. Data outside the capped prefix cannot be placed and produces
-an import diagnostic. The **128 MiB stride** is retained in both spaces: references in different memories
-of the same index type can alias beyond a stride, and adding a nonzero memory base reduces the available u64
-coordinate range. i32 memory indices above 31 still exceed the legacy space. Bulk/string/atomic
-wait callothers retain the existing emulator support limits; the hybrid does not implement missing
-callother behaviors or provide a complete large-memory runtime.
+The materialisation cap is **still 128 MiB per memory**. Data outside that prefix is
+reported rather than loaded. The cap no longer defines memory identity: high offsets and
+indices above 31 do not alias adjacent memories. Bulk/string/atomic wait intrinsics still
+have operation-specific emulator support limits; the plugin is not a full Wasm runtime.
 
 `B8_04_mem64_over4g` and `B8_05_mem64_just_over4g` originally loaded address zero despite their
 large declarations. Their operands now exercise EAs `0x100000030` and `0x100000010` respectively.
@@ -368,10 +373,13 @@ loosening any expected metric.
 Ranked findings (all resolved):
 
 1. ~~**`select` (0x1B) is not decoded after an unconditional terminator**~~ — **FIXED** (SF workstream).
-2. ~~**Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body)~~ — **FIXED** (`MAX_BR_TABLE_CASES` bound: at most 1023 *case* targets are modelled per br_table; the default target is always modelled — `REPORT-R5-BRTABLE.md`).
+2. ~~**Decompiler process death** on a very large function body (`br_table.0.wasm`, 16172-byte body)~~ — **FIXED** (v2.8.2 retains every case using selector tables and one modeled branch per distinct label; the earlier truncation bound was removed).
 3. ~~**`WasmStackVariableAnalyzer` exceptions**~~ — **FIXED** (SROA workstream; stack-as-aggregate model).
 4. ~~**Import stubs are modelled as 4-byte body-less functions**~~ — documented (428 bytes of `EXTERNAL` block noise per importing module; by design).
-5. **Emulation-based `assert_*` execution** — **IMPLEMENTED** (`run_emulate.ps1` + PyGhidra; 33 suites, 92/92 modules; assert_return 2514/1, assert_trap 183/0; the 1 remaining is the `br_table large` case index `10000`, a *case* past the modelled-case cap — `REPORT-R5-BRTABLE.md`).
+5. **Emulation-based `assert_*` execution** — **IMPLEMENTED** (`run_emulate.ps1` + PyGhidra).
+   The historical 33-suite result was assert_return 2514/1 and assert_trap 183/0.
+   The remaining large-table truncation was fixed in v2.8.2; see current regressions in 2.3.
+   The full assertion aggregate has not been remeasured for v2.8.2.
 
 ### 6.1 Real-world corpus baseline
 
@@ -494,9 +502,14 @@ too coarse to validate conformant reference-typed signatures. `ValType.readFromR
 `ref.null` produced a different type, so a module with a reference-typed block or function result
 failed validation with `pop type mismatch` and its body was left undecoded (`E15_gc_br_on_cast` in
 conformant form: `instrs 1, undefined_bytes 27`). `REPORT-H7.md` maps each abstract heap type to its
-`ValType` (concrete indices keep one generic placeholder), types `ref.null` precisely, makes
+`ValType` (at that historical stage concrete indices kept one generic placeholder), types `ref.null` precisely, makes
 `popValue`/`popValues`/`popBlock` subtype-aware, and decodes multi-byte block signatures and the
 `ref.null` s33 immediate in SLEIGH; `E15` now decodes with `instrs 17, undefined_bytes 0`.
+
+The v2.8.1 follow-up preserves concrete heap indices until their func/struct/array/cont family
+can be resolved, and fixes reference-branch argument relocation. Full nominal GC validation
+and heap emulation remain outside the plugin's model; the historical placeholder description
+above should not be read as the current implementation.
 
 ## 7. References
 

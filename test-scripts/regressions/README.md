@@ -19,10 +19,14 @@ Pass `-OutDir` to retain receipts elsewhere. Every stage exits nonzero on failur
   relocation, compiler specs, table64 pcode widths, table initialization, memory-copy
   inference/injection, named locals, memory offsets, struct layout, vararg loads, C-stack
   options, numeric execution, memory growth, and trapping-store preservation.
+* `PatchRegressionTest.java`: independent memory spaces at high offsets and indices,
+  zero-sized/grown memory initialization, scalar/SIMD/atomic accesses, cross-memory and
+  overlapping multi-page copies, trapping stores, and complete 16,384-case branch tables
+  with scalar and mixed-width arguments; native decompilation must remain compact.
 * `make_fixtures.py`: deterministic fixtures and independent Python numeric expectations;
   includes the existing call/store, operand-cache, and large `br_table` fixtures.
 * `oracle.mjs`: Node validates every positive/negative fixture and executes every numeric
-  matrix function independently of Ghidra.
+  matrix function plus memory-isolation and large-table behavior independently of Ghidra.
 * `test_emulate_reports.py`: report aggregation process exit codes, missing/empty reports,
   and stale unselected reports.
 
