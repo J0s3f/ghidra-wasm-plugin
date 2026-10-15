@@ -197,7 +197,7 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 
 See [MODERN_WASM_GAPS.md](MODERN_WASM_GAPS.md) for a feature-by-feature inventory of what the plugin
 does and does not understand in modern WebAssembly, how each gap was measured, and the planned
-fix order. The released-core follow-up on this branch adds sparse high-address data
+fix order. The v2.8.3 released-core follow-up adds sparse high-address data
 loading, GC heap emulation and nominal type diagnostics, broader structure recovery,
 safe direct-function inlining, repeatable C-stack reanalysis, and named block/heap operands.
 Context updates are batched, and unchanged reanalysis preserves existing instructions.

@@ -1,4 +1,4 @@
-# Ghidra-WASM 2.8.2
+# Ghidra-WASM 2.8.3
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
@@ -12,6 +12,32 @@ Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
+
+## New in 2.8.3 (since 2.8.2)
+
+* Load active data above the 128 MiB eager zero prefix into sparse memory blocks,
+  preserving overlapping segments and high memory32/memory64 addresses. Memory64
+  size and bounds arithmetic retain the full unsigned extent.
+* Execute GC structures, arrays, bulk array operations, casts, recursive-type identity,
+  i31 values, extern conversions, GC initializers and passive segments in the emulator.
+  Preserve mixed scalar/vector widths and packed-field signedness. Nominal subtype,
+  variance and nullability checks emit diagnostics while imports remain lenient.
+* Preserve caller locals and live operand slots when direct callees are marked inline,
+  including nested calls. Changing or clearing the C-stack global rebuilds instruction
+  context and removes stale inferred stack variables while preserving user-defined ones.
+* Recover structure views across interior-pointer arguments and safe indirect calls;
+  infer local/global bases, scalar field types and narrow SIMD accesses. Retain the
+  eight-byte ABI of memory64 pointers and exclude conflicting alias constraints.
+* Print released block/heap type operands by name and batch equal context updates.
+  Unchanged reanalysis preserves disassembly and inferred variables.
+* Add 37 CI probes, independent Node execution/trap checks, nominal validation cases,
+  native decompilation checks and a 20,000-link pointer-constraint regression. Local
+  verification passed 69,297 integration assertions, all 260 probe expectations,
+  WABT/Binaryen fixture classifications and the committed decompiler fixture.
+
+**Upgrade:** reimport existing Wasm programs after installing this patch to regenerate
+memory blocks, instruction context and inferred types. The emulator and conservative
+structure inference are analysis tools, rather than a complete validator or runtime.
 
 ## New in 2.8.2 (since 2.8.1)
 

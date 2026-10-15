@@ -1,6 +1,6 @@
 # Modern WebAssembly support: inventory, gaps and roadmap
 
-Status of this document: **released v2.8.2 baseline plus unreleased released-core fixes (2026-10-15)**. (The per-workstream
+Status of this document: **updated for v2.8.3 (2026-10-15)**. (The per-workstream
 `REPORT-*.md` files referenced throughout live on the `archive/reports` branch; the machine-checked
 expectations stay here as data: `test-scripts/expected-results.json` for the probe gate.) See the status table
 below. The inventory was produced from `main` (originally commit `430cbe2`, plugin built against
@@ -32,7 +32,7 @@ integration assertions, 22 bounded-heap parser assertions, and 234 independent N
 | 4. real-world corpus sweep | **merged** (`REPORT-H.md`; 15/15 modules import, 5591/5591 functions decompile - see §6.1) |
 | 4. robustness sweep (malformed inputs) | **merged** (`REPORT-J.md`; 56-module corpus - see §6.2; two real bugs found and reproduced) |
 | 9. DWARF line info | **merged** (`REPORT-DW.md`; source lines map with a `CODE_BASE + code-section-start` fixup - see §6.3) |
-| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are now loaded sparsely by the unreleased follow-up |
+| Section diagnostics + 64-bit data offsets | **merged** (`REPORT-H1.md`): invalid sections rejected; i64 offsets use memory64 (item 11), segments beyond the materialised prefix are now loaded sparsely by the v2.8.3 follow-up |
 | Spec-suite gates (positive + negative) | **merged** (`REPORT-G.md`, `REPORT-NS.md`): 271 core modules, 0 real undefined bytes, 0 decompile failures; 2948 negative modules classified |
 | Spec assert emulation | **implemented** (`REPORT-H3.md`); the historical v2.8.1 aggregate was assert_return 2514/1, assert_trap 183/0. The large-`br_table` truncation was fixed in v2.8.2 and covered by new execution tests; the full 33-suite assertion aggregate has not been remeasured. |
 | Stack switching / strings / wide arith / `memory.discard` | **merged** (`REPORT-H5.md`): all decode; `cont` types parse (`REPORT-CT.md`) |
@@ -121,7 +121,7 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | GC type entries (`struct`/`array`/`rec`/`sub`) | fixed (`REPORT-E`): real Ghidra structures/arrays; probes `E01`-`E20` |
 | GC instructions (`0xFB`) | fixed (`REPORT-E`): `struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`; probes `E10`-`E18` |
 | New exception handling (`try_table`, `throw_ref`, `exnref`) | fixed (`REPORT-F`): probes `11`, `30`-`39` |
-| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`, v2.8.1): concrete indices resolve to their reference families and branch arguments relocate correctly. Nominal subtype/nullability diagnostics and heap execution are added by the unreleased follow-up (see 2.3). |
+| Typed function references (`call_ref`, `return_call_ref`, `br_on_null`, `ref.as_non_null`, ...) | fixed (`REPORT-FR`, v2.8.1): concrete indices resolve to their reference families and branch arguments relocate correctly. Nominal subtype/nullability diagnostics and heap execution are added by the v2.8.3 follow-up (see 2.3). |
 | Extended-const and GC constant expressions | fixed (`REPORT-SF` + `B14`): probes `19`, `20`, `22`-`27`, `B07`-`B15` |
 | Stack switching / JSPI (`cont.new` ... `switch`) | fixed (`REPORT-H5` + `REPORT-CT`): probes `H01`-`H10` (continuation *types* now parse too, so all ten classify as `wabt-gap`) |
 | JS string builtins / stringref (`0xFB >= 0x80`) | fixed (`REPORT-H5`): probes `S01`-`S10`; unassigned sub-opcodes render as `unimplemented (reserved)` |
@@ -145,7 +145,7 @@ on 2026-10-15. Implementation in an engine does not by itself make a proposal pa
 | **Component-model semantics** | Canonical ABI, `canon` operations, and component types are not modeled; core-module extraction only. | Active Phase 1 proposal, outside released core. Stable subsets nevertheless ship in [WASI Developer Preview releases](https://github.com/WebAssembly/component-model#milestones). |
 | **Custom page-size validation** | Page-size-aware loading is implemented; exotic exponents are accepted leniently, while external oracles exercise 1 B / 64 KiB. | Active Phase 3 proposal. |
 
-The released-core follow-up is implemented on this branch and is **not yet released**:
+The released-core follow-up is implemented for **v2.8.3**:
 
 | Previous limitation | Implemented behavior and regression evidence |
 | --- | --- |
@@ -337,7 +337,7 @@ space named `memory_N` or `memory64_N`, including zero-sized declarations.
   and initializes independent banks for the program's secondary memories. Unmapped overlay
   pages cannot fall back to the primary memory; newly grown pages read their own zeroes.
 
-The eager zero prefix is bounded at **128 MiB per memory**. The unreleased follow-up loads
+The eager zero prefix is bounded at **128 MiB per memory**. The v2.8.3 follow-up loads
 active data outside that prefix into sparse blocks. The prefix does not define memory identity:
 high offsets and indices above 31 do not alias adjacent memories. Bulk/string/atomic wait intrinsics still
 have operation-specific emulator support limits; the plugin is not a full Wasm runtime.
@@ -517,7 +517,7 @@ conformant form: `instrs 1, undefined_bytes 27`). `REPORT-H7.md` maps each abstr
 `ref.null` s33 immediate in SLEIGH; `E15` now decodes with `instrs 17, undefined_bytes 0`.
 
 The v2.8.1 follow-up preserves concrete heap indices until their func/struct/array/cont family
-can be resolved, and fixes reference-branch argument relocation. The unreleased follow-up
+can be resolved, and fixes reference-branch argument relocation. The v2.8.3 follow-up
 adds a nominal type graph, diagnostic stack checks, and GC heap emulation (see 2.3). The
 historical placeholder description above should not be read as the current implementation.
 
