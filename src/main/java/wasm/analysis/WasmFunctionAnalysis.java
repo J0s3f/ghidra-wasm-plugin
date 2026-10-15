@@ -993,6 +993,10 @@ public class WasmFunctionAnalysis {
 	void gcSetOperandSize(Address instAddress, ValType type) {
 		contextreg.setOperandSize(instAddress, type);
 	}
+	/** Number of values on the operand stack above the current block's floor. */
+	int gcStackAvailable(Address instAddress) {
+		return valueStack.size() - getBlock(instAddress, 0).initialStack.size();
+	}
 	void gcSetInputCount(Address address, long count) {
 		contextreg.setRegister(address, ContextRegister.REG_CASE_INDEX, count);
 	}

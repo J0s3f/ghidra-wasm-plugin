@@ -134,7 +134,9 @@ public class RegressionTest {
       for (var f:state.getFunctions()) {
         if (f.isImport()) continue;
         try {
+          long started=System.nanoTime();
           var fa=state.getFunctionAnalysis(f.getStartAddr());
+          if(p.getName().equals("unreachable_array_new_fixed.wasm")) check(System.nanoTime()-started<2_000_000_000L,"array.new_fixed with a huge count in unreachable code is bounded");
           // Retain context in a separate walk: applyContext clears its pending context map.
           var bytes=state.getModule().getFunctionCode(f.getFuncIdx()).getInstructions();
           var copy=new WasmFunctionAnalysis(f);
@@ -190,6 +192,13 @@ public class RegressionTest {
             }
           }
         } catch (Throwable e) { throw new AssertionError("Analysis failed in "+p.getName()+" "+f.getName(),e); }
+      }
+      if(p.getName().equals("func_code_mismatch.wasm")) check(state.getFunctions().size()==1,"Function/code section mismatch enumerates only functions with bodies");
+      if(p.getName().equals("label_names_repeat.wasm")) {
+        new WasmNameApplyAnalyzer().added(p,p.getMemory(),monitor,new MessageLog());
+        var parents=new HashSet<String>();
+        for(var sym:p.getSymbolTable().getSymbols("exit")) parents.add(sym.getParentNamespace().getName());
+        check(parents.size()==2,"A label name repeated across functions labels each function: "+parents);
       }
       new WasmSignatureAnalyzer().added(p,p.getMemory(),monitor,new MessageLog());
       if(p.getName().equals("local_names.wasm")) {

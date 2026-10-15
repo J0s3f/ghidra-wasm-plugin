@@ -148,6 +148,7 @@ public class WasmModule {
 			for (WasmImportEntry entry : getImports(WasmExternalKind.EXT_TABLE)) { entry.getTableType().resolveReferenceTypes(this::resolveHeapType); }
 			for (WasmGlobalEntry entry : getNonImportedGlobals()) { entry.getGlobalType().resolveReferenceTypes(this::resolveHeapType); }
 			for (WasmTableType table : getNonImportedTables()) { table.resolveReferenceTypes(this::resolveHeapType); }
+			for (WasmElementSegment segment : getElementSegments()) { segment.resolveReferenceTypes(this::resolveHeapType); }
 			for (WasmCodeEntry function : getNonImportedFunctions()) { function.resolveReferenceTypes(this::resolveHeapType); }
 		} catch (IndexOutOfBoundsException | IllegalArgumentException e) {
 			throw new IOException("Invalid concrete reference type", e);
@@ -324,11 +325,29 @@ public class WasmModule {
 	// #endregion
 
 	// #region Convenience functions
-	public int getFunctionCount() {
+	/**
+	 * The number of function-section entries plus function imports, whether or not the code
+	 * section has a body for each. The loader accepts modules where the two sections disagree.
+	 */
+	public int getDeclaredFunctionCount() {
 		int numFunctions = getImports(WasmExternalKind.EXT_FUNCTION).size();
 		WasmFunctionSection functionSection = getFunctionSection();
 		if (functionSection != null) {
 			numFunctions += functionSection.getTypeCount();
+		}
+		return numFunctions;
+	}
+
+	/**
+	 * The number of usable functions: imports plus defined functions that have both a
+	 * function-section type and a code-section body. Indices below this value can always be
+	 * passed to {@link #getFunctionType} and {@link #getFunctionCode}.
+	 */
+	public int getFunctionCount() {
+		int numFunctions = getImports(WasmExternalKind.EXT_FUNCTION).size();
+		WasmFunctionSection functionSection = getFunctionSection();
+		if (functionSection != null) {
+			numFunctions += Math.min(functionSection.getTypeCount(), getNonImportedFunctions().size());
 		}
 		return numFunctions;
 	}
@@ -349,9 +368,11 @@ public class WasmModule {
 		List<WasmImportEntry> imports = getImports(WasmExternalKind.EXT_FUNCTION);
 		if (funcidx < imports.size()) {
 			return null;
-		} else {
-			return getNonImportedFunctions().get(funcidx - imports.size());
 		}
+		List<WasmCodeEntry> bodies = getNonImportedFunctions();
+		int local = funcidx - imports.size();
+		/* The function and code sections may disagree in count; a missing body is not an error. */
+		return local >= 0 && local < bodies.size() ? bodies.get(local) : null;
 	}
 
 	/** The function type of exception tag `tagidx` (imported tags first, then the tag section), or null. */

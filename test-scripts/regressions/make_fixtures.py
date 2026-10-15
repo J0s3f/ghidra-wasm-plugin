@@ -68,6 +68,27 @@ write('table_initializer.wasm',module(type_section(functype([],[])),func_section
     section(4,vec([b'\x40\x00\x64\x00\x00\x01\xd2\x00\x0b'])),code_section([END])))
 write('rec_functype.wasm',module(type_section(rectype(functype([],[]))),func_section([0]),code_section([END])))
 
+# Regression fixtures for review findings. gc_new_fixed_const uses element count 11 (0x0b), which a
+# byte scan for the constant expression's `end` would mistake for the terminator; the second
+# global makes the resulting desynchronisation observable.
+write('gc_new_fixed_const.wasm',module(type_section(array_type(I32,False)),
+    global_section([(ref_(0),False,i32_const(1)*11+gc_op(8)+uleb(0)+uleb(11)),(I32,False,i32_const(7))])))
+# Invalid by design (function section declares two functions, the code section holds one body).
+write('func_code_mismatch.wasm',module(type_section(functype([],[])),func_section([0,0]),code_section([END])))
+# Passive element segment with an explicit multi-byte reftype, (ref null $0).
+write('elem_reftype_multibyte.wasm',module(type_section(functype([],[])),func_section([0]),
+    elem_section([b'\x05c\x00\x01\xd2\x00\x0b']),code_section([END])))
+# array.new_fixed with the maximum count in unreachable code pops nothing from the stack.
+write('unreachable_array_new_fixed.wasm',module(type_section(array_type(I32,False),functype([],[])),func_section([1]),
+    code_section([b'\x00'+gc_op(8)+uleb(0)+uleb(0xFFFFFFFF)+drop()+END])))
+# table64 with a maximum of 2^64-1 (a negative signed long).
+write('table64_max_unsigned.wasm',module(type_section(functype([],[])),
+    section(4,vec([bytes([FUNCREF])+b'\x05'+uleb(0)+uleb(2**64-1)]))))
+# The same label name in two functions must label both, each in its own function namespace.
+write('label_names_repeat.wasm',module(type_section(functype([],[])),func_section([0,0]),
+    code_section([b'\x02@\x0b'+END,b'\x02@\x0b'+END]),
+    custom_section('name',name_subsection(3,vec([uleb(0)+vec([uleb(0)+uleb(4)+b'exit']),uleb(1)+vec([uleb(0)+uleb(4)+b'exit'])])))))
+
 write('mutable_memory.wasm',module(type_section(functype([I32,I32],[]),functype([],[I32])),func_section([0,1]),
     memory_section([(0,1)]),export_section([('setter',0,0),('read_mutable',0,1)]),code_section([
         local_get(0)+local_get(1)+b'\x36\x02\x00'+END,

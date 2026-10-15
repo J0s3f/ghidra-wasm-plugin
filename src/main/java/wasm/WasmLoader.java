@@ -141,20 +141,19 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_FUNCTION);
 		if (funcidx < imports.size()) {
 			return IMPORT_BASE + funcidx * 4;
-		} else {
-			WasmCodeEntry codeEntry = module.getNonImportedFunctions().get(funcidx - imports.size());
-			return CODE_BASE + codeEntry.getOffset();
 		}
+		WasmCodeEntry codeEntry = module.getFunctionCode(funcidx);
+		/* No body (function/code section mismatch or bad index): behave like a null reference. */
+		return codeEntry == null ? 0 : CODE_BASE + codeEntry.getOffset();
 	}
 
 	public static long getFunctionSize(WasmModule module, int funcidx) {
 		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_FUNCTION);
 		if (funcidx < imports.size()) {
 			return 4;
-		} else {
-			WasmCodeEntry codeEntry = module.getNonImportedFunctions().get(funcidx - imports.size());
-			return codeEntry.getCodeSize();
 		}
+		WasmCodeEntry codeEntry = module.getFunctionCode(funcidx);
+		return codeEntry == null ? 0 : codeEntry.getCodeSize();
 	}
 
 	public static Address getFunctionAddress(AddressFactory addressFactory, WasmModule module, int funcidx) {
@@ -610,9 +609,9 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 	 */
 	private static void validateTableLimits(int tableidx, WasmTableType table) throws IOException {
 		WasmResizableLimits limits = table.getLimits();
-		if (limits.hasMaximum() && limits.getInitial() > limits.getMaximum()) {
-			throw new IOException("Table " + tableidx + " is invalid: initial size " + limits.getInitial()
-					+ " element(s) exceeds the declared maximum " + limits.getMaximum() + " element(s)");
+		if (limits.hasMaximum() && Long.compareUnsigned(limits.getInitial(), limits.getMaximum()) > 0) {
+			throw new IOException("Table " + tableidx + " is invalid: initial size " + Long.toUnsignedString(limits.getInitial())
+					+ " element(s) exceeds the declared maximum " + Long.toUnsignedString(limits.getMaximum()) + " element(s)");
 		}
 	}
 
@@ -674,6 +673,12 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		List<WasmImportEntry> imports = module.getImports(WasmExternalKind.EXT_FUNCTION);
 		List<WasmCodeEntry> codeEntries = module.getNonImportedFunctions();
 		int numFunctions = imports.size() + codeEntries.size();
+
+		if (module.getDeclaredFunctionCount() != numFunctions) {
+			Msg.warn(this, "Function section declares " + (module.getDeclaredFunctionCount() - imports.size()) +
+					" function(s) but the code section has " + codeEntries.size() +
+					" body(ies); only functions with both a type and a body are analysed.");
+		}
 
 		if (imports.size() > 0) {
 			createImportStubBlock(program, getFunctionAddress(program.getAddressFactory(), module, 0), imports.size() * 4);
@@ -1258,7 +1263,7 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 				return;
 			}
 		}
-		boolean declaredContent = module.getFunctionCount() > 0
+		boolean declaredContent = module.getDeclaredFunctionCount() > 0
 				|| !module.getNonImportedMemories().isEmpty()
 				|| !module.getNonImportedTables().isEmpty()
 				|| !module.getNonImportedGlobals().isEmpty();
@@ -1267,12 +1272,12 @@ public class WasmLoader extends AbstractLibrarySupportLoader {
 		}
 		int codeEntries = module.getNonImportedFunctions().size();
 		StringBuilder detail = new StringBuilder("Declared: ")
-				.append(module.getFunctionCount()).append(" function(s), ")
+				.append(module.getDeclaredFunctionCount()).append(" function(s), ")
 				.append(codeEntries).append(" code entries, ")
 				.append(module.getNonImportedMemories().size()).append(" memory(ies), ")
 				.append(module.getNonImportedTables().size()).append(" table(s), ")
 				.append(module.getNonImportedGlobals().size()).append(" global(s).");
-		if (module.getFunctionCount() > 0 && codeEntries == 0) {
+		if (module.getDeclaredFunctionCount() > 0 && codeEntries == 0) {
 			detail.append(" The module declares functions but has no usable code entries")
 					.append(" (a function section without a matching code section?).");
 		}

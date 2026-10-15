@@ -45,6 +45,7 @@ public class WasmElementSegment implements StructConverter {
 	private List<LEB128Info> funcidxs; /* if (flags & 4) == 0 */
 
 	ValType elemtype; /* if (flags & 4) != 0 */
+	private ValType.TypeInfo elemtypeInfo; /* if (flags & 4) != 0 and (flags & 3) != 0 */
 	private List<ConstantExpression> exprs; /* if (flags & 4) != 0 */
 
 	public enum ElementSegmentMode {
@@ -78,21 +79,17 @@ public class WasmElementSegment implements StructConverter {
 			/* implicit element type */
 			elemkind = 0;
 			elemtype = ValType.funcref;
+		} else if ((flagVal & 4) == 0) {
+			/* elemkind */
+			elemkind = reader.readNextUnsignedByte();
 		} else {
-			/* explicit element type */
-			int typeCode = reader.readNextUnsignedByte();
-			if ((flagVal & 4) == 0) {
-				/* elemkind */
-				elemkind = typeCode;
+			/* reftype, possibly multi-byte: (ref null ht) / (ref ht) */
+			if (ValType.isMultiBytePrefix(reader.peekNextByte() & 0xFF)) {
+				elemtypeInfo = ValType.readTypeInfo(reader);
+				elemtype = elemtypeInfo.type;
 			} else {
-				/* reftype */
-				// Need to re-read from the stream - reader already consumed the first byte
-				// For now, use fromByte; ideally we'd use a pushback reader
-				elemtype = ValType.fromByte(typeCode);
-				if (ValType.isMultiBytePrefix(typeCode)) {
-					// Consume the heaptype operand
-					reader.readNext(LEB128Info::signed);
-				}
+				/* unknown bytes keep the loader's tolerant i32 placeholder */
+				elemtype = ValType.fromByte(reader.readNextUnsignedByte());
 			}
 		}
 
@@ -141,6 +138,12 @@ public class WasmElementSegment implements StructConverter {
 			return null;
 		}
 		return offset.asConstValue();
+	}
+
+	public void resolveReferenceTypes(java.util.function.LongFunction<ValType> resolver) {
+		if (elemtypeInfo != null) {
+			elemtype = elemtypeInfo.resolve(resolver);
+		}
 	}
 
 	public ValType getElementType() {
@@ -213,8 +216,8 @@ public class WasmElementSegment implements StructConverter {
 			builder.add(offset, "offset");
 		}
 		if ((flags.asLong() & 3) != 0) {
-			/* both elemkind and reftype are single bytes */
-			builder.add(BYTE, "element_type");
+			/* elemkind is a single byte, a reftype may be several */
+			builder.addArray(BYTE, elemtypeInfo != null ? elemtypeInfo.encodedLength : 1, "element_type");
 		}
 
 		builder.addUnsignedLeb128(count, "count");

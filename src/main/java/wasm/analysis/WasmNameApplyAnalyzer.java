@@ -28,6 +28,7 @@ import ghidra.program.model.lang.Processor;
 import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
@@ -293,20 +294,20 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 				Address target = (labelidx >= 0 && labelidx <= Integer.MAX_VALUE)
 						? targets.get((int) labelidx)
 						: null;
-				if (target != null) {
-					applyLabel(program, target, label.getValue(),
-						"label_" + funcidx + "_" + labelidx);
+				/* Label names repeat across functions (e.g. $exit), so they live in the function's
+				   namespace; anything that could not be applied is kept in the comment. */
+				if (target != null && applyLabel(program, target, label.getValue(),
+					"label_" + funcidx + "_" + labelidx, function)) {
+					continue;
 				}
-				else {
-					if (unresolved.length() > 0) {
-						unresolved.append(' ');
-					}
-					unresolved.append('[').append(labelidx).append("]=").append(label.getValue());
+				if (unresolved.length() > 0) {
+					unresolved.append(' ');
 				}
+				unresolved.append('[').append(labelidx).append("]=").append(label.getValue());
 			}
 			if (unresolved.length() > 0) {
 				appendPlateComment(program, function.getEntryPoint(),
-					"WebAssembly label names (no address): " + unresolved);
+					"WebAssembly label names (not applied): " + unresolved);
 			}
 		}
 	}
@@ -329,38 +330,48 @@ public class WasmNameApplyAnalyzer extends AbstractAnalyzer {
 		}
 	}
 
-	/**
-	 * Create a label with an imported name, unless the address already carries a
-	 * user-defined symbol (never overwrite user symbols) or the exact name is present.
-	 */
+	/** Create a label in the global namespace; see the namespace overload. */
 	private void applyLabel(Program program, Address address, String name, String fallbackName) {
+		applyLabel(program, address, name, fallbackName, program.getGlobalNamespace());
+	}
+
+	/**
+	 * Create a label with an imported name in the given namespace, unless the address already
+	 * carries a user-defined symbol (never overwrite user symbols) or the exact name is already
+	 * present in that namespace. Returns whether the label now exists with this name.
+	 */
+	private boolean applyLabel(Program program, Address address, String name, String fallbackName,
+			Namespace namespace) {
 		if (address == null || name == null || name.isEmpty()) {
-			return;
+			return false;
 		}
 		if (program.getMemory().getBlock(address) == null) {
-			return;
+			return false;
 		}
 
 		SymbolTable symbolTable = program.getSymbolTable();
 		for (Symbol symbol : symbolTable.getSymbols(address)) {
 			if (symbol.getSource() == SourceType.USER_DEFINED) {
-				return;
+				return false;
 			}
 		}
 
 		String labelName = sanitize(name);
 		if (labelName.isEmpty()) {
-			return;
+			return false;
 		}
-		if (!symbolTable.getSymbols(labelName, program.getGlobalNamespace()).isEmpty()) {
-			return;
+		for (Symbol existing : symbolTable.getSymbols(labelName, namespace)) {
+			/* a re-run finds its own label: that is success, not a clash */
+			return existing.getAddress().equals(address);
 		}
 
 		try {
-			symbolTable.createLabel(address, labelName, program.getGlobalNamespace(), SourceType.IMPORTED);
+			symbolTable.createLabel(address, labelName, namespace, SourceType.IMPORTED);
+			return true;
 		}
 		catch (Exception e) {
 			Msg.warn(this, TAG + "could not label " + fallbackName + " (" + name + ") at " + address, e);
+			return false;
 		}
 	}
 

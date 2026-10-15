@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const root=process.argv[2];
-const malformed=new Set(['huge_params.wasm','truncated_datacount.wasm','cross_section_type.wasm']);
+const malformed=new Set(['huge_params.wasm','truncated_datacount.wasm','cross_section_type.wasm','func_code_mismatch.wasm',
+  // spec-valid, but V8 caps array.new_fixed at 10000 elements
+  'unreachable_array_new_fixed.wasm']);
 let count=0;
 for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.wasm'))) {
   assert.equal(WebAssembly.validate(fs.readFileSync(path.join(root,file))),!malformed.has(file),file);

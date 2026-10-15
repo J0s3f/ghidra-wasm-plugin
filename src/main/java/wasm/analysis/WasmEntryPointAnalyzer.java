@@ -30,6 +30,8 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.lang.Processor;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -54,6 +56,7 @@ import wasm.format.sections.structures.WasmExportEntry;
  * type has a return value (return types come from the type section, which is
  * never stripped). Naming it lets recompiled/decompiled output use
  * <code>main</code> instead of an anonymous <code>unnamed_function_N</code>.
+ * An exported <code>__main_argc_argv</code> is already the user's main and is named directly.
  */
 public class WasmEntryPointAnalyzer extends AbstractAnalyzer {
 	private static final String NAME = "Wasm Entry Point Analyzer";
@@ -85,18 +88,34 @@ public class WasmEntryPointAnalyzer extends AbstractAnalyzer {
 	}
 
 	private void nameMain(Program program) throws Exception {
-		/* already have a main (e.g. from the name section)? nothing to do */
-		if (!program.getSymbolTable().getGlobalSymbols("main").isEmpty()) {
-			return;
+		/* already have a main (e.g. from the name section or an export, in any namespace)? */
+		for (Symbol sym : program.getSymbolTable().getSymbols("main")) {
+			if (sym.getSymbolType() == SymbolType.FUNCTION) {
+				return;
+			}
 		}
 
 		WasmAnalysis state = WasmAnalysis.getState(program);
 		WasmModule module = state.getModule();
 
+		/* Emscripten exports the user's main itself as __main_argc_argv: name it directly */
+		for (WasmExportEntry exp : module.getExports(WasmExternalKind.EXT_FUNCTION)) {
+			if ("__main_argc_argv".equals(exp.getName())) {
+				WasmFuncSignature mainSig = state.getFunction(exp.getIndex());
+				Function main = mainSig == null || mainSig.isImport() ? null
+						: program.getFunctionManager().getFunctionAt(mainSig.getStartAddr());
+				if (main != null) {
+					main.setName("main", SourceType.ANALYSIS);
+					Msg.info(this, "Named exported __main_argc_argv " + main.getEntryPoint() + " as main");
+					return;
+				}
+			}
+		}
+
 		/* locate the exported _start (export names survive stripping) */
 		WasmFuncSignature startSig = null;
 		for (WasmExportEntry exp : module.getExports(WasmExternalKind.EXT_FUNCTION)) {
-			if ("_start".equals(exp.getName()) || "__main_argc_argv".equals(exp.getName())) {
+			if ("_start".equals(exp.getName())) {
 				startSig = state.getFunction(exp.getIndex());
 				break;
 			}

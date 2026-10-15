@@ -169,13 +169,20 @@ public final class ConstantExpression implements StructConverter {
 			case 0xD1: /* ref.is_null */
 				return EMPTY;
 
-			case 0x1C: { /* select t : valtype (may be a multi-byte reference type) */
-				byte[] first = readFixed(reader, 1);
-				int b = first[0] & 0xFF;
-				if (b == 0x63 || b == 0x64) { /* (ref null <heaptype>) / (ref <heaptype>) */
-					return concat(List.of(first, readSleb(reader)));
+			case 0x1C: { /* select t* : vec(valtype), types may be multi-byte reference types */
+				List<byte[]> parts = new ArrayList<>();
+				byte[] countBytes = readUleb(reader);
+				parts.add(countBytes);
+				long count = decodeUleb(countBytes);
+				for (long i = 0; i < count; i++) {
+					byte[] first = readFixed(reader, 1);
+					parts.add(first);
+					int b = first[0] & 0xFF;
+					if (b == 0x63 || b == 0x64) { /* (ref null <heaptype>) / (ref <heaptype>) */
+						parts.add(readSleb(reader));
+					}
 				}
-				return first;
+				return concat(parts);
 			}
 
 			case 0x07: /* catch tagidx */
@@ -277,15 +284,13 @@ public final class ConstantExpression implements StructConverter {
 					case 0x07: /* array.new_default typeidx */
 					case 0x09: /* array.new_data typeidx dataidx */
 					case 0x0A: /* array.new_elem typeidx elemidx */
+					case 0x08: /* array.new_fixed typeidx count */
 					{
 						byte[] typeidx = readUleb(reader);
-						if (subOp == 0x09 || subOp == 0x0A) {
+						if (subOp == 0x08 || subOp == 0x09 || subOp == 0x0A) {
 							return concat(List.of(sub, typeidx, readUleb(reader)));
 						}
 						return concat(List.of(sub, typeidx));
-					}
-					case 0x08: { /* array.new_fixed: typeidx + N field values, not decoded */
-						throw new Undecodable();
 					}
 					case 0x14: /* ref.test heaptype */
 					case 0x15: /* ref.test null heaptype */

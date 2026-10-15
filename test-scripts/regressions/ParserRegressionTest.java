@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import wasm.WasmLoader;
 import ghidra.app.util.bin.*;
 import wasm.format.*;
 import wasm.format.sections.*;
@@ -46,6 +47,30 @@ public class ParserRegressionTest {
     }
     var module=new WasmModule(reader(Files.readAllBytes(fixtures.resolve("gc_return.wasm"))));
     check(module.getType(1).getReturnTypes()[0]==WasmEnums.ValType.structref,"Concrete struct return family");
+    // array.new_fixed in a constant expression keeps its typeidx/count immediates (count 11 is 0x0b).
+    var fixed=new WasmModule(reader(Files.readAllBytes(fixtures.resolve("gc_new_fixed_const.wasm"))));
+    check(fixed.getNonImportedGlobals().size()==2,"array.new_fixed constant expression with count 11 must not end early");
+    // select t* is vec(valtype): a multibyte reftype whose heap index is 0x0b must not end the expression.
+    var selectBytes=new byte[]{0x1c,1,0x63,0x0b,0x0b,0x7f};
+    var selectReader=reader(selectBytes);
+    new ConstantExpression(selectReader);
+    check(selectReader.getPointerIndex()==5,"select t* constant expression consumes vec(valtype)");
+    // The function and code sections may disagree: only functions with both are enumerated.
+    var mismatch=new WasmModule(reader(Files.readAllBytes(fixtures.resolve("func_code_mismatch.wasm"))));
+    check(mismatch.getDeclaredFunctionCount()==2 && mismatch.getFunctionCount()==1,"Function count counts only functions with bodies");
+    check(mismatch.getFunctionCode(1)==null && mismatch.getFunctionCode(5)==null,"Missing function body is null, not an exception");
+    check(WasmLoader.getFunctionAddressOffset(mismatch,1)==0 && WasmLoader.getFunctionSize(mismatch,1)==0,"Address helpers tolerate a missing body");
+    // An explicit multibyte element reftype is kept, resolved and fully covered by the markup.
+    var elem=new WasmModule(reader(Files.readAllBytes(fixtures.resolve("elem_reftype_multibyte.wasm"))));
+    var segment=elem.getElementSegments().get(0);
+    check(segment.getElementType()==WasmEnums.ValType.funcref,"Element reftype (ref null $0) resolves to funcref");
+    check(segment.toDataType().getLength()==7,"Element segment markup covers the multibyte reftype");
+    // table64 limits compare unsigned: a maximum of 2^64-1 is not smaller than the initial size.
+    var table=new WasmModule(reader(Files.readAllBytes(fixtures.resolve("table64_max_unsigned.wasm"))));
+    var validate=WasmLoader.class.getDeclaredMethod("validateTableLimits",int.class,WasmTableType.class);
+    validate.setAccessible(true);
+    validate.invoke(null,0,table.getTableType(0));
+    check(table.getTableType(0).is64Bit(),"table64 maximum above 2^63 is accepted");
     System.out.println("Parser regression assertions: "+assertions);
   }
 }

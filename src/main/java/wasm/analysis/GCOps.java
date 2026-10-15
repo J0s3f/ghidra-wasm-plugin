@@ -140,8 +140,11 @@ public final class GCOps {
 			case 0x08: { // array.new_fixed t n: [field^n] -> [(ref t)]
 				long t = readLeb(reader);
 				long n = readLeb(reader);
-				owner.gcSetInputCount(instAddress, n);
-				for (long i = 0; i < n; i++) {
+				/* Pops below the block floor only return null (or fail once, in reachable code), so
+				   stop after the first one: n is unbounded (up to 2^32-1) in unreachable code. */
+				int available = owner.gcStackAvailable(instAddress);
+				owner.gcSetInputCount(instAddress, Math.min(n, available));
+				for (long i = 0, pops = Math.min(n, available + 1L); i < pops; i++) {
 					owner.gcPop(instAddress);
 				}
 				owner.gcPush(instAddress, ValType.arrayref);
