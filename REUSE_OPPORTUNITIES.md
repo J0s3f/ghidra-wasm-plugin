@@ -44,7 +44,7 @@ So the remaining work is fixture hygiene and analyzer quality - **not** decoding
      same-purpose case in the negative/section probe sets). The loader is order-independent, so the
      regenerated baseline should be byte-identical - any metric that moves is a finding in itself.
      Also fix the 8 export entries in `probes_multivalue.py` (`("f", 1, 1)` -> `("f", 0, 1)`; kind 1 is
-     a table index). Re-run the scan over the *merged* tree, since per-agent probe files add new sites.
+     a table index). Re-run the scan over the *merged* tree, since per-workstream probe files add new sites.
     * **STATUS: DONE.** All 201 probes now classify as 118 valid / 53 wabt-gap / 17 unsupported /
       13 invalid under wabt + binaryen; `test-scripts/check-fixture-validity.py` +
       `test-scripts/fixture-validity.json` lock in the classification and

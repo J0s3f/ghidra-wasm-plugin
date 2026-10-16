@@ -79,7 +79,7 @@ public class WasmDWARFAnalyzer extends DWARFAnalyzer {
 	public boolean canAnalyze(Program program) {
 		String format = program.getExecutableFormat();
 
-		if (WasmLoader.WEBASSEMBLY.equals(format)
+		if ((WasmLoader.WEBASSEMBLY.equals(format) || wasm.WasmComponentLoader.WEBASSEMBLY_COMPONENT.equals(format))
 				&& DWARFSectionProviderFactory.createSectionProviderFor(program, TaskMonitor.DUMMY) != null) {
 			return true;
 		}

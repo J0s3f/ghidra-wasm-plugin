@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probes owned by the GC workstream (agent E): valid modules for the WebAssembly GC
+"""Probes owned by the GC workstream (workstream E): valid modules for the WebAssembly GC
 proposal (type-section records + 0xFB instructions).
 
 Uses only the helpers from `wasm_probe_lib.py` (`struct_type`, `array_type`, `rectype`,

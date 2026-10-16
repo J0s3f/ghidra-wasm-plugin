@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Permanent reproduction probes for the malformed-input robustness findings (agent J).
+"""Permanent reproduction probes for the malformed-input robustness findings (workstream J).
 
 These modules are *intentionally invalid*. Unlike every other ``probes_*.py`` file, the probes here
 must NOT import cleanly: each one pins a specific loader misbehaviour so a future regression is

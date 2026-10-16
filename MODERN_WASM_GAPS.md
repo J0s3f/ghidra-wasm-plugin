@@ -21,7 +21,7 @@ integration assertions, 22 bounded-heap parser assertions, and 234 independent N
 | spec-suite findings (select after terminator, stack-variable crashes, oversized br_table) | **merged** (`REPORT-SF.md`; spec core suite now has 0 real undefined bytes and 0 decompiler failures) |
 | function-references instructions (`call_ref`, `return_call_ref`, `ref.as_non_null`, `br_on_null`, `br_on_non_null`) | **merged** (`REPORT-FR.md`; probe `12` reaches 0 undefined bytes) |
 | 0/1/2 unknown-opcode degradation + multi-memory | **merged** (`REPORT-A-DS.md`; probe 06 decodes `memidx`, probe 18 creates both memory blocks) |
-| 8. memory64 | **implemented**: index-type propagation and hybrid `memory`/`memory64` spaces selected per instruction; full i64 effective addresses, including >4 GiB (item 11; `REPORT-MEM64-HYBRID-CODEX.md`) |
+| 8. memory64 | **implemented**: index-type propagation and hybrid `memory`/`memory64` spaces selected per instruction; full i64 effective addresses, including >4 GiB (item 11; `REPORT-MEM64-HYBRID.md`) |
 | 9. `.name` extras + application | **merged** (`REPORT-D.md`; subsections 3/10/11 parsed, `WasmNameApplyAnalyzer` applies table/memory/elem/data labels + module/type/field/tag and label-name comments; malformed name sections no longer break imports) |
 | 4. negative spec tests (`assert_invalid`/`assert_malformed`) | **merged** (`REPORT-NS.md` + §6.4) |
 | loader hardening (locals/memory/table bounds, honest failures) | **merged** (`REPORT-HARD.md` + §6.2; B1/B2/B3/B5 fixed, B4 documented) |
@@ -113,10 +113,10 @@ machine-checked expectations in `test-scripts/expected-results.json`.
 | Feature | Status |
 | --- | --- |
 | Multi-memory (memarg `memidx`, several memories, loading) | fixed (`REPORT-A-DS`/`REPORT-N`): alignment bit 6 consumed, `memidx` exposed, one block per memory; probes `06`, `A01`-`A04`, `B05`, `18` |
-| memory64 | fixed (item 11; `REPORT-MEM64-HYBRID-CODEX.md`): i32 uses unchanged `memory`, i64 uses `memory64`; probes `05`, `M64_01`-`M64_08`, `B8_04`/`B8_05` |
+| memory64 | fixed (item 11; `REPORT-MEM64-HYBRID.md`): i32 uses unchanged `memory`, i64 uses `memory64`; probes `05`, `M64_01`-`M64_08`, `B8_04`/`B8_05` |
 | Shared / 64-bit / custom-page-size limits | fixed (`REPORT-B`): flags decoded fully, following limits entries stay aligned |
-| Custom memory page sizes (block sizing) | fixed (`REPORT-PAGESIZE-MUSESPARK.md`): the declared page size (limits flag `0x08`, log2 exponent) sizes the memory block as pages x page_size, with page-aware cap/overrun diagnostics; probes `B03b`-`B03e` |
-| Multi-byte block signatures on `try`/`try_table` | fixed (`REPORT-TRYBLOCKTYPE-NEMOTRON.md`): `(ref null ht)`/`(ref ht)` value types and multi-byte s33 type indices decode on both `try` and `try_table`; probes `40`-`45` |
+| Custom memory page sizes (block sizing) | fixed (`REPORT-PAGESIZE-2.md`): the declared page size (limits flag `0x08`, log2 exponent) sizes the memory block as pages x page_size, with page-aware cap/overrun diagnostics; probes `B03b`-`B03e` |
+| Multi-byte block signatures on `try`/`try_table` | fixed (`REPORT-TRYBLOCKTYPE-3.md`): `(ref null ht)`/`(ref ht)` value types and multi-byte s33 type indices decode on both `try` and `try_table`; probes `40`-`45` |
 | Multi-value returns | fixed (`REPORT-MV`): results returned as a packed struct; probes `M01`-`M12`, `16`, `17` |
 | GC type entries (`struct`/`array`/`rec`/`sub`) | fixed (`REPORT-E`): real Ghidra structures/arrays; probes `E01`-`E20` |
 | GC instructions (`0xFB`) | fixed (`REPORT-E`): `struct.*`/`array.*`/`i31.*`/`ref.test|cast`/`br_on_cast*`/`any|extern.convert_*`; probes `E10`-`E18` |
@@ -345,7 +345,7 @@ have operation-specific emulator support limits; the plugin is not a full Wasm r
 `B8_04_mem64_over4g` and `B8_05_mem64_just_over4g` originally loaded address zero despite their
 large declarations. Their operands now exercise EAs `0x100000030` and `0x100000010` respectively.
 Before/after listings, regression numbers, constructor/emulation assertions and exact commands
-are in `REPORT-MEM64-HYBRID-CODEX.md`; the 260-probe expectations and validity classifications
+are in `REPORT-MEM64-HYBRID.md`; the 260-probe expectations and validity classifications
 remain the acceptance baseline.
 
 ## 5. Adding a probe (how to extend this document)

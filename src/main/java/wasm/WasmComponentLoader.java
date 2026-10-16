@@ -59,7 +59,8 @@ import wasm.format.WasmConstants;
  */
 public class WasmComponentLoader extends AbstractLibrarySupportLoader {
 
-	public final static String WEBASSEMBLY = "WebAssembly";
+	/* Distinct from WasmLoader.WEBASSEMBLY: Ghidra resolves loaders and executable formats by name. */
+	public final static String WEBASSEMBLY_COMPONENT = "WebAssembly Component";
 
 	/** Size of the component preamble: magic(4) + version(2) + layer(2). */
 	private static final long COMPONENT_HEADER_SIZE = 8;
@@ -101,7 +102,7 @@ public class WasmComponentLoader extends AbstractLibrarySupportLoader {
 
 	@Override
 	public String getName() {
-		return WEBASSEMBLY;
+		return WEBASSEMBLY_COMPONENT;
 	}
 
 	@Override

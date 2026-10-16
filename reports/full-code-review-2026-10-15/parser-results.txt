@@ -1,6 +1,0 @@
-PARSER ERROR D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\huge_params.wasm java.lang.OutOfMemoryError: Java heap space
-PARSER ACCEPT D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\truncated_datacount.wasm bytes=11 sections=0
-PARSER ACCEPT D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\typed_signature.wasm bytes=16 sections=1
-TYPE MARKUP declared=8 actual=7
-PARSER ACCEPT D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\rec_functype.wasm bytes=26 sections=3
-TYPE MARKUP declared=8 actual=6

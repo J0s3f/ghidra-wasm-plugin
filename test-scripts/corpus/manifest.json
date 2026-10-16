@@ -2,7 +2,7 @@
   "version": 1,
   "generated": "2026-10-12",
   "description": "Real-world WebAssembly corpus for the corpus sweep (REPORT-H.md). Binaries live outside the repo in a temp corpus dir; three tiny modules are committed under test-scripts/corpus/modules/ and copied in automatically by corpus-sweep.ps1. sha256 is authoritative - the sweep verifies every file before importing. Each entry has v8=valid|invalid: the verdict of V8 (node) WebAssembly.validate on the bytes; test-scripts/corpus/validate-corpus.mjs regenerates it. A module V8 rejects is malformed input, so a Ghidra failure on it is expected.",
-  "corpus_dir_hint": "%TEMP%\\corpus (agent default: C:\\Users\\micro\\AppData\\Local\\Temp\\opencode\\corpus)",
+  "corpus_dir_hint": "%TEMP%\\corpus (default: C:\\Users\\micro\\AppData\\Local\\Temp\\corpus)",
   "modules": [
     {
       "name": "rasterbator_rs_bg",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probes owned by the memory64 workstream (agent N).
+"""Probes owned by the memory64 workstream (workstream N).
 
 64-bit linear memories (`(memory i64 N)`, limits flag bit 2 set) put an *i64* on the stack
 where a 32-bit memory has an i32: the memarg/address operand of every load and store, the

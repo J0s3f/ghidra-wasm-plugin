@@ -544,7 +544,7 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 # (e.g. `ref.null 0`) had no matching name and its bytes were left undefined. This operand
 # accepts any s33. (The abstract types therefore print as their numeric heap-type value.)
 #
-# @@REFNULL-NAMES (Mistral Large 4): named constructors per abstract heap type byte, alongside
+# @@REFNULL-NAMES: named constructors per abstract heap type byte, alongside
 # the generic s33 form. The Wasm 3.0 spec binary encoding (verified against
 # https://webassembly.github.io/spec/core/binary/types.html) maps:
 #   0x69=exn  0x6A=array  0x6B=struct  0x6C=i31  0x6D=eq  0x6E=any  0x6F=extern

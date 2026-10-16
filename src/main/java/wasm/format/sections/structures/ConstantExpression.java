@@ -695,7 +695,7 @@ public final class ConstantExpression implements StructConverter {
 				 * with 0x0B, which the separate `end_opcode` field below already represents, so the
 				 * array must hold rawBytes.length - 2 bytes. (Using length - 1 double-counted the
 				 * end byte, making this structure one byte too long; the overrun then collided with
-				 * the next section's markup - "Data markup conflict", REPORT-EXTCONST-MISTRAL.md.)
+				 * the next section's markup - "Data markup conflict", REPORT-EXTCONST-1.md.)
 				 */
 				if (rawBytes.length > 2) {
 					builder.addArray(BYTE, rawBytes.length - 2, "extended_const_expr");

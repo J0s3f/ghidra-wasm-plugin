@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probes owned by the memidx/table64 workstream (agent H4).
+"""Probes owned by the memidx/table64 workstream (workstream H4).
 
 Two loader/decoder gaps (see MODERN_WASM_GAPS.md and the open-items list):
 

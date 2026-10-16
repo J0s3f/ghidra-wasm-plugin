@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probes owned by the section-id / 64-bit-data-offset workstream (agent H1).
+"""Probes owned by the section-id / 64-bit-data-offset workstream (workstream H1).
 
 Two independent loader correctness items are pinned here.
 

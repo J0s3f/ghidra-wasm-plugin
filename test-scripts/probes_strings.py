@@ -234,5 +234,3 @@ write("S10_str_encode_units.wasm", module(
              + END),
     ]),
 ))
-
-
