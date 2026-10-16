@@ -1,7 +1,7 @@
 # REPORT-R6-PADDEDMEMARG — padded (non-minimal) LEB memarg encodings corrupt instruction decoding
 
 Branch: `fix/r6-padded-memarg` (worktree `ghidra-wt-r6-paddedleb`)
-Pinned install: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r6-paddedleb` (recorded in
+Pinned install: `C:\Users\micro\AppData\Local\Temp\ghidra-r6-paddedleb` (recorded in
 `test-scripts/.ghidra-install`; every build/gate below used `test-scripts/build-install.ps1`, which
 refuses any other install).
 Review evidence (read-only, authoritative): `D:\code\Ghidra-WASM\build\release-review-sol\padded64.wasm`
@@ -83,14 +83,14 @@ access" (review `padding.log`).
 
 ### Before (reproduced with the pinned install, pre-fix build)
 
-Exact commands (worktree `C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-r6-paddedleb`):
+Exact commands (worktree `C:\Users\micro\worktrees\ghidra-wt-r6-paddedleb`):
 
 ```
 # 1. build the UNMODIFIED worktree into the pinned install
 powershell -NoProfile -ExecutionPolicy Bypass -File test-scripts\build-install.ps1
 
 # 2. import the review fixture and dump the listing (+ pcode)
-$headless = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r6-paddedleb\support\analyzeHeadless.bat"
+$headless = "C:\Users\micro\AppData\Local\Temp\ghidra-r6-paddedleb\support\analyzeHeadless.bat"
 & $headless "$env:TEMP\r6-repro\project" R6Repro `
     -import "D:\code\Ghidra-WASM\build\release-review-sol\padded64.wasm" `
     -scriptPath "$PWD\test-scripts" -postScript ListProgram.java pcode -max-cpu 2 -deleteProject
@@ -278,7 +278,7 @@ installed; the script needs no build and uses only `python` + `pwsh`, both prese
 
 ## Verification (all observed on the pinned install, fixed build)
 
-1. **Full gate** — `.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r6-paddedleb" -OutDir "$env:TEMP\r6-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"`
+1. **Full gate** — `.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-r6-paddedleb" -OutDir "$env:TEMP\r6-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"`
    → exit 0:
    * probes: **222 all matching** (`probes: 204 imported, 18 import failure(s); baseline has 222` +
      `OK: every probe matches the recorded baseline.`) — no probe metric moved, no expected import
@@ -287,7 +287,7 @@ installed; the script needs no build and uses only `python` + `pwsh`, both prese
      (`SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0`);
    * real module `rasterbator_rs_bg.wasm`: **437/437/0/61658/156**
      (`SUMMARY functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156`).
-2. **Hybrid memory64 harness** — `.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\r6-hybrid" -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r6-paddedleb"`
+2. **Hybrid memory64 harness** — `.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\r6-hybrid" -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-r6-paddedleb"`
    → exit 0: `HYBRID-MATRIX functions=246 accesses=358 passed`, `HYBRID-EMU functions=9 passed;
    loader high/unsigned/overflow checks passed`, `HYBRID-SIMD-PREFIX functions=41 passed`,
    `HYBRID-COPY three index-width pairs passed` — the shared scalar/SIMD/atomic/string memarg

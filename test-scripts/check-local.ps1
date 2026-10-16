@@ -15,7 +15,7 @@
     Exit code is check-results.py's: 0 = baseline matches, 1 = regression, 2 = setup problem.
 
 .EXAMPLE
-    $env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-i"
+    $env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-i"
     .\test-scripts\check-local.ps1
 
 .EXAMPLE

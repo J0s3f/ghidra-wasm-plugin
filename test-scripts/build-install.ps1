@@ -13,7 +13,7 @@
     changes (the .sla is regenerated on the next run, which adds ~20-30s to the first import).
 
 .EXAMPLE
-    $env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-a"
+    $env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-a"
     .\test-scripts\build-install.ps1
 #>
 param(
@@ -27,7 +27,7 @@ $ErrorActionPreference = "Stop"
 
 # --- install pinning -------------------------------------------------------------------------
 # Every worktree/checkout carries `test-scripts/.ghidra-install` naming the ONE Ghidra install it is
-# allowed to use. This prevents two agents (or an agent and the integrator) from building into each
+# allowed to use. This prevents two workstreams (or a workstream and the integrator) from building into each
 # other's install, which produces "measurements against a stale/wrong extension" and is invisible in
 # the logs. Pass -Force only when you deliberately want another folder.
 $pinFile = Join-Path $PSScriptRoot ".ghidra-install"

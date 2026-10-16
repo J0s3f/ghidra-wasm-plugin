@@ -1,4 +1,4 @@
-# REPORT-DWARF-METRIC-NEMOTRON
+# REPORT-DWARF-METRIC-3
 
 ## Goal
 Implement a DWARF-based type-recovery quality metric that measures the plugin's recovered types against DWARF debug info as ground truth, following the Decompilation Wiki's variable-typing methodology.
@@ -41,7 +41,7 @@ The metric compares two sets of structure types:
 ```bash
 python test-scripts/dwarf_type_metric.py \
   --module out/fixture_dwarf.wasm \
-  --ghidra-dir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-dwarf-nem"
+  --ghidra-dir "C:\Users\micro\AppData\Local\Temp\ghidra-dwarf-3"
 ```
 
 **Output:**
@@ -62,8 +62,8 @@ Parameter-type recovery          : 0 parameters retyped
 ### 2. Real corpus module (`rust_debuginfo.wasm`, 286 KB)
 ```bash
 python test-scripts/dwarf_type_metric.py \
-  --module "C:\Users\micro\AppData\Local\Temp\opencode\corpus\modules\rust_debuginfo.wasm" \
-  --ghidra-dir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-dwarf-nem" \
+  --module "C:\Users\micro\AppData\Local\Temp\corpus\modules\rust_debuginfo.wasm" \
+  --ghidra-dir "C:\Users\micro\AppData\Local\Temp\ghidra-dwarf-3" \
   --json out/rust_debuginfo_metric.json
 ```
 
@@ -128,4 +128,4 @@ Parameter-type recovery          : 0 parameters retyped
 - `test-scripts/DumpAllTypes.java` (new - helper for metric)
 - `out/fixture_metric.json` (baseline recording)
 - `out/rust_debuginfo_metric.json` (baseline recording)
-- `REPORT-DWARF-METRIC-NEMOTRON.md` (this report)
+- `REPORT-DWARF-METRIC-3.md` (this report)

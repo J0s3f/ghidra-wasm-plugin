@@ -86,7 +86,7 @@ if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHead
 if (-not (Test-Path $headless)) { $headless = Join-Path $supportDir "analyzeHeadless" }
 if (-not (Test-Path $headless)) { throw "analyzeHeadless not found under $supportDir" }
 
-# ListProgram/DumpAll (owned by another agent, read-only here) live in test-scripts, but a headless
+# ListProgram/DumpAll (owned by another workstream, read-only here) live in test-scripts, but a headless
 # run accepts only ONE -scriptPath directory, so -Detail uses the harness' own SpecDisasm.java.
 if ($Detail) {
     $scripts = @("-scriptPath", $here, "-postScript", "SpecModuleReport.java",

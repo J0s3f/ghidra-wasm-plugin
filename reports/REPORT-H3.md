@@ -1,7 +1,7 @@
 # REPORT-H3 — the emulation input-arity defect + the spec `assert_*` run
 
 Branch `fix/emulation-assert` (base `main` @ `c3a7bc2`), worktree `D:\code\ghidra-wt-h3`, Ghidra
-12.1.4 pinned at `%TEMP%\opencode\ghidra-h3`. Scope: `src/main/java/wasm/pcode/**`,
+12.1.4 pinned at `%TEMP%\ghidra-h3`. Scope: `src/main/java/wasm/pcode/**`,
 `src/main/java/ghidra/program/emulation/**`, `ghidra_scripts/spectest.py`, additive files under
 `test-scripts/spectest/**`, `test-scripts/EmulateExport.java`, this report.
 
@@ -164,7 +164,7 @@ decode/decompile baselines are unchanged.
 the outcome. It exists so the fix can be proven without PyGhidra.
 
 ```powershell
-$g = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h3"
+$g = "C:\Users\micro\AppData\Local\Temp\ghidra-h3"
 & "$g\support\analyzeHeadless.bat" "$env:TEMP\h3-proj" H3Driver `
     -import "$env:TEMP\h3-driver\sample.wasm" -noanalysis `
     -scriptPath "D:\code\ghidra-wt-h3\test-scripts" `
@@ -203,7 +203,7 @@ interpreter and installing PyGhidra into a venv; the host has `py -3.13`, and th
 ```powershell
 py -3.13 -m venv "$env:TEMP\spectest-tools\pyghidra-venv"
 & "$env:TEMP\spectest-tools\pyghidra-venv\Scripts\python.exe" -m pip install --no-index `
-    -f "$env:TEMP\opencode\ghidra-h3\Ghidra\Features\PyGhidra\pypkg\dist" pyghidra
+    -f "$env:TEMP\ghidra-h3\Ghidra\Features\PyGhidra\pypkg\dist" pyghidra
 ```
 
 This is now automated in the new `test-scripts/spectest/run_emulate.ps1`. For the run below the venv
@@ -215,7 +215,7 @@ lived at `%TEMP%\h3-pyghidra` and was created with exactly the two commands abov
 ```powershell
 # one .wast
 & "$env:TEMP\spectest-tools\pyghidra-venv\Scripts\python.exe" -m pyghidra `
-    --install-dir "$env:TEMP\opencode\ghidra-h3" --project-path "$env:TEMP\p" --project-name spectest `
+    --install-dir "$env:TEMP\ghidra-h3" --project-path "$env:TEMP\p" --project-name spectest `
     --skip-analysis "D:\code\ghidra-wt-h3\ghidra_scripts\spectest.py" `
     "$env:TEMP\spec-emulate\json\i32.json" "--report=$env:TEMP\i32.txt"
 

@@ -1,7 +1,7 @@
 # REPORT-SF — closing the three ranked spec-suite findings
 
 Branch `fix/spec-findings`, base `c02b6b9`. Worktree `D:\code\ghidra-wt-o`.
-Plugin built and clean-installed into Ghidra 12.1.4 (`$env:TEMP\opencode\ghidra-g`) with
+Plugin built and clean-installed into Ghidra 12.1.4 (`$env:TEMP\ghidra-g`) with
 `test-scripts/build-install.ps1`.
 
 Scope: the three ranked findings of the official spec-suite run in `MODERN_WASM_GAPS.md` §6 /
@@ -277,20 +277,20 @@ below `MAX_BR_TABLE_CASES = 1024`, so no `.case_ignored` instruction is emitted 
 
 ```powershell
 # build + install
-& D:\code\ghidra-wt-o\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-g"
+& D:\code\ghidra-wt-o\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-g"
 
 # the 7 new probes (per-module metrics + listings + decompiled C)
 & D:\code\ghidra-wt-o\test-scripts\run_probes.ps1 `
-    -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-o" `
-    -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-g" `
+    -OutDir "C:\Users\micro\AppData\Local\Temp\probes-o" `
+    -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-g" `
     -Generators gen_feature_probes.py,probes_spec_fixes.py -Detail
 
 # focused spec-suite re-run (unwind + br_table)
 & D:\code\ghidra-wt-o\test-scripts\spectest\run_spectest.ps1 -Files unwind,br_table `
     -MaxPerWast 10 -OutDir "$env:TEMP\spectest-o" `
-    -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-g"
+    -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-g"
 
 # full core subset
 & D:\code\ghidra-wt-o\test-scripts\spectest\run_spectest.ps1 -Subset core -MaxPerWast 10 `
-    -OutDir "$env:TEMP\spectest-o" -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-g"
+    -OutDir "$env:TEMP\spectest-o" -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-g"
 ```

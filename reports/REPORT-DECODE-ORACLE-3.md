@@ -35,7 +35,7 @@ Automate cross-engine decode validation: make "our decode matches a second engin
 
 ### 1. Build & Install
 ```powershell
-.\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-oracle-nem"
+.\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-oracle-3"
 ```
 ✅ Build successful, extension installed to pinned Ghidra.
 
@@ -50,7 +50,7 @@ pwsh -File test-scripts/spectest/fetch_spectest_tools.ps1 -ToolsDir "$env:TEMP\s
 
 ### 3. Decode Oracle Sweep (Committed Corpus)
 ```powershell
-pwsh -File test-scripts/decode-oracle.ps1 -CorpusDir "$env:TEMP\corpus" -ToolsDir "$env:TEMP\spectest-tools" -Binaryen -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-oracle-nem"
+pwsh -File test-scripts/decode-oracle.ps1 -CorpusDir "$env:TEMP\corpus" -ToolsDir "$env:TEMP\spectest-tools" -Binaryen -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-oracle-3"
 ```
 **Results on committed modules (rust_plain.wasm, rust_simd128.wasm):**
 
@@ -87,7 +87,7 @@ Running decode-oracle on perturbed module shows non-zero exit + diff output (fun
 
 ### 6. Full Gate (check-local.ps1)
 ```powershell
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-oracle-nem"
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-oracle-3"
 ```
 ✅ Probe suite: **210 probes** (192 imported + 18 expected import failures) - all metrics match baseline
 ✅ Fixture decompilation: SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0
@@ -119,4 +119,4 @@ Running decode-oracle on perturbed module shows non-zero exit + diff output (fun
 - `test-scripts/decode-oracle-baseline.json` allow-list (manually edited with justifications)
 
 ## Commits
-All changes committed on branch `feat/decode-oracle-nemotron`.
+All changes committed on branch `feat/decode-oracle-3`.

@@ -1,7 +1,7 @@
-# REPORT-EXTCONST-MISTRAL.md — Extended-const `Data markup conflict` warning
+# REPORT-EXTCONST-1.md — Extended-const `Data markup conflict` warning
 
-Worktree/branch: `ghidra-wt-extconst-mistral` @ `fix/extconst-datamarkup-mistral`.
-Pinned Ghidra install: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-extconst-mistral`
+Worktree/branch: `ghidra-wt-extconst-1` @ `fix/extconst-datamarkup-1`.
+Pinned Ghidra install: `C:\Users\micro\AppData\Local\Temp\ghidra-extconst-1`
 (recorded in `test-scripts/.ghidra-install`; `build-install.ps1`/`run_probes.ps1` refuse any other).
 Scope: MODERN_WASM_GAPS.md §2.3 row "Extended-const `Data markup conflict` warning on probes
 `22`-`24`/`27`". Verdict: **real defect (wrong `.module` markup), fixed**.
@@ -169,8 +169,8 @@ install:
 ## 6. Exact commands
 
 ```powershell
-# 0. worktree + pinned install (test-scripts/.ghidra-install -> ghidra-extconst-mistral)
-cd C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-extconst-mistral
+# 0. worktree + pinned install (test-scripts/.ghidra-install -> ghidra-extconst-1)
+cd C:\Users\micro\worktrees\ghidra-wt-extconst-1
 
 # 1. build this worktree into the pinned install
 .\test-scripts\build-install.ps1
@@ -191,7 +191,7 @@ python test-scripts\gen_feature_probes.py $env:TEMP\extconst-repro\probes   # 22
 
 # 6. full gate, AFTER the fix (build + 210 probes + fixture + real module)
 .\test-scripts\check-local.ps1 -RealModule `
-    C:\Users\micro\AppData\Local\Temp\opencode\corpus\rasterbator_rs_bg.wasm
+    C:\Users\micro\AppData\Local\Temp\corpus\rasterbator_rs_bg.wasm
 ```
 
 The real module `rasterbator_rs_bg.wasm` is an external payload (not committed); it was copied
@@ -205,7 +205,7 @@ Full gate `.\test-scripts\check-local.ps1 -GhidraDir <pinned> -RealModule
 <corpus>/rasterbator_rs_bg.wasm`, run against the rebuilt pinned install (fixed extension):
 
 * **exit 0** (`GATE_EXIT=0`, ~11.5 min).
-* Build: `BUILD SUCCESSFUL`; installed `ghidra-wt-extconst-mistral` (jar 299064 bytes); stamp = this worktree.
+* Build: `BUILD SUCCESSFUL`; installed `ghidra-wt-extconst-1` (jar 299064 bytes); stamp = this worktree.
 * Probe suite: `probes: 192 imported, 18 import failure(s); baseline has 210` →
   `OK: every probe matches the recorded baseline.` (check-results.py exit 0).
 * **`Data markup conflict` warnings across all 210 probes: 0** (was **8** before the fix:

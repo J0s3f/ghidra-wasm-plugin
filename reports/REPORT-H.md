@@ -63,7 +63,7 @@ manifest URLs (`@jsquash/png@3.1.1`, `@jsquash/oxipng@2.3.0`, `@jsquash/jpeg@1.6
 node test-scripts/corpus/validate-corpus.mjs $env:TEMP\corpus      # V8 ground truth (optional)
 
 # 1. build + install this worktree's plugin into a throwaway Ghidra
-$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h"
+$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-h"
 pwsh test-scripts/build-install.ps1 -GhidraDir $env:GHIDRA_INSTALL_DIR
 
 # 2. sweep (offline once the corpus is present)
@@ -99,7 +99,7 @@ Full table: `test-scripts/corpus-RESULTS.md`. `undef` is the raw `undefined_byte
 `undef*` = `undef - thunk` = the real decode gap. The `warn` column is dominated by the imported
 placeholders (one `DecompileCallback` pcode error per import, 233 total) plus the 22
 `WasmStackVariableAnalyzer` conflicts from F2. `s` is per-module wall clock in seconds (rounded; it
-varies by a few percent between runs because other agents share the machine).
+varies by a few percent between runs because other workstreams share the machine).
 
 | # | module | v8 | funcs | instrs | undef | thunk | undef* | decomp | fail | unimpl | warn | err | s |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

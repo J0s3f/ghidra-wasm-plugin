@@ -1,4 +1,4 @@
-# REPORT-TRYBLOCKTYPE-CATJAM: multi-byte block signatures on try / try_table
+# REPORT-TRYBLOCKTYPE-4: multi-byte block signatures on try / try_table
 
 ## Feature
 Extended `try` (legacy EH) and `try_table` (new EH) to decode multi-byte block

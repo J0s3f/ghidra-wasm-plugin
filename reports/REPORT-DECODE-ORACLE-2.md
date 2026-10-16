@@ -1,6 +1,6 @@
 # Decode oracle (WABT + Binaryen) — implementation report
 
-Branch: `feat/decode-oracle-musespark`. Workstream: "a WABT/Binaryen decode oracle
+Branch: `feat/decode-oracle-2`. Workstream: "a WABT/Binaryen decode oracle
 for the corpus, checked in CI" (REUSE_OPPORTUNITIES.md §5 step 4; the automation of
 the manual cross-check in §1 that found exact function counts against binaryen
 `wasm-dis` on rasterbator/rust_plain/rust_simd128).
@@ -64,16 +64,16 @@ otherwise rather than misaligning).
 
 ## 2. Commands run + observed results
 
-Tools (local): pinned Ghidra `C:\…\Temp\opencode\ghidra-oracle-muse`
+Tools (local): pinned Ghidra `C:\…\Temp\ghidra-oracle-2`
 (rebuilt+installed via `test-scripts\build-install.ps1`, stamp verified);
-oracles under `C:\…\Temp\opencode\oracle-tools-muse`
+oracles under `C:\…\Temp\oracle-tools-2`
 (`fetch_spectest_tools.ps1 -WabtOnly -Binaryen` → wabt 1.0.42, `wasm-dis version 133`).
 
 ```
 pwsh test-scripts/decode-oracle.ps1 -WabtDir <wabt>/bin -BinaryenDir <binaryen>/bin `
-    -WorkDir <temp>\oracle-run-muse -Update     # record baseline
+    -WorkDir <temp>\oracle-run-2 -Update     # record baseline
 pwsh test-scripts/decode-oracle.ps1 -WabtDir <wabt>/bin -BinaryenDir <binaryen>/bin `
-    -WorkDir <temp>\oracle-run-muse             # green check
+    -WorkDir <temp>\oracle-run-2             # green check
 ```
 
 Observed green run (full driver, both oracles):

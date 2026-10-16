@@ -1,6 +1,6 @@
 # Binaryen reuse / port analysis for the Ghidra-WASM plugin
 
-**Author:** subagent (reuse/port analysis, not implementation)
+**Author:** workstream (reuse/port analysis, not implementation)
 **Scope:** what parts of [WebAssembly/binaryen](https://github.com/WebAssembly/binaryen) are worth porting into
 `D:\code\Ghidra-WASM`, what must stay an external tool, and what to leave alone. Every number below was measured
 in this session unless marked "from archive".
@@ -310,7 +310,7 @@ decision to record).
   `test-scripts/probes_multivalue.py`, `test-scripts/wasm_probe_lib.py`, `test-scripts/ListProgram.java`,
   `test-scripts/DumpDecomp.java`, `test-scripts/corpus/manifest.json`; archived per-module numbers from
   `archive/reports:reports/corpus-RESULTS.md` and `archive/reports:reports/REPORT-MV.md`.
-* Local artefacts produced this session (in `C:\Users\micro\AppData\Local\Temp\opencode\research-binaryen\`):
+* Local artefacts produced this session (in `C:\Users\micro\AppData\Local\Temp\research-binaryen\`):
   `sweep-allprobes.txt`, `funcmetrics.txt`, `funcmap.json`, `rasterbator-ghidra.txt`, `sqljs-ghidra.txt`,
   `rust_simd128-ghidra.txt`, `malformed-ghidra.txt`, `malformed2-ghidra.txt`, `exp-ghidra.txt`, and the helper
   scripts `sweep.py`, `diag.py`, `funcmap.py`, `stats.py`, `spot.py`, `rawparse.py`, `sections.py`,

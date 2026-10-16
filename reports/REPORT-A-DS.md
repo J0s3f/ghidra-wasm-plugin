@@ -2,7 +2,7 @@
 
 Worktree: `D:\code\ghidra-wt-k`, branch `fix/analysis-decoder-ds`, base `1e2328b`
 (limits/const-expression/valtype + new-EH + GC already merged).
-Ghidra 12.1.4 (`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-k`), Gradle 9.2.1.
+Ghidra 12.1.4 (`C:\Users\micro\AppData\Local\Temp\ghidra-k`), Gradle 9.2.1.
 
 Scope: exactly the two items handed to this workstream. GC (`GCOps.*`), new EH (`EH2Ops.*`),
 the constant-expression scanner and memory64 were left untouched; their baseline probes
@@ -202,7 +202,7 @@ immediately as a spurious instruction or as `undefined_bytes > 0`.
 
 ```powershell
 & D:\code\ghidra-wt-k\test-scripts\build-install.ps1 `
-    -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-k"
+    -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-k"
 # BUILD SUCCESSFUL; installed: ghidra-wt-k
 ```
 
@@ -223,8 +223,8 @@ SLEIGH diagnostics can be reproduced in isolation (~10 s) with
 
 ```powershell
 & D:\code\ghidra-wt-k\test-scripts\run_probes.ps1 `
-    -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-k-final2" `
-    -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-k" `
+    -OutDir "C:\Users\micro\AppData\Local\Temp\probes-k-final2" `
+    -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-k" `
     -Generators gen_feature_probes.py,probes_analysis.py
 ```
 

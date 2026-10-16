@@ -1,7 +1,7 @@
 # REPORT-HARD — malformed-input hardening (B1/B2/B3, B5)
 
 Worktree `D:\code\ghidra-wt-s` (branch `fix/hardening`, base = merged `7efbab5`), Ghidra 12.1.4 private
-install `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-c`. Only owned files were changed; the
+install `C:\Users\micro\AppData\Local\Temp\ghidra-c`. Only owned files were changed; the
 build is installed from this worktree immediately before every measurement below.
 
 | file | change |
@@ -18,7 +18,7 @@ No file outside the ownership list was edited. `WasmFunctionAnalysis.java`, `dat
 scripts and the other reports are untouched.
 
 Environment note (mechanically-enforced pinning arrived mid-task): **all** measurements were taken
-against `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-c`. One sub-measurement (§5.1, proving the
+against `C:\Users\micro\AppData\Local\Temp\ghidra-c`. One sub-measurement (§5.1, proving the
 funcref probe diffs pre-existed) temporarily installed a pristine `7efbab5` build — built from a
 throwaway `git worktree` that has since been removed — into **that same `ghidra-c` install**; the
 `fix/hardening` build was reinstalled into `ghidra-c` immediately afterwards and before every
@@ -38,7 +38,7 @@ ever used or written to.
 
 The corpus scan used to pick the numbers (`747` modules = the testsuite's valid core modules, the 3
 committed corpus modules and `rasterbator_rs_bg.wasm`) is a throwaway helper in
-`%TEMP%\opencode\wasmstats.py`; it is not part of the repo.
+`%TEMP%\wasmstats.py`; it is not part of the repo.
 
 ---
 
@@ -176,7 +176,7 @@ diagnostic.
 ## 5. Probe baseline (`check-local.ps1`) — 11 records changed, gate green
 
 `test-scripts/expected-results.json` was regenerated with
-`& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-c" -SkipBuild -Update`
+`& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-c" -SkipBuild -Update`
 (133 probes: 128 imported, 5 expected failures), followed by a plain run that prints
 `OK: every probe matches the recorded baseline.`
 
@@ -231,7 +231,7 @@ bytes); its `undefined_bytes=428` are the documented 4-byte import-stub bodies, 
 ### 6.2 Robustness sweep, before → after (56 modules, analysis ON, one JVM per module)
 
 Before = committed `test-scripts/robustness-RESULTS.md`; after =
-`robustness-sweep.ps1 -CorpusMode all -Analyze -WallSeconds 180 -ResultsFile %TEMP%\opencode\hardening-robustness-after.md`.
+`robustness-sweep.ps1 -CorpusMode all -Analyze -WallSeconds 180 -ResultsFile %TEMP%\hardening-robustness-after.md`.
 
 | outcome | before | after |
 | --- | ---: | ---: |

@@ -142,7 +142,7 @@ new WasmLoader().load(program, moduleSettings);
 
 All commands use the worktree as the working directory; both post-scripts were run with
 `-max-cpu 2` and `-deleteProject`. `probes_component.py` was regenerated into
-`C:\Users\micro\AppData\Local\Temp\opencode\comp-fixtures` before each run.
+`C:\Users\micro\AppData\Local\Temp\comp-fixtures` before each run.
 
 ### 5.1 Criterion 1 - `component_with_module.wasm` imports as the nested core module
 
@@ -226,8 +226,8 @@ Probe suite:
 
 ```powershell
 & D:\code\ghidra-wt-l\test-scripts\run_probes.ps1 `
-  -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-l-c2" `
-  -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-l" `
+  -OutDir "C:\Users\micro\AppData\Local\Temp\probes-l-c2" `
+  -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-l" `
   -Generators gen_feature_probes.py,probes_component.py -Detail
 ```
 

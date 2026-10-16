@@ -1,4 +1,4 @@
-# REPORT-TRYBLOCKTYPE-NEMOTRON
+# REPORT-TRYBLOCKTYPE-3
 
 ## Feature: Multi-byte block signatures on `try` / `try_table`
 
@@ -92,5 +92,5 @@ python test-scripts/check-fixture-validity.py --generate --probes ... --wabt ...
 ```
 
 ### Git Commit
-Branch: feat/tryblocktype-nemotron
+Branch: feat/tryblocktype-3
 HEAD: (to be committed)

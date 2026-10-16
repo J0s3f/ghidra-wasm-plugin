@@ -1,7 +1,7 @@
 # REPORT-J - WebAssembly loader robustness (malformed-input sweep)
 
 Worktree `D:\code\ghidra-wt-j` (branch `test/robustness`); plugin built from this worktree and
-installed into `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-j` (Ghidra 12.1.4, private
+installed into `C:\Users\micro\AppData\Local\Temp\ghidra-j` (Ghidra 12.1.4, private
 install). No file under `src/**` or `data/**`, and no other workstream's file, was modified - this
 workstream only added test tooling and this report.
 

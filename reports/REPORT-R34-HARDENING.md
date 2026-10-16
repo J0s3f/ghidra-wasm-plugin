@@ -123,7 +123,7 @@ ok  : a locked copy does not abort the sweep
 ok  : a locked copy is reported as a warning
 ok  : a locked copy survives
 ok  : an install without application.version yields no scope
-ok  : the pinned install (C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r34-tooling) yields its version directory
+ok  : the pinned install (C:\Users\micro\AppData\Local\Temp\ghidra-r34-tooling) yields its version directory
 note: settings root C:\Users\micro\AppData\Roaming\ghidra holds [ghidra_11.1.2_PUBLIC, ghidra_12.1.4_PUBLIC] -> in scope: ghidra_12.1.4_PUBLIC
 note: settings root C:\Users\micro\.ghidra holds [.ghidra_10.2.3_PUBLIC] -> in scope:
 PASS: the settings sweep removes only the selected installation's copy (mock trees under C:\Users\micro\AppData\Local\Temp\build-install-cleanup-test)
@@ -148,10 +148,10 @@ after:
 ### Validation - end-to-end run against the pinned install
 
 `pwsh -File test-scripts/build-install.ps1` with the pinned install
-(`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r34-tooling`, exit 0):
+(`C:\Users\micro\AppData\Local\Temp\ghidra-r34-tooling`, exit 0):
 
 ```
-== using the pinned Ghidra install: C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r34-tooling ==
+== using the pinned Ghidra install: C:\Users\micro\AppData\Local\Temp\ghidra-r34-tooling ==
 == building (GHIDRA_INSTALL_DIR=...) ==
 ...
 BUILD SUCCESSFUL in 39s

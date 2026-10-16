@@ -13,7 +13,7 @@
     .\test-scripts\run_probes.ps1
 
 .EXAMPLE
-    # only the agent-B probes, with disassembly + decompilation dumps
+    # only the workstream-B probes, with disassembly + decompilation dumps
     .\test-scripts\run_probes.ps1 -Generators probes_types.py -Detail
 
 .EXAMPLE
@@ -28,7 +28,7 @@ param(
     [string]$Only = "",             # wildcard filter on probe file names
     [switch]$Detail,                # also dump listings + decompiled C
     [switch]$NoAnalysis,            # skip the auto-analysis (faster, for decode-only checks)
-    [int]$MaxCpu = 2,               # cap Ghidra analysis threads (many agents may run at once)
+    [int]$MaxCpu = 2,               # cap Ghidra analysis threads (many workstreams may run at once)
     [string]$MaxMem = "1500M",      # cap the headless JVM heap (GHIDRA_HEADLESS_MAXMEM)
     [switch]$Force                  # ignore the checkout's pinned install (see .ghidra-install)
 )

@@ -1,6 +1,6 @@
-# REPORT-PAGESIZE-MUSESPARK.md — custom memory page sizes (feat/pagesize-musespark)
+# REPORT-PAGESIZE-2.md — custom memory page sizes (feat/pagesize-2)
 
-Branch: `feat/pagesize-musespark`. The one remaining real standardised WebAssembly 3.0 gap
+Branch: `feat/pagesize-2`. The one remaining real standardised WebAssembly 3.0 gap
 (MODERN_WASM_GAPS.md §2.3, "Custom page sizes"): the limits flag decoded, but the page size was
 hardwired to 64 KiB (`MEMORY_PAGE_SIZE` in `WasmLoader.java`), so block sizing and declared-size
 semantics were wrong for modules declaring a custom page size.
@@ -8,7 +8,7 @@ semantics were wrong for modules declaring a custom page size.
 ## 1. Verified spec encoding (empirical, not assumed)
 
 Oracles: wabt 1.0.42 (`wasm-validate --enable-all`, `wasm-objdump -x`) and binaryen version_133
-(`wasm-dis --all-features`), fetched into `%TEMP%\opencode\pslc-scratch\` (wabt via
+(`wasm-dis --all-features`), fetched into `%TEMP%\pslc-scratch\` (wabt via
 `test-scripts/spectest/fetch_spectest_tools.ps1 -WabtOnly`; binaryen release tarball, 111 MB).
 
 Method: hand-crafted variants of the existing B03 probe (raw memory-section bytes, generated with
@@ -130,7 +130,7 @@ here; the §2.3 open row is closed with the residual noted above; probe/validity
 ## 7. Commands run with observed results
 
 - Oracle fetch: `fetch_spectest_tools.ps1 -WabtOnly` (wabt 1.0.42, sha ok) + binaryen
-  `version_133` tarball (111,045,528 bytes) into `%TEMP%\opencode\pslc-scratch\`.
+  `version_133` tarball (111,045,528 bytes) into `%TEMP%\pslc-scratch\`.
 - Encoding: 14 hand-crafted variants → `wasm-objdump -x` + `wasm-validate --enable-all` +
   `wasm-dis --all-features` (via python, 60 s timeout): only exponents 0/16 accepted by both.
 - Build/install: `build-install.ps1 -GhidraDir <pinned>` → BUILD SUCCESSFUL, extension installed

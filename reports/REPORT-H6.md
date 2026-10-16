@@ -6,7 +6,7 @@ land as **real Ghidra labels at the address each label branches to**, so the sym
 decompiler show them as branch targets.
 
 Branch: `feat/name-labels` (based on `main` @ `e5157d4`).
-Worktree: `ghidra-wt-h6`, pinned install `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5`.
+Worktree: `ghidra-wt-h6`, pinned install `C:\Users\micro\AppData\Local\Temp\ghidra-h5`.
 
 ---
 
@@ -156,7 +156,7 @@ The subsection degrades to raw bytes (no label subsection), no labels are applie
 Full suite (build + install + 172 probes + fixture + real module):
 
 ```
-$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5"
+$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-h5"
 $env:GHIDRA_HEADLESS_MAXMEM = "1500M"
 .\test-scripts\check-local.ps1 -OutDir "$env:TEMP\ci-h6" -SkipBuild `
     -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
@@ -176,10 +176,10 @@ Fixture-validity gate:
 ```
 python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\h6-validity" \
   --wabt "C:\Users\micro\AppData\Local\Temp\spectest-tools\wabt-1.0.42\bin" \
-  --binaryen "C:\Users\micro\AppData\Local\Temp\opencode\binaryen133\binaryen-version_133\bin" --update
+  --binaryen "C:\Users\micro\AppData\Local\Temp\binaryen133\binaryen-version_133\bin" --update
 python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\h6-validity" \
   --wabt "C:\Users\micro\AppData\Local\Temp\spectest-tools\wabt-1.0.42\bin" \
-  --binaryen "C:\Users\micro\AppData\Local\Temp\opencode\binaryen133\binaryen-version_133\bin"
+  --binaryen "C:\Users\micro\AppData\Local\Temp\binaryen133\binaryen-version_133\bin"
 ```
 
 ```

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probes owned by the *new exception handling* workstream (agent F) - roadmap item 5.
+"""Probes owned by the *new exception handling* workstream (workstream F) - roadmap item 5.
 
 Covers the exception-handling proposal as emitted by LLVM >= 19: `try_table` (0x1f), `throw_ref`
 (0x0a) and the `exnref` value type (0x69). The legacy encoding (probe `10`) is exercised here too,

@@ -1,7 +1,7 @@
 # REPORT-E — WebAssembly GC support (roadmap item 6)
 
-Worktree `D:\code\ghidra-wt-e`, branch `feat/gc`, base `58a4742`. Owner: agent E (GC workstream).
-Ghidra 12.1.4 private install `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e`.
+Worktree `D:\code\ghidra-wt-e`, branch `feat/gc`, base `58a4742`. Owner: workstream E (GC workstream).
+Ghidra 12.1.4 private install `C:\Users\micro\AppData\Local\Temp\ghidra-e`.
 
 Headline: **the type section parses GC records (rec/sub/struct/array + all storage and heap
 types) and every `0xFB` GC instruction decodes with correct byte lengths and pre-analyzer stack

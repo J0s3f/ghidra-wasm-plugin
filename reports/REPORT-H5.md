@@ -1,7 +1,7 @@
 # REPORT-H5 — real semantics for the last `unimplemented` opcode group
 
 Worktree: `D:\code\ghidra-wt-h5`, branch `feat/stackswitch-strings`, base `main` @ `c3a7bc2`.
-Ghidra 12.1.4 (`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5`, pinned via
+Ghidra 12.1.4 (`C:\Users\micro\AppData\Local\Temp\ghidra-h5`, pinned via
 `test-scripts/.ghidra-install`), Gradle 9.2.1, PowerShell 7, Python 3.14.
 
 Scope: give the opcodes that used to decode as `unimplemented` a real instruction, a real operand
@@ -360,7 +360,7 @@ Build / install:
 
 ```powershell
 cd D:\code\ghidra-wt-h5
-& .\test-scripts\build-install.ps1          # pinned to ...\opencode\ghidra-h5
+& .\test-scripts\build-install.ps1          # pinned to ...\ghidra-h5
 # BUILD SUCCESSFUL; installed: ghidra-wt-h5
 ```
 
@@ -382,7 +382,7 @@ New probes:
 Baseline regeneration + gate (the acceptance commands):
 
 ```powershell
-$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5"
+$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-h5"
 & .\test-scripts\check-local.ps1 -OutDir "$env:TEMP\ci-h5" -Update `
     -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
 # 156 probe(s): 151 with metrics, 5 expected import failures

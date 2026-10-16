@@ -151,7 +151,7 @@ Severity: high for the "official spec pass/fail" goal; blocks `assert_return`/`a
 ```powershell
 # once
 .\test-scripts\spectest\fetch_spectest_tools.ps1
-# build + install the plugin (owned by another agent)
+# build + install the plugin (owned by another workstream)
 .\test-scripts\build-install.ps1 -GhidraDir "$env:TEMP\ghidra-g"
 # measure
 $env:GHIDRA_INSTALL_DIR="$env:TEMP\ghidra-g"

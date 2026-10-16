@@ -364,24 +364,24 @@ probe 35 - `wasm_throw_ref(param1); trap`.
 
 ```powershell
 # build + clean install
-& D:\code\ghidra-wt-f\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f"
+& D:\code\ghidra-wt-f\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-f"
 
 # EH probes (frozen baseline 10/11 + this workstream's 30-39), with listings and decompiled C
-& D:\code\ghidra-wt-f\test-scripts\run_probes.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f" `
+& D:\code\ghidra-wt-f\test-scripts\run_probes.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-f" `
     -Generators gen_feature_probes.py,probes_eh.py -Only eh -Detail
 
 # whole frozen suite (regression against MODERN_WASM_GAPS 2.4)
-& D:\code\ghidra-wt-f\test-scripts\run_probes.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f" `
+& D:\code\ghidra-wt-f\test-scripts\run_probes.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-f" `
     -Generators gen_feature_probes.py,probes_eh.py
 
 # real-module regression
-& "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f\support\analyzeHeadless.bat" `
-    "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-f\proj" Reg `
+& "C:\Users\micro\AppData\Local\Temp\ghidra-f\support\analyzeHeadless.bat" `
+    "C:\Users\micro\AppData\Local\Temp\ghidra-f\proj" Reg `
     -import "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm" `
     -scriptPath "D:\code\ghidra-wt-f\test-scripts" -postScript DumpDecomp.java -max-cpu 2 -deleteProject
 ```
 
-Note: `run_probes.ps1`'s default output directory is `%TEMP%\wasm-probes`, which several agents share;
-pass `-OutDir` (this workstream used `%TEMP%\wasm-probes-f`) to avoid reading another agent's log.
-`%TEMP%\opencode\ghidra-f\proj` must exist before the real-module command (it may be deleted by
+Note: `run_probes.ps1`'s default output directory is `%TEMP%\wasm-probes`, which several workstreams share;
+pass `-OutDir` (this workstream used `%TEMP%\wasm-probes-f`) to avoid reading another workstream's log.
+`%TEMP%\ghidra-f\proj` must exist before the real-module command (it may be deleted by
 `-deleteProject`).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduction probes that MUST be imported one per headless JVM (agent J, robustness findings).
+"""Reproduction probes that MUST be imported one per headless JVM (workstream J, robustness findings).
 
 Do not put this file's modules into a shared `run_probes.ps1` batch:
   * J01 builds a 2 GiB `.memory0` block (analysis then exceeds the per-file timeout), and

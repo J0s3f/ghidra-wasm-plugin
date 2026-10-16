@@ -1,8 +1,8 @@
 # REPORT-EMU — emulator coverage workstream (final status)
 
 Branch `fix/emulator-coverage` (base `main` @ `066bfcc`), worktree
-`C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-emu`, pinned Ghidra
-`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5`.
+`C:\Users\micro\worktrees\ghidra-wt-emu`, pinned Ghidra
+`C:\Users\micro\AppData\Local\Temp\ghidra-h5`.
 
 **Status: complete.** All 9 gap classes from REPORT-H3 §3.4 are addressed: 8 fixed and
 verified by full 33-suite harness runs, 1 documented as a known limitation (class 7).
@@ -119,7 +119,7 @@ at the end of every instruction) provides the pre-instruction operand value. Evi
 Root cause: `MAX_BR_TABLE_CASES` in `WasmFunctionAnalysis.java` bounds the modelled br_table
 labels; `br_table.wast`'s `large` function has ~16k labels and indices ≥ 10000 fall through
 to the `-1` default. This is a **decode/analysis** gap in a file owned by another concurrent
-agent (reference typing), and there is no emulator-side hook (the pre-analyzer simply emits
+workstream (reference typing), and there is no emulator-side hook (the pre-analyzer simply emits
 no pcode for those labels). **Do not touch `WasmFunctionAnalysis.java`.** This bound is the
 deliberate protection against the decompiler-process death (SF03). Documented as a known
 degradation of the huge-br_table bound.
@@ -186,7 +186,7 @@ Dead-end diagnostic; never produced useful output. Removed.
 
 ```powershell
 # build + install into the pinned install
-$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h5"
+$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-h5"
 .\test-scripts\build-install.ps1
 
 # full 33-suite harness run (~13 min; needs ~2 GB free RAM per JVM, kill zombie java.exe
@@ -244,7 +244,7 @@ Gotcha: `run_emulate.ps1 -Files` is a `[string[]]`; pass a PowerShell array lite
 * **No pcode/SLEIGH/loader/analysis file was modified** by this workstream, so the decompiler
   gates are unaffected — proven by running them before and after.
 * **Ownership:** `WasmStackVariableAnalyzer.java` (stack SROA) and
-  `WasmEnums.java`/`WasmFunctionAnalysis.java` (reference typing) belong to other agents;
+  `WasmEnums.java`/`WasmFunctionAnalysis.java` (reference typing) belong to other workstreams;
   the class-7 root cause lives in `WasmFunctionAnalysis.java` and must not be edited here.
 * The class-8 fix is a *harness* change (instantiating the spec host's imported globals),
   which is faithful to the spec host rather than a loosening.

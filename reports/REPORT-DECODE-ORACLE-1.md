@@ -1,7 +1,7 @@
-# Decode oracle (Mistral): "our decode matches a second engine on real modules" as a checked property
+# Decode oracle: "our decode matches a second engine on real modules" as a checked property
 
 Workstream: WABT/Binaryen decode oracle for the corpus, checked in CI.
-Branch: `feat/decode-oracle-mistral`. Work order step 4 / `REUSE_OPPORTUNITIES.md` section 1.
+Branch: `feat/decode-oracle-1`. Work order step 4 / `REUSE_OPPORTUNITIES.md` section 1.
 
 ## Goal
 
@@ -396,9 +396,9 @@ baseline has 210` / `OK: every probe matches the recorded baseline`, fixture
 
 Note on a false alarm during that re-run: the first re-run reported `200 problem(s)` / `MISSING`
 probes. That was **not** a regression — `check-local.ps1`'s default `-OutDir`
-(`$env:TEMP\wasm-probes-ci`) is a shared scratch path, and a concurrent agent's run
-(`ghidra-dwarf-nem`) overwrote `probe-run.log` in it, so `check-results.py` read the wrong log.
+(`$env:TEMP\wasm-probes-ci`) is a shared scratch path, and a concurrent workstream's run
+(`ghidra-dwarf-3`) overwrote `probe-run.log` in it, so `check-results.py` read the wrong log.
 Re-running with a private `-OutDir` (the run above) gave the clean, correct result; the private
-`probe-run.log` references only this worktree's pinned install (`ghidra-oracle-mistral`). The
+`probe-run.log` references only this worktree's pinned install (`ghidra-oracle-1`). The
 node-pin changes (`check-decode-oracle.py`, `decode-oracle-baseline.json`) are not on the gate's
 path, so the gate numbers are unchanged by construction and confirmed unchanged by the re-run.

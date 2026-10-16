@@ -24,11 +24,11 @@ Reference: https://github.com/WebAssembly/custom-page-sizes (proposals/custom-pa
 ## Reproduction (before fix)
 
 Build was from the pre-fix tree via `test-scripts/build-install.ps1` into the pinned install
-`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r2-pagebound`.
+`C:\Users\micro\AppData\Local\Temp\ghidra-r2-pagebound`.
 
 Command:
 ```
-$gh = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r2-pagebound"
+$gh = "C:\Users\micro\AppData\Local\Temp\ghidra-r2-pagebound"
 & "$gh\support\analyzeHeadless.bat" $proj "Reg" -import "D:\code\Ghidra-WASM\build\release-review-luna\custom-page-65537.wasm" -deleteProject
 ```
 

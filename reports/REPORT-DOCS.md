@@ -1,6 +1,6 @@
 # REPORT-DOCS: documentation pass for the 2.7.0 release
 
-Workstream: docs (subagent). Branch: `docs/pre-release` (based on main @ 81cf985).
+Workstream: docs (workstream). Branch: `docs/pre-release` (based on main @ 81cf985).
 Date: 2026-10-13.
 
 ## What was updated
@@ -155,8 +155,8 @@ files:
 - Did NOT add any `REPORT-*.md` files to main (this `REPORT-DOCS.md` stays on the
   `docs/pre-release` branch only).
 - Did NOT run `build-install.ps1` + the gate after the source comment fix (the pinned Ghidra
-  install at `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h3` may not be available in
-  this subagent's environment; the comment change is a one-word fix that cannot affect
+  install at `C:\Users\micro\AppData\Local\Temp\ghidra-h3` may not be available in
+  this workstream's environment; the comment change is a one-word fix that cannot affect
   behaviour).
 - Did NOT verify the `run_emulate.ps1` PyGhidra venv provisioning (needs a Windows host with
   `py -3.13`).
@@ -165,7 +165,7 @@ files:
 
 - The `build-install.ps1` + `check-local.ps1 -SkipBuild -RealModule ...` gate was not run after
   the WasmLoader.java comment fix (the pinned Ghidra install path may not be accessible from
-  this subagent). The fix is a comment-only change (one word: "256 MiB" → "128 MiB") and cannot
+  this workstream). The fix is a comment-only change (one word: "256 MiB" → "128 MiB") and cannot
   affect behaviour.
 - The `ghidra_scripts/spectest.py` PyGhidra script was not re-read in full; its existence was
   confirmed by glob.

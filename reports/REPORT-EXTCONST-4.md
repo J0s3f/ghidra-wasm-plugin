@@ -1,9 +1,9 @@
-# REPORT-EXTCONST-CATJAM.md — extended-const `Data markup conflict` warning
+# REPORT-EXTCONST-4.md — extended-const `Data markup conflict` warning
 
 ## 1. Warning (reproduced)
 
 Headless import of the affected probes (built extension against
-`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-extconst-muse`) emitted:
+`C:\Users\micro\AppData\Local\Temp\ghidra-extconst-2`) emitted:
 
 - probe `22_extconst_two_ops.wasm`:
   `WARN  Data markup conflict at ram:80000022 (WasmLoader)`
@@ -91,7 +91,7 @@ The edit is the only Java change in this branch.
 ## 6. Verification
 
 - Build (`build-install.ps1`) succeeded against
-  `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-extconst-muse`.
+  `C:\Users\micro\AppData\Local\Temp\ghidra-extconst-2`.
 - Targeted import of probes `22` and `27` no longer emits
   `Data markup conflict` or `Insufficient memory`.
 - Probes 22–27 metrics unchanged (above).
@@ -121,5 +121,5 @@ analyzeHeadless ... -import 27_extconst_data_offset.wasm -postScript DumpMemory.
 analyzeHeadless ... -import 22..27 -postScript WasmFeatureReport.java
 
 # full gate attempted
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-extconst-muse"
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-extconst-2"
 ```

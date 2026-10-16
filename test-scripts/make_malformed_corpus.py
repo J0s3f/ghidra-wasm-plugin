@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Malformed / hostile WebAssembly module generator (robustness corpus, agent J).
+"""Malformed / hostile WebAssembly module generator (robustness corpus, workstream J).
 
 Emits structurally broken or hostile modules into the directory given as sys.argv[1]. The modules
 exercise the *error paths* of the Ghidra WebAssembly loader: truncation, bad LEB128, section-size

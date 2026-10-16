@@ -8,7 +8,7 @@ Branch `fix/cstack-conttypes` (based on main @ `8f2b67f`). Two correctness items
   update the stack-switching probes to declare real continuation types, add continuation-type
   probes, and re-record the fixture-validity manifest + probe baseline.
 
-Nothing was pushed, merged or tagged. No file owned by the concurrent agents
+Nothing was pushed, merged or tagged. No file owned by the concurrent workstreams
 (`WasmStackVariableAnalyzer.java`, `WasmEmulationInstructionStateModifier.java`,
 `ghidra_scripts/spectest.py`, `test-scripts/spectest/run_emulate*.ps1`) was touched.
 
@@ -151,7 +151,7 @@ Re-recorded with:
 python test-scripts/check-fixture-validity.py --generate \
   --probes <dir> \
   --wabt "C:\Users\micro\AppData\Local\Temp\spectest-tools\wabt-1.0.42\bin" \
-  --binaryen "C:\Users\micro\AppData\Local\Temp\opencode\binaryen133\binaryen-version_133\bin" \
+  --binaryen "C:\Users\micro\AppData\Local\Temp\binaryen133\binaryen-version_133\bin" \
   --update --invalid CT03_cont_bad_index.wasm --invalid CT04_cont_absent_index.wasm
 ```
 

@@ -1,7 +1,7 @@
 # REPORT-D - roadmap item 9: `.name` extras + name application
 
 Branch: `feat/name-section-2` (base `a559dbe`).
-Worktree: `D:\code\ghidra-wt-r`. Ghidra install: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-m`
+Worktree: `D:\code\ghidra-wt-r`. Ghidra install: `C:\Users\micro\AppData\Local\Temp\ghidra-m`
 (the pinned install; **no other worktree/install was used at any point**).
 
 ## 1. What was done
@@ -113,7 +113,7 @@ nothing but the names.
 ## 5. Evidence
 
 `check-local` / `run_probes` runs a `DumpNames.java` post-script (project `Names`, imports all three
-probes). Excerpt (full log: `%TEMP%\opencode\names-dump\names-run.log`):
+probes). Excerpt (full log: `%TEMP%\names-dump\names-run.log`):
 
 ```
 NAMES program=N01_full_name_section.wasm
@@ -145,19 +145,19 @@ NAMES SYMBOL run @ ram:8000005a source=IMPORTED ns=export
 ## 6. CI gate
 
 Commands run from `D:\code\ghidra-wt-r` (with a **unique** `-OutDir`, because the default
-`%TEMP%\wasm-probes-ci` is shared between agents and was observed being clobbered mid-run):
+`%TEMP%\wasm-probes-ci` is shared between workstreams and was observed being clobbered mid-run):
 
 ```
-& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-m" `
-    -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\ci-r" -SkipBuild -Update
+& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-m" `
+    -OutDir "C:\Users\micro\AppData\Local\Temp\ci-r" -SkipBuild -Update
 ...
 == running 136 probe(s) ==
 == DumpDecomp wasm_fixture.wasm -> fixture-run.log ==
 SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0
 updated ...\expected-results.json: 132 probe(s) with metrics, 4 expected import failure(s)
 
-& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-m" `
-    -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\ci-r" -SkipBuild
+& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-m" `
+    -OutDir "C:\Users\micro\AppData\Local\Temp\ci-r" -SkipBuild
 ...
 SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0
 probes: 132 imported, 4 import failure(s); baseline has 136

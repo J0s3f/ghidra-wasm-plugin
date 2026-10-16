@@ -6,7 +6,7 @@ Scope: the two release-blocking findings of the 2.8.0 pre-release re-review
 (`release-rereview.md`; `release-rereview-sol.md` S1 + S2).
 
 Everything below was run locally in this worktree against the pinned install
-`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-n1-cache`
+`C:\Users\micro\AppData\Local\Temp\ghidra-n1-cache`
 (`test-scripts\.ghidra-install`). No shared install, no other worktree, no `D:\code\Ghidra-WASM`
 was written. No pushes, no merges.
 
@@ -222,7 +222,7 @@ unfixed and fixed builds, pinning down that the fix does not alter the direct pa
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Full local gate | `.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-n1-cache" -OutDir "$env:TEMP\n1-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"` | **exit 0** |
+| Full local gate | `.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-n1-cache" -OutDir "$env:TEMP\n1-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"` | **exit 0** |
 | Probe suite | (inside the gate) | `probes: 205 imported, 18 import failure(s); baseline has 223` — `OK: every probe matches the recorded baseline.` |
 | Fixture baseline | (inside the gate) | `SUMMARY functions=4 decompiled=4 failed=0 instructions=24 undefined_bytes=0` |
 | Real module | (inside the gate) | `SUMMARY functions=437 decompiled=437 failed=0 instructions=61658 undefined_bytes=156` |
@@ -273,7 +273,7 @@ pwsh -NoProfile -File test-scripts\check-call-store-semantics.ps1 -OutDir "$env:
 pwsh -NoProfile -File test-scripts\test-call-store-gate.ps1 -OutDir "$env:TEMP\gate-meta"
 
 # Part C
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-n1-cache" `
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-n1-cache" `
     -OutDir "$env:TEMP\n1-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
 .\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\n1-hybrid"
 ```

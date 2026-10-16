@@ -4,7 +4,7 @@ Scope: wire the **positive** WebAssembly spec-suite run into GitHub Actions as a
 regression gate, record a real baseline, and make the harness Linux-clean.
 
 * Worktree: `D:\code\ghidra-wt-h2` (branch `ci/spec-suite-gate`, base `main` @ `c3a7bc2`)
-* Ghidra install (pinned by `test-scripts/.ghidra-install`): `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h2` (12.1.4 PUBLIC)
+* Ghidra install (pinned by `test-scripts/.ghidra-install`): `C:\Users\micro\AppData\Local\Temp\ghidra-h2` (12.1.4 PUBLIC)
 * **No plugin source (`src/**`, `data/**`) or probe-baseline file was touched.**
 
 ---
@@ -47,7 +47,7 @@ Timing fields are never recorded, so a slow/fast runner cannot fail the gate.
 
 ```
 > D:\code\ghidra-wt-h2\test-scripts\build-install.ps1
-== using the pinned Ghidra install: C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h2 ==
+== using the pinned Ghidra install: C:\Users\micro\AppData\Local\Temp\ghidra-h2 ==
 == building (GHIDRA_INSTALL_DIR=...) ==
 ...
 BUILD SUCCESSFUL in 27s

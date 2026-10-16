@@ -1,7 +1,7 @@
 # REPORT-H7 - reference-type model: precise heap types + subtype-aware validation
 
 Branch `fix/ref-typing`, worktree `ghidra-wt-h7`, based on main @ `e5157d4` (169 probes).
-Owner: agent `h7`. Scope: `WasmEnums.ValType`, the block/`ref.null` decoding in
+Owner: workstream `h7`. Scope: `WasmEnums.ValType`, the block/`ref.null` decoding in
 `WasmFunctionAnalysis`, the SLEIGH `ref.null`/block-type constructors, and the reference-type
 probes. **No edits** to the memarg region of `WasmFunctionAnalysis` (owned by `h4`).
 
@@ -102,7 +102,7 @@ cd <worktree>; .\test-scripts\build-install.ps1
 Gate (fresh shell needs the env var; `-SkipBuild` reuses the pinned install):
 
 ```
-$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h3"
+$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-h3"
 $env:GHIDRA_HEADLESS_MAXMEM = "1500M"
 .\test-scripts\check-local.ps1 -OutDir "$env:TEMP\ci-h7" -SkipBuild `
     -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
@@ -122,7 +122,7 @@ Fixture validity:
 ```
 python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\h7-validity" `
   --wabt "C:\Users\micro\AppData\Local\Temp\spectest-tools\wabt-1.0.42\bin" `
-  --binaryen "C:\Users\micro\AppData\Local\Temp\opencode\binaryen133\binaryen-version_133\bin"
+  --binaryen "C:\Users\micro\AppData\Local\Temp\binaryen133\binaryen-version_133\bin"
 ```
 
 Result: `probes: 173  valid: 96  wabt-gap: 41  unsupported: 26  invalid: 10` and

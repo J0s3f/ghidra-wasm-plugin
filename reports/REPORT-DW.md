@@ -152,10 +152,10 @@ Build+install, then headless import + `DumpSourceMap.java` (project dirs and log
 `out/`, unique per run):
 
 ```powershell
-& .\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-m"
+& .\test-scripts\build-install.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-m"
 
 $proj="D:\code\ghidra-wt-m\out\dwproj1"; New-Item -ItemType Directory -Force $proj | Out-Null
-& "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-m\support\analyzeHeadless.bat" `
+& "C:\Users\micro\AppData\Local\Temp\ghidra-m\support\analyzeHeadless.bat" `
     $proj DW1 -import "D:\code\ghidra-wt-m\out\fixture_dwarf.wasm" `
     -scriptPath "D:\code\ghidra-wt-m\test-scripts" -postScript "DumpSourceMap.java" `
     -max-cpu 2 -deleteProject

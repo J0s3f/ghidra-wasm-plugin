@@ -1,7 +1,7 @@
-# REPORT-REFNULL-MISTRAL: named abstract heap types in `ref.null`
+# REPORT-REFNULL-1: named abstract heap types in `ref.null`
 
-**Branch:** `fix/refnull-names-mistral`
-**Model:** Mistral Large 4 (subagent)
+**Branch:** `fix/refnull-names-1`
+**Model:** Variant 1
 **Date:** 2026-10-14
 **Gap:** MODERN_WASM_GAPS.md §2.3 - "`ref.null` abstract heap types print numerically (`ref.null heaptype=-0x15`)"
 

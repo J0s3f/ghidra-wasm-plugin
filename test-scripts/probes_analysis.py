@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Probes owned by the *decoder/loader* workstream (agent A).
+"""Probes owned by the *decoder/loader* workstream (workstream A).
 
 Add new probes here - never edit `gen_feature_probes.py` (frozen baseline) or `probes_types.py`
-(owned by the other agent). Use the helpers from `wasm_probe_lib`:
+(owned by the other workstream). Use the helpers from `wasm_probe_lib`:
 
     write("A01_multi_memory_memidx.wasm", module(...))
 

@@ -1,9 +1,9 @@
 # Memory64 hybrid address spaces
 
-2026-10-14; branch `feat/mem64-hybrid-codex`; starting commit
+2026-10-14; branch `feat/mem64-hybrid`; starting commit
 `88552379f65eb6d5ce175798d57e73ace8244260`.
-Worktree: `C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-mem64-codex`.
-Pinned install: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-mem64-codex`.
+Worktree: `C:\Users\micro\worktrees\ghidra-wt-mem64`.
+Pinned install: `C:\Users\micro\AppData\Local\Temp\ghidra-mem64`.
 
 ## Design as implemented
 
@@ -81,7 +81,7 @@ Each probe retains `funcs=1 instrs=4 undefined_bytes=0 decompiled=1 decompile_fa
 No metrics/classifications were recut: both baseline JSON files are unchanged.
 `ListProgram` adds pcode output only when explicitly given the `pcode` argument.
 
-For original-build measurement, feature files were backed up under `%TEMP%\mem64-codex-edits`,
+For original-build measurement, feature files were backed up under `%TEMP%\mem64-edits`,
 the original scalar/loader files were restored temporarily using `git show HEAD:<path>`,
 the pinned extension was rebuilt, and all feature edits were restored before proceeding.
 The original installed build was used for the before gate/listings/fingerprints. It was
@@ -94,17 +94,17 @@ Commands ran in the designated worktree with PowerShell 7. `%TEMP%` for these ru
 launch.properties also pins settings/cache/temp inside the designated install:
 
 ```powershell
-$env:APPDATA = 'C:\Users\micro\AppData\Local\Temp\opencode\ghidra-mem64-codex\settings'
+$env:APPDATA = 'C:\Users\micro\AppData\Local\Temp\ghidra-mem64\settings'
 ```
 
 Build and before gate (original implementation installed):
 
 ```powershell
 .\test-scripts\build-install.ps1
-.\test-scripts\run_probes.ps1 -Only 'B8_0[45]' -Detail -OutDir "$env:TEMP\mem64-codex-before-corrected"
+.\test-scripts\run_probes.ps1 -Only 'B8_0[45]' -Detail -OutDir "$env:TEMP\mem64-before-corrected"
 .\test-scripts\check-local.ps1 -SkipBuild `
-  -GhidraDir 'C:\Users\micro\AppData\Local\Temp\opencode\ghidra-mem64-codex' `
-  -OutDir "$env:TEMP\mem64-codex-baseline-gate" `
+  -GhidraDir 'C:\Users\micro\AppData\Local\Temp\ghidra-mem64' `
+  -OutDir "$env:TEMP\mem64-baseline-gate" `
   -RealModule 'D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm'
 ```
 
@@ -115,14 +115,14 @@ fixture `4/4/0/24/0`; real module `437/437/0/61658/156`
 Exact listing command was run twice, with `$phase` = `before` then `after`:
 
 ```powershell
-$taskProject = "$env:TEMP\mem64-codex-$phase-pcode"
+$taskProject = "$env:TEMP\mem64-$phase-pcode"
 New-Item -ItemType Directory -Force $taskProject | Out-Null
-& 'C:\Users\micro\AppData\Local\Temp\opencode\ghidra-mem64-codex\support\analyzeHeadless.bat' `
+& 'C:\Users\micro\AppData\Local\Temp\ghidra-mem64\support\analyzeHeadless.bat' `
   $taskProject Detail `
-  -import "$env:TEMP\mem64-codex-before-corrected\probes\B8_04_mem64_over4g.wasm" `
-  -import "$env:TEMP\mem64-codex-before-corrected\probes\B8_05_mem64_just_over4g.wasm" `
+  -import "$env:TEMP\mem64-before-corrected\probes\B8_04_mem64_over4g.wasm" `
+  -import "$env:TEMP\mem64-before-corrected\probes\B8_05_mem64_just_over4g.wasm" `
   -scriptPath test-scripts -postScript ListProgram.java pcode -postScript DumpAll.java `
-  -deleteProject *> "$env:TEMP\mem64-codex-$phase-pcode.log"
+  -deleteProject *> "$env:TEMP\mem64-$phase-pcode.log"
 ```
 
 The after command also passed `-postScript WasmFeatureReport.java` before `-deleteProject`.
@@ -132,7 +132,7 @@ Hybrid assertion command (completed implementation installed):
 
 ```powershell
 .\test-scripts\build-install.ps1
-.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\mem64-codex-assertions-balanced"
+.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\mem64-assertions-balanced"
 ```
 
 Exit 0; observed:
@@ -157,8 +157,8 @@ The 41-case SIMD-prefix fixture also passed both external oracles (exit 0). The 
 were invoked via Python `subprocess.run(..., timeout=10)`:
 
 ```text
-wasm-validate.exe <TEMP>/mem64-codex-assertions-balanced/fixtures/hybrid_simd_prefixes.wasm --enable-all
-wasm-dis.exe <TEMP>/mem64-codex-assertions-balanced/fixtures/hybrid_simd_prefixes.wasm --all-features -o <TEMP>/mem64-codex-simd-prefixes.wat
+wasm-validate.exe <TEMP>/mem64-assertions-balanced/fixtures/hybrid_simd_prefixes.wasm --enable-all
+wasm-dis.exe <TEMP>/mem64-assertions-balanced/fixtures/hybrid_simd_prefixes.wasm --all-features -o <TEMP>/mem64-simd-prefixes.wat
 ```
 
 Executables came from the pinned tool directories below. Both calls were timeout guarded.
@@ -171,25 +171,25 @@ loader active data in both spaces. High bytes are explicitly seeded in sparse em
 with different high/low values so wrapping is observable. The 128 MiB loader cap is unchanged.
 Negative cases intentionally cause EmulatorHelper ERROR stack traces; the harness requires the
 precise trap and checks pass markers rather than trusting headless's exit code alone.
-Log: `%TEMP%\mem64-codex-assertions-balanced\hybrid-check.log`.
+Log: `%TEMP%\mem64-assertions-balanced\hybrid-check.log`.
 
 Exact fingerprint command was also run before and after:
 
 ```powershell
-python test-scripts/memory64-hybrid-fixtures.py "$env:TEMP\mem64-codex-checks"
-$taskProject = "$env:TEMP\mem64-codex-$phase-fingerprints"
+python test-scripts/memory64-hybrid-fixtures.py "$env:TEMP\mem64-checks"
+$taskProject = "$env:TEMP\mem64-$phase-fingerprints"
 New-Item -ItemType Directory -Force $taskProject | Out-Null
-& 'C:\Users\micro\AppData\Local\Temp\opencode\ghidra-mem64-codex\support\analyzeHeadless.bat' `
-  $taskProject Fingerprints -import "$env:TEMP\mem64-codex-checks\hybrid_matrix.wasm" `
+& 'C:\Users\micro\AppData\Local\Temp\ghidra-mem64\support\analyzeHeadless.bat' `
+  $taskProject Fingerprints -import "$env:TEMP\mem64-checks\hybrid_matrix.wasm" `
   -import test-scripts/fixtures/wasm_fixture.wasm `
   -import 'D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm' `
   -scriptPath test-scripts -postScript MemoryPcodeFingerprint.java -max-cpu 2 `
-  -deleteProject *> "$env:TEMP\mem64-codex-$phase-fingerprints.log"
+  -deleteProject *> "$env:TEMP\mem64-$phase-fingerprints.log"
 ```
 
 Both exit 0. After the SIMD-pattern fix described below, the same command was rerun with
-`$taskProject = "$env:TEMP\mem64-codex-balanced-fingerprints"` and output
-`$env:TEMP\mem64-codex-balanced-fingerprints.log`. All fingerprints still match
+`$taskProject = "$env:TEMP\mem64-balanced-fingerprints"` and output
+`$env:TEMP\mem64-balanced-fingerprints.log`. All fingerprints still match
 (matrix excludes `m64_` functions):
 
 | Input | Pcode operations | Identical before/after SHA-256 |
@@ -202,8 +202,8 @@ Final full gate command:
 
 ```powershell
 .\test-scripts\check-local.ps1 `
-  -GhidraDir 'C:\Users\micro\AppData\Local\Temp\opencode\ghidra-mem64-codex' `
-  -OutDir "$env:TEMP\mem64-codex-gate" `
+  -GhidraDir 'C:\Users\micro\AppData\Local\Temp\ghidra-mem64' `
+  -OutDir "$env:TEMP\mem64-gate" `
   -RealModule 'D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm'
 ```
 
@@ -220,14 +220,14 @@ Commands after this fix:
 
 ```powershell
 .\test-scripts\build-install.ps1
-.\test-scripts\run_probes.ps1 -Only '14_relaxed_simd' -Detail -OutDir "$env:TEMP\mem64-codex-relaxed-fixed"
-.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\mem64-codex-assertions-balanced"
+.\test-scripts\run_probes.ps1 -Only '14_relaxed_simd' -Detail -OutDir "$env:TEMP\mem64-relaxed-fixed"
+.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\mem64-assertions-balanced"
 ```
 
 The failing probe now reports `1/6/0/1/0` and lists `i8x16.relaxed_swizzle; drop; end` correctly.
 The auxiliary harness and all three fingerprints passed again. The first failing full-probe
-log is preserved at `%TEMP%\mem64-codex-first-hybrid-probe-run.log`; the TEMP-only trace
-is `%TEMP%\mem64-codex-trace.log`. A complete full gate was then rerun on the fixed build.
+log is preserved at `%TEMP%\mem64-first-hybrid-probe-run.log`; the TEMP-only trace
+is `%TEMP%\mem64-trace.log`. A complete full gate was then rerun on the fixed build.
 
 Final rerun exit **0**. Every one of the **222 probes** matches the recorded baseline:
 **204 imported / 18 expected import failures**; no per-probe metric differences. This includes
@@ -240,8 +240,8 @@ probes: 204 imported, 18 import failure(s); baseline has 222
 OK: every probe matches the recorded baseline.
 ```
 
-Logs: `%TEMP%\mem64-codex-gate\probe-run.log`, `fixture-run.log`, `real-run.log`;
-console: `%TEMP%\mem64-codex-gate-console.log`.
+Logs: `%TEMP%\mem64-gate\probe-run.log`, `fixture-run.log`, `real-run.log`;
+console: `%TEMP%\mem64-gate-console.log`.
 The final pinned install stamp names this exact worktree and extension zip,
 SHA-256 `534541956BCB372E9888882565CF17148471142253D3AEB3A1E6A007E472EF49`.
 `git diff 88552379 -- test-scripts/expected-results.json test-scripts/fixture-validity.json`
@@ -254,19 +254,19 @@ the same command was rerun without overlap.
 Both fixture-validity modes:
 
 ```powershell
-.\test-scripts\spectest\fetch_spectest_tools.ps1 -ToolsDir "$env:TEMP\mem64-codex-tools" -WabtOnly -Binaryen
-python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\mem64-codex-vp" `
-  --wabt "$env:TEMP\mem64-codex-tools\wabt-1.0.42\bin" `
-  --binaryen "$env:TEMP\mem64-codex-tools\binaryen-version_133\bin" --timeout 10
-python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\mem64-codex-vp-wabt" `
-  --wabt "$env:TEMP\mem64-codex-tools\wabt-1.0.42\bin" --timeout 10
+.\test-scripts\spectest\fetch_spectest_tools.ps1 -ToolsDir "$env:TEMP\mem64-tools" -WabtOnly -Binaryen
+python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\mem64-vp" `
+  --wabt "$env:TEMP\mem64-tools\wabt-1.0.42\bin" `
+  --binaryen "$env:TEMP\mem64-tools\binaryen-version_133\bin" --timeout 10
+python test-scripts/check-fixture-validity.py --generate --probes "$env:TEMP\mem64-vp-wabt" `
+  --wabt "$env:TEMP\mem64-tools\wabt-1.0.42\bin" --timeout 10
 ```
 
 Tools fetched and checksums verified: WABT 1.0.42 and Binaryen 133. Both checks exit 0:
 **222 probes: 128 valid / 64 wabt-gap / 17 unsupported / 13 invalid**.
 Full mode explicitly reports/honours all **13 recorded Binaryen `oracle_skip` cases**.
 Binaryen ran only through the timeout-guarded validator, never unguarded wasm-dis.
-Logs: `%TEMP%\mem64-codex-validity-full.log`, `%TEMP%\mem64-codex-validity-wabt.log`.
+Logs: `%TEMP%\mem64-validity-full.log`, `%TEMP%\mem64-validity-wabt.log`.
 
 ## Residual limits / open items
 

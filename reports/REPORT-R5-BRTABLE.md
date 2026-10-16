@@ -1,8 +1,8 @@
 # REPORT-R5-BRTABLE.md — `br_table` expansion bound dropped the DEFAULT target
 
 Branch: `fix/r5-brtable-default` · Worktree:
-`C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-r5-brtable-ds`
-Pinned install: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r5-brtable-ds`
+`C:\Users\micro\worktrees\ghidra-wt-r5-brtable-ds`
+Pinned install: `C:\Users\micro\AppData\Local\Temp\ghidra-r5-brtable-ds`
 
 ## 1. Defect
 
@@ -69,7 +69,7 @@ approximation. Case targets beyond the cap remain unmodelled.
 ### 3.1 Reproduction with `brcap.wasm` (before the fix, pinned install)
 
 ```
-$gh = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r5-brtable-ds"
+$gh = "C:\Users\micro\AppData\Local\Temp\ghidra-r5-brtable-ds"
 & "$gh\support\analyzeHeadless.bat" "$env:TEMP\r5-brtable\proj-before" Before `
     -import "$env:TEMP\r5-brtable\brcap.wasm" -noanalysis `
     -scriptPath "<repo>\test-scripts" -postScript EmulateExport.java default_branch
@@ -164,7 +164,7 @@ precise statement (1 residual `large(10000)` case; the default target is now alw
 ## 6. Gate
 
 ```
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r5-brtable-ds" `
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-r5-brtable-ds" `
     -OutDir "$env:TEMP\r5-gate" `
     -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
 ```

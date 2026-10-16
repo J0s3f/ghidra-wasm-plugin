@@ -1,0 +1,413 @@
+Loading user preferences: D:\code\Ghidra-WASM\build\full-code-review-replay\settings\User-ghidra\ghidra_12.1.4_PUBLIC\preferences
+Loading previous preferences: C:\Users\micro\.ghidra\.ghidra_10.2.3_PUBLIC\preferences
+Initializing SSL Context
+Initializing Random Number Generator...
+Random Number Generator initialization complete: SHA1PRNG
+Trust manager disabled, cacerts have not been set
+REVIEW classes=file:/D:/code/Ghidra-WASM/build/full-code-review-replay/classes/
+REVIEW CSPEC stack=ram: memoryGlobal=false ramGlobal=true
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\br_on_non_null.wasm
+REVIEW ANALYSIS OK test_br_on_non_null
+REVIEW INSTR br_on_non_null 0x80000046 len=2 objects=[ram:80000046] effect=null
+REVIEW ANALYSIS OK unnamed_function_1
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000038: ram:8000004f:1
+Uninitialized memory read at ram:80000038: ram:80000050:1
+Uninitialized memory read at ram:00000063: ram:80000051:6
+Emulation failure at ram:00000063: br_on_non_null.wasm
+ghidra.pcode.emulate.InstructionDecodeException: Instruction decode failed (invalid memory), PC=ram:00000063
+	at ghidra.pcode.emulate.Emulate.emitPcode(Emulate.java:234)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:430)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized memory read at ram:00000063: register:50000004:4
+Uninitialized memory read at ram:00000063: memory:0000fffc:4
+REVIEW EMU test_br_on_non_null steps=8 returned=false s0=99 s0q=99 error=Instruction decode failed (invalid memory), PC=ram:00000063 tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\br_on_null.wasm
+REVIEW ANALYSIS OK test_br_on_null
+REVIEW INSTR br_on_null 0x8000003a len=2 objects=[ram:8000003a] effect=null
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002c: ram:8000003c:1
+Uninitialized memory read at ram:8000002c: ram:8000003d:1
+Uninitialized memory read at ram:8000003b: register:50000004:12
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_br_on_null steps=9 returned=true s0=99 s0q=99 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\copy_dynamic_len.wasm
+REVIEW ANALYSIS OK copy_dynamic_len
+REVIEW COPY LENGTH 16
+REVIEW DECOMP copy_dynamic_len
+void export::copy_dynamic_len(undefined4 param1)
+
+{
+  return;
+}
+
+
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\copy_overlap.wasm
+REVIEW ANALYSIS OK copy_overlap
+REVIEW COPY LENGTH 3
+REVIEW DECOMP copy_overlap
+void export::copy_overlap(undefined1 *param1)
+
+{
+  undefined1 in_memory_00001000;
+  undefined1 in_memory_00001001;
+  undefined1 in_memory_00001002;
+
+  *param1 = in_memory_00001000;
+  param1[1] = in_memory_00001001;
+  param1[2] = in_memory_00001002;
+  return;
+}
+
+
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\cross_section_type.wasm
+REVIEW LOAD ERROR java.lang.reflect.InvocationTargetException
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at ReviewHarness.load(ReviewHarness.java:49)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Caused by: java.io.IOException: unsupported wasm type form 0x00 in type section at 11
+	at wasm.format.sections.structures.WasmGCType.parseSubType(WasmGCType.java:326)
+	at wasm.format.sections.structures.WasmGCType.parseTypeEntry(WasmGCType.java:262)
+	at wasm.format.sections.WasmTypeSection.<init>(WasmTypeSection.java:49)
+	at wasm.format.sections.WasmSection.createSection(WasmSection.java:72)
+	at wasm.format.WasmModule.<init>(WasmModule.java:79)
+	at wasm.WasmLoader.doLoad(WasmLoader.java:1140)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 3 more
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\gc_return.wasm
+REVIEW ANALYSIS ERROR test_gc_return wasm.analysis.ValidationException: Validation error at address ram:80000032: pop type mismatch: got anyref, expected externref
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002e: ram:80000033:1
+Uninitialized memory read at ram:8000002e: ram:80000034:1
+Emulation failure at ram:8000002e: gc_return.wasm
+wasm.analysis.ValidationException: Validation error at address ram:80000032: pop type mismatch: got anyref, expected externref
+	at wasm.analysis.WasmFunctionAnalysis.popValue(WasmFunctionAnalysis.java:565)
+	at wasm.analysis.WasmFunctionAnalysis.popValues(WasmFunctionAnalysis.java:579)
+	at wasm.analysis.WasmFunctionAnalysis.popBlock(WasmFunctionAnalysis.java:631)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeOpcode(WasmFunctionAnalysis.java:1414)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeFunction(WasmFunctionAnalysis.java:2714)
+	at wasm.analysis.WasmAnalysis.getFunctionAnalysis(WasmAnalysis.java:121)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier$WasmFunctionAnalysisProvider.getAnalysisForAddress(WasmEmulateInstructionStateModifier.java:200)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.getAnalysis(WasmEmulateInstructionStateModifier.java:315)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.updateContextValue(WasmEmulateInstructionStateModifier.java:1122)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.initialExecuteCallback(WasmEmulateInstructionStateModifier.java:1142)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:409)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized register read at ram:8000002e: s0
+Uninitialized memory read at ram:8000002e: register:50000004:4
+Uninitialized memory read at ram:8000002e: memory:0000fffc:4
+REVIEW EMU test_gc_return steps=1 returned=false s0=0 s0q=0 error=Validation error at address ram:80000032: pop type mismatch: got anyref, expected externref tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\global_index64.wasm
+REVIEW ANALYSIS OK test_global_index64
+REVIEW SP GUESS -64 expected=64
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:800001b9: ram:800001be:1
+Uninitialized memory read at ram:800001b9: ram:800001bf:1
+Uninitialized memory read at ram:80000000: register:50000004:4
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_global_index64 steps=5 returned=true s0=4096 s0q=4096 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\grow_overflow.wasm
+Memory 0 has a 64-bit (i64) index type; its 65536 byte(s) are mapped into the 64-bit `memory64` space at 0x0
+REVIEW ANALYSIS OK test_grow_overflow
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000035: ram:80000044:1
+Uninitialized memory read at ram:80000035: ram:80000045:1
+Uninitialized memory read at ram:80000036: ram:80000046:9
+Uninitialized memory read at ram:80000041: ram:8000004f:1
+Uninitialized memory read at ram:80000043: ram:80000050:11
+Uninitialized memory read at ram:80000043: register:50000008:8
+Uninitialized memory read at ram:80000000: ram:8000005b:2
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_grow_overflow steps=5 returned=true s0=1 s0q=1 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\local_names.wasm
+REVIEW ANALYSIS OK unnamed_function_0
+REVIEW INSTR .local count=0x1 type=0x7e len=2 objects=[0x1] effect=null
+REVIEW LOCAL wide_local size=4 expected=8 storage=l1:4
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\max_zero.wasm
+REVIEW ANALYSIS OK test_max_zero
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002a: ram:80000038:1
+Uninitialized memory read at ram:8000002a: ram:80000039:1
+Uninitialized memory read at ram:80000037: register:50000004:12
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_max_zero steps=7 returned=true s0=2147483648 s0q=2147483648 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\min_zero.wasm
+REVIEW ANALYSIS OK test_min_zero
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002a: ram:80000038:1
+Uninitialized memory read at ram:8000002a: ram:80000039:1
+Uninitialized memory read at ram:80000037: register:50000004:12
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_min_zero steps=7 returned=true s0=0 s0q=0 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\multi_memarg.wasm
+REVIEW ANALYSIS OK test_multi_memarg
+REVIEW INSTR i32.load align=0x2 memidx=0x1 offset=0x10 len=4 objects=[0x2, 0x1, 0x10] effect=null
+REVIEW OFFSET 0x1
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000035: ram:8000003d:1
+Uninitialized memory read at ram:80000035: ram:8000003e:1
+Uninitialized memory read at ram:80000036: ram:8000003f:16
+Uninitialized memory read at ram:80000038: ram:8000004f:1
+Uninitialized memory read at ram:8000003c: ram:80000050:2
+Uninitialized memory read at ram:8000003c: register:50000004:12
+Uninitialized memory read at ram:80000000: ram:80000052:4
+REVIEW EMU test_multi_memarg steps=5 returned=true s0=0 s0q=0 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\mutable_memory.wasm
+REVIEW ANALYSIS OK setter
+REVIEW ANALYSIS OK read_mutable
+REVIEW INSTR i32.load align=0x2 offset=0x0 len=3 objects=[0x2, 0x0] effect=null
+REVIEW DECOMP setter
+void export::setter(undefined4 *param1,undefined4 param2)
+
+{
+  *param1 = param2;
+  return;
+}
+
+
+REVIEW DECOMP read_mutable
+int export::read_mutable(void)
+
+{
+  int in_memory_00000400;
+
+  return in_memory_00000400;
+}
+
+
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\nearest_half.wasm
+REVIEW ANALYSIS OK test_nearest_half
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002e: ram:80000037:1
+Uninitialized memory read at ram:8000002e: ram:80000038:1
+Uninitialized memory read at ram:80000036: register:50000004:12
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_nearest_half steps=6 returned=true s0=1077936128 s0q=1077936128 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\oob_store.wasm
+REVIEW ANALYSIS OK test_oob_store
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002f: ram:8000004c:1
+Uninitialized memory read at ram:8000002f: ram:8000004d:1
+Uninitialized memory read at ram:8000003d: ram:8000004e:6
+Emulation failure at ram:8000003d: oob_store.wasm
+ghidra.pcode.error.LowlevelError: out of bounds memory access
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.checkAddressInMemory(WasmEmulateInstructionStateModifier.java:737)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.checkMemoryBounds(WasmEmulateInstructionStateModifier.java:722)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.postExecuteCallback(WasmEmulateInstructionStateModifier.java:1154)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:444)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized memory read at ram:8000003d: register:50000004:4
+REVIEW EMU test_oob_store steps=4 returned=false s0=65534 s0q=65534 error=out of bounds memory access tail=[65, 66, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\overlap_struct.wasm
+REVIEW ANALYSIS OK test_overlap_struct
+REVIEW INSTR .local count=0x1 type=0x7f len=2 objects=[0x1] effect=null
+REVIEW INSTR i64.load align=0x3 offset=0x0 len=3 objects=[0x3, 0x0] effect=null
+REVIEW INSTR i32.load align=0x2 offset=0x4 len=3 objects=[0x2, 0x4] effect=null
+REVIEW STRUCT field_0 offset=0 size=8
+REVIEW STRUCT field_4 offset=8 size=4
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000034: ram:80000044:1
+Uninitialized memory read at ram:80000034: ram:80000045:1
+Uninitialized memory read at ram:80000035: ram:80000046:8
+Uninitialized memory read at ram:80000037: ram:8000004e:1
+Uninitialized memory read at ram:80000039: ram:8000004f:2
+Uninitialized memory read at ram:8000003c: ram:80000051:2
+Uninitialized memory read at ram:8000003d: ram:80000053:3
+Uninitialized memory read at ram:8000003f: ram:80000056:1
+Uninitialized memory read at ram:80000042: ram:80000057:2
+Uninitialized memory read at ram:80000043: ram:80000059:3
+Uninitialized memory read at ram:80000000: ram:8000005c:1
+REVIEW EMU test_overlap_struct steps=10 returned=true s0=0 s0q=0 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\rec_functype.wasm
+REVIEW ANALYSIS OK unnamed_function_0
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\sat_nan.wasm
+REVIEW ANALYSIS OK test_sat_nan
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000029: ram:80000036:1
+Uninitialized memory read at ram:80000029: ram:80000037:1
+Uninitialized memory read at ram:80000035: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_sat_nan steps=5 returned=true s0=0 s0q=9221120237041090560 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\sat_signed_max.wasm
+REVIEW ANALYSIS OK test_sat_signed_max
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000030: ram:8000003d:1
+Uninitialized memory read at ram:80000030: ram:8000003e:1
+Uninitialized memory read at ram:8000003c: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_sat_signed_max steps=5 returned=true s0=4294967295 s0q=6103021456713580543 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\sat_unsigned_2p32.wasm
+REVIEW ANALYSIS OK test_sat_unsigned_2p32
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000033: ram:80000040:1
+Uninitialized memory read at ram:80000033: ram:80000041:1
+Uninitialized memory read at ram:8000003f: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_sat_unsigned_2p32 steps=5 returned=true s0=0 s0q=4751297606875873280 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\sat_unsigned_max.wasm
+REVIEW ANALYSIS OK test_sat_unsigned_max
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000032: ram:8000003f:1
+Uninitialized memory read at ram:80000032: ram:80000040:1
+Uninitialized memory read at ram:8000003e: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_sat_unsigned_max steps=5 returned=true s0=4294967295 s0q=6103021456713580543 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\sat_unsigned_negative.wasm
+REVIEW ANALYSIS OK test_sat_unsigned_negative
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000037: ram:80000044:1
+Uninitialized memory read at ram:80000037: ram:80000045:1
+Uninitialized memory read at ram:80000043: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_sat_unsigned_negative steps=5 returned=true s0=4294967295 s0q=13830554459949760511 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\table_initializer.wasm
+REVIEW TABLE 0 type=i32 size=100
+REVIEW ANALYSIS OK unnamed_function_0
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\table64_get.wasm
+REVIEW TABLE 0 type=funcref size=1
+REVIEW ANALYSIS ERROR test_table64_get wasm.analysis.ValidationException: Validation error at address ram:80000036: pop type mismatch: got i64, expected i32
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000033: ram:8000003a:1
+Uninitialized memory read at ram:80000033: ram:8000003b:1
+Emulation failure at ram:80000033: table64_get.wasm
+wasm.analysis.ValidationException: Validation error at address ram:80000036: pop type mismatch: got i64, expected i32
+	at wasm.analysis.WasmFunctionAnalysis.popValue(WasmFunctionAnalysis.java:565)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeOpcode(WasmFunctionAnalysis.java:1661)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeFunction(WasmFunctionAnalysis.java:2714)
+	at wasm.analysis.WasmAnalysis.getFunctionAnalysis(WasmAnalysis.java:121)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier$WasmFunctionAnalysisProvider.getAnalysisForAddress(WasmEmulateInstructionStateModifier.java:200)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.getAnalysis(WasmEmulateInstructionStateModifier.java:315)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.updateContextValue(WasmEmulateInstructionStateModifier.java:1122)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.initialExecuteCallback(WasmEmulateInstructionStateModifier.java:1142)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:409)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized register read at ram:80000033: s0
+Uninitialized memory read at ram:80000033: register:50000004:4
+Uninitialized memory read at ram:80000033: memory:0000fffc:4
+REVIEW EMU test_table64_get steps=1 returned=false s0=0 s0q=0 error=Validation error at address ram:80000036: pop type mismatch: got i64, expected i32 tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\table64_size.wasm
+REVIEW TABLE 0 type=funcref size=1
+REVIEW ANALYSIS ERROR test_table64_size wasm.analysis.ValidationException: Validation error at address ram:80000038: pop type mismatch: got i32, expected i64
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000034: ram:80000039:1
+Uninitialized memory read at ram:80000034: ram:8000003a:1
+Emulation failure at ram:80000034: table64_size.wasm
+wasm.analysis.ValidationException: Validation error at address ram:80000038: pop type mismatch: got i32, expected i64
+	at wasm.analysis.WasmFunctionAnalysis.popValue(WasmFunctionAnalysis.java:565)
+	at wasm.analysis.WasmFunctionAnalysis.popValues(WasmFunctionAnalysis.java:579)
+	at wasm.analysis.WasmFunctionAnalysis.popBlock(WasmFunctionAnalysis.java:631)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeOpcode(WasmFunctionAnalysis.java:1414)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeFunction(WasmFunctionAnalysis.java:2714)
+	at wasm.analysis.WasmAnalysis.getFunctionAnalysis(WasmAnalysis.java:121)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier$WasmFunctionAnalysisProvider.getAnalysisForAddress(WasmEmulateInstructionStateModifier.java:200)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.getAnalysis(WasmEmulateInstructionStateModifier.java:315)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.updateContextValue(WasmEmulateInstructionStateModifier.java:1122)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.initialExecuteCallback(WasmEmulateInstructionStateModifier.java:1142)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:409)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized register read at ram:80000034: s0
+Uninitialized memory read at ram:80000034: register:50000004:4
+Uninitialized memory read at ram:80000034: memory:0000fffc:4
+REVIEW EMU test_table64_size steps=1 returned=false s0=0 s0q=0 error=Validation error at address ram:80000038: pop type mismatch: got i32, expected i64 tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\trunc_lower.wasm
+REVIEW ANALYSIS OK test_trunc_lower
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002d: ram:80000039:1
+Uninitialized memory read at ram:8000002d: ram:8000003a:1
+Emulation failure at ram:80000038: trunc_lower.wasm
+ghidra.pcode.error.LowlevelError: integer overflow
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.checkTruncTrap(WasmEmulateInstructionStateModifier.java:808)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.checkArithmeticTraps(WasmEmulateInstructionStateModifier.java:772)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.postExecuteCallback(WasmEmulateInstructionStateModifier.java:1156)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:444)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized memory read at ram:80000038: memory:0000fffc:4
+REVIEW EMU test_trunc_lower steps=3 returned=false s0=2147483648 s0q=13970166046250762240 error=integer overflow tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\trunc_unsigned_i64.wasm
+REVIEW ANALYSIS OK test_trunc_unsigned_i64
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000034: ram:80000040:1
+Uninitialized memory read at ram:80000034: ram:80000041:1
+Uninitialized memory read at ram:8000003f: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_trunc_unsigned_i64 steps=5 returned=true s0=4294967295 s0q=9223372036854775807 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\trunc_unsigned.wasm
+REVIEW ANALYSIS OK test_trunc_unsigned
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:80000030: ram:8000003c:1
+Uninitialized memory read at ram:80000030: ram:8000003d:1
+Uninitialized memory read at ram:8000003b: register:50000008:8
+Uninitialized memory read at ram:80000000: memory:0000fffc:4
+REVIEW EMU test_trunc_unsigned steps=5 returned=true s0=4294967295 s0q=4751297606875873279 error=null tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\truncated_datacount.wasm
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\typed_local.wasm
+REVIEW ANALYSIS ERROR test_typed_local wasm.analysis.ValidationException: Validation error at address ram:80000030: pop from empty stack
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002d: ram:80000035:1
+Uninitialized memory read at ram:8000002d: ram:80000036:1
+Emulation failure at ram:8000002d: typed_local.wasm
+wasm.analysis.ValidationException: Validation error at address ram:80000030: pop from empty stack
+	at wasm.analysis.WasmFunctionAnalysis.popValue(WasmFunctionAnalysis.java:552)
+	at wasm.analysis.WasmFunctionAnalysis.popValue(WasmFunctionAnalysis.java:558)
+	at wasm.analysis.WasmFunctionAnalysis.binaryOp(WasmFunctionAnalysis.java:897)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeOpcode(WasmFunctionAnalysis.java:1815)
+	at wasm.analysis.WasmFunctionAnalysis.analyzeFunction(WasmFunctionAnalysis.java:2714)
+	at wasm.analysis.WasmAnalysis.getFunctionAnalysis(WasmAnalysis.java:121)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier$WasmFunctionAnalysisProvider.getAnalysisForAddress(WasmEmulateInstructionStateModifier.java:200)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.getAnalysis(WasmEmulateInstructionStateModifier.java:315)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.updateContextValue(WasmEmulateInstructionStateModifier.java:1122)
+	at ghidra.program.emulation.WasmEmulateInstructionStateModifier.initialExecuteCallback(WasmEmulateInstructionStateModifier.java:1142)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:409)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized register read at ram:8000002d: s0
+Uninitialized memory read at ram:8000002d: register:50000004:4
+Uninitialized memory read at ram:8000002d: memory:0000fffc:4
+REVIEW EMU test_typed_local steps=1 returned=false s0=0 s0q=0 error=Validation error at address ram:80000030: pop from empty stack tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\typed_select.wasm
+REVIEW ANALYSIS OK test_typed_select
+Uninitialized register read at ram:00000000: SSP
+Uninitialized memory read at ram:8000002e: ram:8000003b:1
+Uninitialized memory read at ram:8000002e: ram:8000003c:1
+Emulation failure at ram:80000035: typed_select.wasm
+ghidra.pcode.emulate.InstructionDecodeException: Instruction decode failed (No corresponding entry in nametable <valtype>, index=99), PC=ram:80000035
+	at ghidra.pcode.emulate.Emulate.emitPcode(Emulate.java:234)
+	at ghidra.pcode.emulate.Emulate.executeInstruction(Emulate.java:430)
+	at ghidra.app.emulator.DefaultEmulator.executeInstruction(DefaultEmulator.java:367)
+	at ghidra.app.emulator.EmulatorHelper.executeInstruction(EmulatorHelper.java:543)
+	at ghidra.app.emulator.EmulatorHelper.step(EmulatorHelper.java:598)
+	at ReviewHarness.emulate(ReviewHarness.java:124)
+	at ReviewHarness.main(ReviewHarness.java:135)
+Uninitialized memory read at ram:80000035: register:50000004:4
+Uninitialized memory read at ram:80000035: memory:0000fffc:4
+REVIEW EMU test_typed_select steps=5 returned=false s0=0 s0q=0 error=Instruction decode failed (No corresponding entry in nametable <valtype>, index=99), PC=ram:80000035 tail=[0, 0, 0, 0]
+REVIEW FILE D:\code\Ghidra-WASM\build\full-code-review-replay\fixtures\typed_signature.wasm

@@ -3,7 +3,7 @@
 Worktree: `D:\code\ghidra-wt-n`, branch `feat/memory64`, base `c02b6b9`
 (multi-memory, limits flags incl. the 64-bit flag, constant-expression scanner, GC / new-EH /
 function-reference types and unknown-opcode degradation already merged).
-Ghidra 12.1.4 (`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e`), Gradle 9.2.1, JDK 25.
+Ghidra 12.1.4 (`C:\Users\micro\AppData\Local\Temp\ghidra-e`), Gradle 9.2.1, JDK 25.
 
 Scope: roadmap item 8 of `MODERN_WASM_GAPS.md` — make 64-bit memories (`(memory i64 N)`,
 `wasm64` / Emscripten `MEMORY64` output) analyze correctly. Touched: the pre-analyzer, the
@@ -178,7 +178,7 @@ modules).
 
 ```powershell
 & D:\code\ghidra-wt-n\test-scripts\build-install.ps1 `
-    -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e"
+    -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-e"
 # BUILD SUCCESSFUL in 18s; created ghidra_12.1.4_PUBLIC_20261012_ghidra-wt-n.zip; installed
 ```
 
@@ -191,8 +191,8 @@ of `data/languages`): exit 0, no new warnings. The only warnings are the pre-exi
 
 ```powershell
 & D:\code\ghidra-wt-n\test-scripts\run_probes.ps1 `
-    -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-n" `
-    -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e" `
+    -OutDir "C:\Users\micro\AppData\Local\Temp\probes-n" `
+    -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-e" `
     -Generators gen_feature_probes.py,probes_memory64.py -Detail
 # == running 35 probe(s) ==
 ```
@@ -362,9 +362,9 @@ functions, `21` still fails to import. The full CI check of §6.3 is the authori
 **Real-module regression** (179 KiB Rust `wasm-bindgen` module, 437 functions):
 
 ```powershell
-New-Item -ItemType Directory -Force "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e\proj-n"
-& "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e\support\analyzeHeadless.bat" `
-    "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e\proj-n" Reg `
+New-Item -ItemType Directory -Force "C:\Users\micro\AppData\Local\Temp\ghidra-e\proj-n"
+& "C:\Users\micro\AppData\Local\Temp\ghidra-e\support\analyzeHeadless.bat" `
+    "C:\Users\micro\AppData\Local\Temp\ghidra-e\proj-n" Reg `
     -import "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm" `
     -scriptPath "D:\code\ghidra-wt-n\test-scripts" -postScript DumpDecomp.java -max-cpu 2 -deleteProject
 ```
@@ -380,11 +380,11 @@ nor added a decode in a real module, and `undefined_bytes=156` is the recorded i
 appear, as before.)
 
 **CI gate** — first the baseline update (the only way `expected-results.json` may change), with a
-unique output dir (several agents share the host; `-SkipBuild` reuses the install from §6.0):
+unique output dir (several workstreams share the host; `-SkipBuild` reuses the install from §6.0):
 
 ```powershell
-& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e" `
-    -SkipBuild -Update -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-ci-n"
+& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-e" `
+    -SkipBuild -Update -OutDir "C:\Users\micro\AppData\Local\Temp\probes-ci-n"
 ```
 
 ```
@@ -430,8 +430,8 @@ real-module entry are byte-identical, so the update did not paper over any chang
 Then the plain check (no `-Update`), which must agree with the recorded baseline:
 
 ```powershell
-& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-e" `
-    -SkipBuild -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-ci-n2"
+& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-e" `
+    -SkipBuild -OutDir "C:\Users\micro\AppData\Local\Temp\probes-ci-n2"
 ```
 
 ```

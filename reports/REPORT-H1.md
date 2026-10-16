@@ -1,7 +1,7 @@
 # REPORT-H1 — section-id / duplicate-section diagnostics + 64-bit data-segment offsets
 
 Worktree `D:\code\ghidra-wt-h1`, branch `fix/sections-i64-offsets` (base `main` @ `c3a7bc2`).
-Ghidra install pinned by `test-scripts/.ghidra-install`: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h1`.
+Ghidra install pinned by `test-scripts/.ghidra-install`: `C:\Users\micro\AppData\Local\Temp\ghidra-h1`.
 All measurements below were taken after `test-scripts/build-install.ps1` had just been run in this checkout.
 
 Two independent loader-correctness items:
@@ -226,7 +226,7 @@ All 9 valid probes: `undefined_bytes=0`, `decompiled=1`, `decompile_failed=0`.
 ### 4.1 Commands (exact)
 
 ```powershell
-$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h1"
+$env:GHIDRA_INSTALL_DIR = "C:\Users\micro\AppData\Local\Temp\ghidra-h1"
 & D:\code\ghidra-wt-h1\test-scripts\build-install.ps1
 & .\test-scripts\check-local.ps1 -OutDir "$env:TEMP\ci-h1" -Update `
     -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"

@@ -6,10 +6,10 @@
     Copies the reference Ghidra install ($Source) to $Dest and makes it independent:
       * removes any installed extensions (so the worktree's own build is the only plugin visible),
       * appends private settings / cache / temp directories to support/launch.properties so
-        concurrent agents cannot interfere with each other or with the user's real install.
+        concurrent workstreams cannot interfere with each other or with the user's real install.
 
 .EXAMPLE
-    .\test-scripts\new-test-install.ps1 -Dest C:\Users\micro\AppData\Local\Temp\opencode\ghidra-c
+    .\test-scripts\new-test-install.ps1 -Dest C:\Users\micro\AppData\Local\Temp\ghidra-c
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Dest,

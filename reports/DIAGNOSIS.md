@@ -1,6 +1,6 @@
 # Diagnosis handed to the component-model workstream (integrator notes)
 
-The previous attempt (model `free-nemotron-lightning`) produced the scaffold in this worktree
+The previous attempt (model `free-3-lightning`) produced the scaffold in this worktree
 (`WasmComponentLoader.java`, `test-scripts/probes_component.py`, `REPORT-C.md`). Its report claims
 success, but **independent verification fails**. Do not trust the report; use this document.
 
@@ -63,7 +63,7 @@ created, i.e. the program that was built does not contain a valid core module). 
 * The detection logic (magic `\0asm`, version != 1) is fine and can be kept.
 * `probes_component.py` does honour `sys.argv[1]` as its output directory (the stray `.wasm` files
   that appeared in the previous worktree were from manual runs with the default `.`).
-* Keep every edit additive and delimited; other agents are concurrently editing
+* Keep every edit additive and delimited; other workstreams are concurrently editing
   `WasmFunctionAnalysis.java`, `data/languages/**` (decoder/loader workstream) and
   `WasmSignatureAnalyzer.java`/`.cspec` (multi-value workstream). Do not touch their files.
 

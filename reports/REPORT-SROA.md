@@ -2,7 +2,7 @@
 
 Branch: `feat/stack-sroa` (based on `main` @ `066bfcc`). Worktree:
 `ghidra-wt-sroa`. All numbers below were produced against the pinned install
-`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h1` with the real module
+`C:\Users\micro\AppData\Local\Temp\ghidra-h1` with the real module
 `rasterbator_rs_bg.wasm`.
 
 ## 1. What changed

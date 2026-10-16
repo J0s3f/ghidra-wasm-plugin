@@ -78,7 +78,7 @@ analyzeHeadless.bat <proj> test_proj -import call64.wasm -postScript ReviewRunti
 
 **Command to run:**
 ```powershell
-.\test-scripts\check-call-store-semantics.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r1-callstore" -OutDir "$env:TEMP\r1-callstore-gate"
+.\test-scripts\check-call-store-semantics.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-r1-callstore" -OutDir "$env:TEMP\r1-callstore-gate"
 ```
 
 **Output:**
@@ -96,7 +96,7 @@ CallStoreTest.java> PASS: returned=true result=7 steps=12
 
 ### check-local.ps1 (222 probes + real module)
 ```powershell
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r1-callstore" -OutDir "$env:TEMP\r1-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-r1-callstore" -OutDir "$env:TEMP\r1-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
 ```
 **Result:** PASS
 - Probes: 204 imported, 18 import failures (expected malformed), **222/222 match baseline**
@@ -105,7 +105,7 @@ CallStoreTest.java> PASS: returned=true result=7 steps=12
 
 ### check-memory64-hybrid.ps1 (9 emulation cases)
 ```powershell
-.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\r1-hybrid" -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-r1-callstore"
+.\test-scripts\check-memory64-hybrid.ps1 -OutDir "$env:TEMP\r1-hybrid" -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-r1-callstore"
 ```
 **Result:** PASS (exit 0)
 - HYBRID-COPY: three index-width pairs passed

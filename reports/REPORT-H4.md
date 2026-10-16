@@ -49,7 +49,7 @@ run against the committed probe set):
 
 ```
 .\test-scripts\build-install.ps1
-$env:GHIDRA_INSTALL_DIR="C:\Users\micro\AppData\Local\Temp\opencode\ghidra-h1"
+$env:GHIDRA_INSTALL_DIR="C:\Users\micro\AppData\Local\Temp\ghidra-h1"
 $env:GHIDRA_HEADLESS_MAXMEM="1500M"
 .\test-scripts\run_probes.ps1 -OutDir "$env:TEMP\h4-before" -Generators probes_memidx_table64.py
 ```

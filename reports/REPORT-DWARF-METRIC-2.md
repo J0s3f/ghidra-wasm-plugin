@@ -1,6 +1,6 @@
-# DWARF-based type-recovery metric (MuseSpark workstream)
+# DWARF-based type-recovery metric
 
-Branch: `feat/dwarf-metric-musespark`. All work in this worktree only, against the
+Branch: `feat/dwarf-metric-2`. All work in this worktree only, against the
 pinned install recorded in `test-scripts/.ghidra-install`.
 
 ## 1. Goal
@@ -252,4 +252,4 @@ Methodology check: on the fixture both modes agree — reader mode
   secondary mode.
 - `test-scripts/make_dwarf_fixture.ps1` (extended): struct-bearing fixture source.
 - `test-scripts/DumpTypes.java` (1-condition fix): truthful RETYPED reporting.
-- `REPORT-DWARF-METRIC-MUSESPARK.md` (this file).
+- `REPORT-DWARF-METRIC-2.md` (this file).

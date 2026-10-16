@@ -43,7 +43,7 @@ flags & 0x08 -> hasCustomPageSize() + getPageSizeExponent()
 | Probe | Before | After | Notes |
 |-------|--------|-------|-------|
 | 04_shared_memory_atomic | shared/max dropped | shared/max parsed | `.memory0 size=65536` |
-| 18_shared_then_plain_memory | only `.memory0` | `.memory0` + `.memory1`* | *Loader fix is other agent's work; limits parse correctly |
+| 18_shared_then_plain_memory | only `.memory0` | `.memory0` + `.memory1`* | *Loader fix is other workstream's work; limits parse correctly |
 | B01_limits_shared_max | N/A | `.memory0 size=655360` (10 pages) | |
 | B02_limits_memory64_max | N/A | `.memory0 size=655360` | |
 | B03_limits_custom_page_size | N/A | `.memory0 size=655360` | exponent=4 (64 KiB pages) |
@@ -147,8 +147,8 @@ The `(ref null $t)` parameter maps to `undefined4` (4-byte placeholder), functio
 
 **Command**:
 ```powershell
-& "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-b\support\analyzeHeadless.bat" \
-  "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-b\proj" Reg \
+& "C:\Users\micro\AppData\Local\Temp\ghidra-b\support\analyzeHeadless.bat" \
+  "C:\Users\micro\AppData\Local\Temp\ghidra-b\proj" Reg \
   -import "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm" \
   -scriptPath "D:\code\ghidra-wt-b\test-scripts" \
   -postScript DumpDecomp.java -deleteProject
@@ -202,11 +202,11 @@ All baseline probes (01–18, 20) maintain their recorded behavior from MODERN_W
 ### For Integration
 1. **Probe B09/B10/B28/B29**: Import failures are probe encoding bugs, not parser bugs. Fix probes before next run.
 2. **Multi-value returns** (roadmap item 7): `WasmSignatureAnalyzer` still only uses `returns[0]` — tracked separately.
-3. **Memory64/loader** (roadmap item 2): Probes 05/18 still show gaps — other agent's workstream.
+3. **Memory64/loader** (roadmap item 2): Probes 05/18 still show gaps — other workstream's workstream.
 4. **WasmTableType.getElementDataType()**: Returns `elemType.asDataType()` — now safe since `asDataType()` never returns null.
 
 ### Cross-Workstream Notes
-- **Probe 18** (shared_then_plain_memory): Only `.memory0` appears because loader skips `memidx != 0`. Limits parsing is correct (B05 proves no desync). Loader fix is other agent's responsibility.
+- **Probe 18** (shared_then_plain_memory): Only `.memory0` appears because loader skips `memidx != 0`. Limits parsing is correct (B05 proves no desync). Loader fix is other workstream's responsibility.
 - **WasmTableType** uses `WasmResizableLimits` — table64/shared tables work automatically.
 - **WasmElementSegment** fix is minimal; full GC element segment support needs type section integration.
 

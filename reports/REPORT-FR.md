@@ -427,7 +427,7 @@ Commands (worktree as the working directory, private install, `-SkipBuild` becau
 already built and installed from this worktree):
 
 ```
-& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-i" -SkipBuild -Update -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\ci-p-update"
+& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-i" -SkipBuild -Update -OutDir "C:\Users\micro\AppData\Local\Temp\ci-p-update"
 ```
 
 ```
@@ -463,7 +463,7 @@ fixture: unchanged (functions=4 decompiled=4 failed=0 instructions=24)
 Plain verification run (no `-Update`):
 
 ```
-& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-i" -SkipBuild -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\ci-p-check"
+& .\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-i" -SkipBuild -OutDir "C:\Users\micro\AppData\Local\Temp\ci-p-check"
 ```
 
 ```
@@ -482,8 +482,8 @@ OK: every probe matches the recorded baseline.
 ## 5. Real-module regression
 
 ```
-$h = "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-i\support\analyzeHeadless.bat"
-& $h "$env:TEMP\opencode\real-p-proj" Reg -import "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm" `
+$h = "C:\Users\micro\AppData\Local\Temp\ghidra-i\support\analyzeHeadless.bat"
+& $h "$env:TEMP\real-p-proj" Reg -import "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm" `
     -scriptPath "D:\code\ghidra-wt-p\test-scripts" -postScript DumpDecomp.java -max-cpu 2 -deleteProject
 ```
 

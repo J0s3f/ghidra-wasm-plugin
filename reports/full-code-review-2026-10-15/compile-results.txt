@@ -1,0 +1,193 @@
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:59: Warnung: [removal] EmulateInstructionStateModifier in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+public class WasmEmulateInstructionStateModifier extends EmulateInstructionStateModifier {
+                                                         ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:74: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		public WasmFunctionAnalysisProvider(AddressFactory addressFactory, MemoryState memoryState) {
+		                                                                   ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:77: Warnung: [removal] EmulateMemoryStateBuffer in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+			ByteProvider byteProvider = new MemBufferByteProvider(new EmulateMemoryStateBuffer(memoryState, moduleAddress));
+			                                                          ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:249: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	public WasmEmulateInstructionStateModifier(Emulate emu) {
+	                                           ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:323: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class BitCountOpBehaviour implements OpBehaviorOther {
+	                                             ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:334: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:335: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+			MemoryState memState = emu.getMemoryState();
+			^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:353: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class FuncEntryOpBehaviour implements OpBehaviorOther {
+	                                              ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:355: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:356: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+			MemoryState memState = emu.getMemoryState();
+			^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:380: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class PopOpBehaviour implements OpBehaviorOther {
+	                                        ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:382: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:405: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class PushOpBehaviour implements OpBehaviorOther {
+	                                         ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:407: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:430: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class CallPrologueOpBehaviour implements OpBehaviorOther {
+	                                                 ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:432: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:433: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+			MemoryState memState = emu.getMemoryState();
+			^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:465: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class CallEpilogueOpBehaviour implements OpBehaviorOther {
+	                                                 ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:467: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:468: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+			MemoryState memState = emu.getMemoryState();
+			^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:516: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class MemorySizeOpBehaviour implements OpBehaviorOther {
+	                                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:518: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:531: Warnung: [removal] OpBehaviorOther in ghidra.pcode.emulate.callother ist veraltet und wurde zum Entfernen markiert
+	private class MemoryGrowOpBehaviour implements OpBehaviorOther {
+	                                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:533: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+		public void evaluate(Emulate emu, Varnode out, Varnode[] inputs) {
+		                     ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:535: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+			MemoryState memState = emu.getMemoryState();
+			^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:571: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+	private void syncRegisterSlots(MemoryState memState, AddressSpace register, long startOffset, int count) {
+	                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:583: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private AddressSpace registerSpace(Emulate emulate) {
+	                                   ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:593: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private long operandValue(Emulate emulate, Varnode operand, Varnode output) {
+	                          ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:604: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private Long operandValueOrNull(Emulate emulate, Varnode operand, Varnode output) {
+	                                ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:612: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void recordRegisterWrites(Emulate emulate, PcodeOp[] pcode) {
+	                                  ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:613: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		MemoryState memState = emulate.getMemoryState();
+		^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:629: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private static AddressSpace spaceOf(Emulate emulate, PcodeOp op) {
+	                                    ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:634: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private static byte[] readBytes(Emulate emulate, Address addr, int length) {
+	                                ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:647: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private static int readInstructionByte(Emulate emulate, Address addr) {
+	                                       ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:673: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private int accessedMemoryIndex(Emulate emulate, Address instructionAddress) {
+	                                ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:699: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkMemoryBounds(Emulate emulate, Address instructionAddress, PcodeOp[] pcode) {
+	                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:703: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		MemoryState memState = emulate.getMemoryState();
+		^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:727: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkAddressInMemory(Emulate emulate, AddressSpace space, int memidx,
+	                                  ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:746: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkArithmeticTraps(Emulate emulate, Address lastExecuteAddress, PcodeOp[] pcode) {
+	                                  ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:747: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		MemoryState memState = emulate.getMemoryState();
+		^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:780: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkTruncTrap(Emulate emulate, Address lastExecuteAddress, PcodeOp op) {
+	                            ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:817: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkCallIndirect(Emulate emulate, Address lastExecuteAddress, PcodeOp[] pcode) {
+	                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:847: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		MemoryState memState = emulate.getMemoryState();
+		^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:892: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkFloatPurity(Emulate emulate, PcodeOp[] pcode) {
+	                              ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:893: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		MemoryState memState = emulate.getMemoryState();
+		^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:951: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void checkMemoryBounds64(Emulate emulate, Address instructionAddress, PcodeOp[] pcode) {
+	                                 ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:1078: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private long reverseComputeLoadBase(Emulate emulate, PcodeOp[] pcode) {
+	                                    ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:1080: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+		MemoryState memState = emulate.getMemoryState();
+		^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:1121: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	private void updateContextValue(Emulate emulate, Address currentAddress) {
+	                                ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:1136: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	public void initialExecuteCallback(Emulate emulate, Address current_address, RegisterValue contextRegisterValue) throws LowlevelError {
+	                                   ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulateInstructionStateModifier.java:1149: Warnung: [removal] Emulate in ghidra.pcode.emulate ist veraltet und wurde zum Entfernen markiert
+	public void postExecuteCallback(Emulate emulate, Address lastExecuteAddress, PcodeOp[] lastExecutePcode, int lastPcodeIndex, Address currentAddress) throws LowlevelError {
+	                                ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:53: Warnung: [removal] Emulator in ghidra.app.emulator ist veraltet und wurde zum Entfernen markiert
+    public void simulateCall(Emulator emulator, long retAddress, long funcAddress, long... inputs) {
+                             ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:74: Warnung: [removal] Emulator in ghidra.app.emulator ist veraltet und wurde zum Entfernen markiert
+    public void simulateCall(Emulator emulator, long retAddress, long funcAddress, BigInteger... inputs) {
+                             ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:75: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+        MemoryState memState = emulator.getMemState();
+        ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:97: Warnung: [removal] Emulator in ghidra.app.emulator ist veraltet und wurde zum Entfernen markiert
+    public void simulateReturn(Emulator emulator, long... outputs) {
+                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:115: Warnung: [removal] Emulator in ghidra.app.emulator ist veraltet und wurde zum Entfernen markiert
+    public void simulateReturn(Emulator emulator, BigInteger... outputs) {
+                               ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:116: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+        MemoryState memState = emulator.getMemState();
+        ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:143: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+    public void copyRegisters(MemoryState memState, long sourceOffset, long destOffset, int count) {
+                              ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:149: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+    public void pushShadowStackRegs(MemoryState memState, long sourceOffset, int count) {
+                                    ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:159: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+    public int popShadowStackRegs(MemoryState memState, long destOffset) {
+                                  ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:171: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+    public void pushShadowStackLR(MemoryState memState) {
+                                  ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:178: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+    public void popShadowStackLR(MemoryState memState) {
+                                 ^
+D:\code\Ghidra-WASM\src\main\java\ghidra\program\emulation\WasmEmulationHelper.java:185: Warnung: [removal] MemoryState in ghidra.pcode.memstate ist veraltet und wurde zum Entfernen markiert
+    public void setInitialSSP(MemoryState memState) {
+                              ^
+D:\code\Ghidra-WASM\reports\full-code-review-2026-10-15\ReviewHarness.java:119: Warnung: [removal] EmulatorHelper in ghidra.app.emulator ist veraltet und wurde zum Entfernen markiert
+      var emu=new EmulatorHelper(p);
+                  ^
+64 Warnungen

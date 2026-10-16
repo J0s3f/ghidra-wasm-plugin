@@ -16,7 +16,7 @@
 
 .EXAMPLE
     # standard sweep, corpus already populated
-    pwsh test-scripts/corpus-sweep.ps1 -CorpusDir C:\Users\micro\AppData\Local\Temp\opencode\corpus
+    pwsh test-scripts/corpus-sweep.ps1 -CorpusDir C:\Users\micro\AppData\Local\Temp\corpus
 
 .EXAMPLE
     # one module, with disassembly + decompiled C dumped into the log

@@ -37,16 +37,16 @@ Toolchain (host, pinned; fetched by `fetch_spectest_tools.ps1` into `$env:TEMP\s
   pins in its `third_party/testsuite` submodule, i.e. the testsuite that release is known to parse.
   147 `.wast` files, all of which `wast2json --no-check` parses.
 
-Environment: Ghidra 12.1.4 (`$env:TEMP\opencode\ghidra-g`), PowerShell 7, host Python 3.14,
+Environment: Ghidra 12.1.4 (`$env:TEMP\ghidra-g`), PowerShell 7, host Python 3.14,
 Gradle 9.2.1, Java 21/25.
 
 ```powershell
 # 1. tools
 .\test-scripts\spectest\fetch_spectest_tools.ps1
 # 2. build + install the plugin
-.\test-scripts\build-install.ps1 -GhidraDir "$env:TEMP\opencode\ghidra-g"
+.\test-scripts\build-install.ps1 -GhidraDir "$env:TEMP\ghidra-g"
 # 3. measure the core subset (~3.5 min, 271 modules)
-$env:GHIDRA_INSTALL_DIR="$env:TEMP\opencode\ghidra-g"
+$env:GHIDRA_INSTALL_DIR="$env:TEMP\ghidra-g"
 .\test-scripts\spectest\run_spectest.ps1 -Subset core -MaxPerWast 10 -OutDir "$env:TEMP\spectest-core"
 ```
 
@@ -147,7 +147,7 @@ Ghidra 12 removed Jython, so the upstream script could not run: `.py` scripts no
 Launch (verified to load modules and resolve exports):
 
 ```powershell
-$env:GHIDRA_INSTALL_DIR="$env:TEMP\opencode\ghidra-g"
+$env:GHIDRA_INSTALL_DIR="$env:TEMP\ghidra-g"
 & "$env:TEMP\spectest-tools\pyghidra-venv\Scripts\python.exe" -m pyghidra `
   --install-dir $env:GHIDRA_INSTALL_DIR --project-path <tmp> --project-name spectest --skip-analysis `
   ghidra_scripts/spectest.py <out>\json\nop.json --max-commands=30 --report <tmp>\report.txt

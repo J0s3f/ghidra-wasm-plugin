@@ -14,8 +14,8 @@ comparing reopened saved projects against fresh imports under the same new build
 
 - **v2.7.0 tag SHA:** `9377dbc0e563eda0aeb09b7fbfa9a01e843ac89e`
 - **Current HEAD:** `a068983682f23f15412c1908d7c79559b0d9041f`
-- **OLD install (v2.7.0):** `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-upgrade2-old`
-- **NEW install (2.8.0 RC):** `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-upgrade2-new`
+- **OLD install (v2.7.0):** `C:\Users\micro\AppData\Local\Temp\ghidra-upgrade2-old`
+- **NEW install (2.8.0 RC):** `C:\Users\micro\AppData\Local\Temp\ghidra-upgrade2-new`
 
 ### Test Cases
 

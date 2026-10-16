@@ -29,7 +29,7 @@ headless run reveals that, so every number below was taken **after**
 `test-scripts/build-install.ps1 -GhidraDir <ghidra-l>` installed *this* worktree's build
 (`dist/ghidra_12.1.4_PUBLIC_20261012_ghidra-wt-q.zip`, `lib/ghidra-wt-q.jar`, sha256
 `d43de914d7c9ede3...`). The rule for anyone re-running this: **build-install immediately before the
-run**, and check `Ghidra\Extensions\` afterwards (a second agent installing into the same Ghidra
+run**, and check `Ghidra\Extensions\` afterwards (a second workstream installing into the same Ghidra
 replaces the extension for everyone).
 
 ## 1. Headline

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Probes owned by the *parsers/types* workstream (agent B).
+"""Probes owned by the *parsers/types* workstream (workstream B).
 
 Add new probes here - never edit `gen_feature_probes.py` (frozen baseline) or `probes_analysis.py`
-(owned by the other agent). Use the helpers from `wasm_probe_lib`:
+(owned by the other workstream). Use the helpers from `wasm_probe_lib`:
 
     write("B01_limits_shared_max.wasm", module(...))
 

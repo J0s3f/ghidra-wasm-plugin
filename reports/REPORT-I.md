@@ -2,7 +2,7 @@
 
 Worktree: `D:\code\ghidra-wt-i`, branch `ci/probe-suite`, base `1e2328b`.
 Everything below was produced on this worktree with the private Ghidra 12.1.4 install at
-`C:\Users\micro\AppData\Local\Temp\opencode\ghidra-i`; nothing was pushed and no Actions run was
+`C:\Users\micro\AppData\Local\Temp\ghidra-i`; nothing was pushed and no Actions run was
 executed (see “What CI cannot verify” at the end).
 
 ## 1. What was added
@@ -49,8 +49,8 @@ Probes 22–27 (§2.5) all reproduce §2.5 exactly.
 
 ```powershell
 # everything (build + install + probes + fixture + check) — exit 0 = baseline matches
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-i" `
-    -OutDir "C:\Users\micro\AppData\Local\Temp\opencode\probes-ci-i"
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-i" `
+    -OutDir "C:\Users\micro\AppData\Local\Temp\probes-ci-i"
 
 # optional: also verify/record the external real module
 .\test-scripts\check-local.ps1 -SkipBuild -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"

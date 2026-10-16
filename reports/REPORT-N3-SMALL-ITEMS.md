@@ -1,8 +1,8 @@
 # N3 Small Items – Ghidra-WASM 2.8.0 pre-release re-review
 
 Branch: `fix/n3-small-items`  
-Checkout: `C:\Users\micro\.local\share\opencode\worktree\b64b36\ghidra-wt-n3-small`  
-Pinned install: `C:\Users\micro\AppData\Local\Temp\opencode\ghidra-n3-small` (from `test-scripts\.ghidra-install`)  
+Checkout: `C:\Users\micro\worktrees\ghidra-wt-n3-small`  
+Pinned install: `C:\Users\micro\AppData\Local\Temp\ghidra-n3-small` (from `test-scripts\.ghidra-install`)  
 Scope: the four smaller findings of the 2.8.0 re-review (README stale claims, cleanup-test relative `-OutDir`, release push-overwrite policy, B03e block extent assertion). The pre-release blockers N1 (cache) and N2 (call-store gate) are owned by other lanes and were not touched here.
 
 ## 1. README.md stale claims
@@ -105,7 +105,7 @@ Files: `test-scripts/check-results.py`, `test-scripts/expected-results.json`.
 
 Command:
 ```
-.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\opencode\ghidra-n3-small" -OutDir "$env:TEMP\n3-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
+.\test-scripts\check-local.ps1 -GhidraDir "C:\Users\micro\AppData\Local\Temp\ghidra-n3-small" -OutDir "$env:TEMP\n3-gate" -RealModule "D:\code\Rasterbator\analysis\reference\site\assets\rasterbator_rs_bg.wasm"
 ```
 Observed:
 - build successful (`BUILD SUCCESSFUL`, ~9s);

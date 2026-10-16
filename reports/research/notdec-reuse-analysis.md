@@ -235,7 +235,7 @@ instructions; gives us a number comparable to the published 45.95 % (our ancesto
 
 ## 6. Sources
 
-Repos read (shallow clone in `%TEMP%\opencode\research-notdec`), with the exact revisions:
+Repos read (shallow clone in `%TEMP%\research-notdec`), with the exact revisions:
 
 | What | Revision | Licence (verified) |
 |---|---|---|
@@ -249,7 +249,7 @@ Repos read (shallow clone in `%TEMP%\opencode\research-notdec`), with the exact 
 | Paper | arXiv **2608.03286v1** (ICSE'26, DOI 10.1145/3744916.3787762), HTML read in full | **CC BY-NC-ND 4.0** |
 | Our plugin | read-only at `D:\code\Ghidra-WASM` (`MODERN_WASM_GAPS.md`, `README.md`, `MERGE_NOTES.md`, `src/main/java/wasm/analysis/WasmFunctionAnalysis.java`, `data/languages/WebAssembly.sinc`, `test-scripts/**`); extension built from `dist/ghidra_12.1.4_PUBLIC_20261012_Ghidra-WASM.zip` against Ghidra 12.1.4 at `C:\Tools\ghidra_12.1.4_PUBLIC` | GPL-3.0 (`LICENSE`) |
 
-Artefacts produced by this analysis (in `C:\Users\micro\AppData\Local\Temp\opencode\research-notdec\`,
+Artefacts produced by this analysis (in `C:\Users\micro\AppData\Local\Temp\research-notdec\`,
 nothing written into the plugin repo): `DumpListing.java`, `DumpListing2.java`, `PerFuncReport.java`,
 `objdump_perfunc.py`, `compare.py`, `compare2.py`, `compare3.py`, `compare4.py`, `compare5.py`,
 `compare_all.py`, `ghidra_rasterbator.log`, `listing_rasterbator.log`, `listing_probes.log`,
