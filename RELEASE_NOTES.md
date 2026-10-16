@@ -1,4 +1,4 @@
-# Ghidra-WASM 2.8.3
+# Ghidra-WASM 2.8.4
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
@@ -12,6 +12,33 @@ Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
+
+## New in 2.8.4 (since 2.8.3)
+
+* Constant expressions decode `array.new_fixed` and `select t*` immediates exactly, so a
+  GC global or element initializer whose type index or count is 11 no longer ends early
+  and fails the import.
+* Modules whose function and code sections disagree in count load and analyse the
+  functions that have bodies, instead of failing every analyzer.
+* Element segments with multi-byte reference types (`(ref null $t)`) resolve their element
+  type and get complete listing markup.
+* Table64 limits are compared unsigned, so a valid maximum above 2^63 is accepted.
+* `array.new_fixed` with a huge count in unreachable code no longer stalls pre-analysis or
+  the decompiler's constructor injection.
+* An exported `__main_argc_argv` is named `main` directly; an existing `main` in any
+  namespace is respected.
+* Label names from the name section are created per function, so a name repeated across
+  functions labels each of them; names that cannot be applied are listed in a comment.
+* Unknown `0xFD`/`0xFE` sub-opcodes no longer consume guessed operands or discard the rest
+  of the function's analysis.
+* A component binary without a usable core module fails the import instead of producing
+  an empty program. The component loader is now named **WebAssembly Component**.
+* Export lookups are indexed, removing a functions x exports cost on large modules.
+* The DWARF analyzer skips the import if this Ghidra version no longer allows it to be
+  restricted to data types.
+* Local verification passed 69,326 integration assertions and 35 parser assertions.
+
+**Upgrade:** reimport existing Wasm programs after installing this patch.
 
 ## New in 2.8.3 (since 2.8.2)
 
@@ -70,7 +97,7 @@ This patch addresses all 28 findings from the repository-wide review.
 
 Validation includes 2,601 integration assertions, 22 bounded-heap parser assertions, 195 independent
 Node checks, installer and harness tests, and the unchanged 223-probe baseline. The new regression
-suite runs in CI. See the [fix report and regression coverage](https://github.com/J0s3f/ghidra-wasm-plugin/blob/v2.8.1/reports/full-code-review-2026-10-15/FIXES.md).
+suite runs in CI. See the [fix report and regression coverage](https://github.com/J0s3f/ghidra-wasm-plugin/blob/archive/reports/reports/full-code-review-2026-10-15/FIXES.md).
 
 ## New in 2.8.0 (since 2.7.0)
 
