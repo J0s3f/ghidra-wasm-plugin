@@ -26,6 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    strategy:
+      fail-fast: false
+      matrix:
+        ghidra:
+          - "12.2"
+          - "12.1.4"
+
     steps:
     - name: Clone Repository
       uses: actions/checkout@v7
@@ -34,18 +41,19 @@ jobs:
       uses: actions/setup-java@v6
       with:
         distribution: 'temurin'
-        java-version: '21'
+        # Ghidra 12.2 requires Java 25; the 12.1 line was built for Java 21.
+        java-version: ${{ startsWith(matrix.ghidra, '12.1') && '21' || '25' }}
 
     - name: Install Gradle
       uses: gradle/actions/setup-gradle@v6
       with:
         gradle-version: '9.2.1'
 
-    - name: Install Ghidra 12.1.4
+    - name: Install Ghidra ${{ matrix.ghidra }}
       uses: antoniovazquezblanco/setup-ghidra@v2
       with:
         auth_token: ${{ secrets.GITHUB_TOKEN }}
-        version: '12.1.4'
+        version: ${{ matrix.ghidra }}
 
     - name: Build
       run: gradle buildExtension
@@ -91,7 +99,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: spectest-core
+        name: spectest-core-${{ matrix.ghidra }}
         path: |
           ${{ runner.temp }}/spectest-core/summary.json
           ${{ runner.temp }}/spectest-core/summary.md

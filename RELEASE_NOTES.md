@@ -1,17 +1,29 @@
-# Ghidra-WASM 2.8.4
+# Ghidra-WASM 2.9.0
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
 
 ## Download
 
-Use the asset that matches your Ghidra version - the name begins with `ghidra_12.1.4_PUBLIC_` for
-Ghidra 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
+Use the asset that matches your Ghidra version - the name begins with `ghidra_12.2_PUBLIC_` for
+Ghidra 12.2, `ghidra_12.1.4_PUBLIC_` for 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 12.1.3. Install with
 **File → Install Extensions → +** and restart Ghidra. You do not need to unzip the file.
 
 The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
+
+## New in 2.9.0 (since 2.8.4)
+
+* **Ghidra 12.2 support.** A build for Ghidra 12.2 is now released alongside 12.1.4 and 12.1.3.
+  Ghidra 12.2 itself requires Java 25.
+* Functions with a `br_table` of 1,024 or more labels decompile on Ghidra 12.2, which rejected
+  them with "Bad relative branch". The same change fixes their decompilation on 12.1.x: an
+  in-range index no longer skips the selector lookup. Emulation was not affected.
+* CI builds all three versions and runs the probe, regression and spec-suite gates on both 12.2
+  and 12.1.4.
+
+**Upgrade:** reimport Wasm programs that contain such a large `br_table`.
 
 ## New in 2.8.4 (since 2.8.3)
 

@@ -13,7 +13,7 @@
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Dest,
-    [string]$Source = "C:\Tools\ghidra_12.1.4_PUBLIC",
+    [string]$Source = "C:\Tools\ghidra_12.2_PUBLIC",
     [switch]$KeepExtensions
 )
 

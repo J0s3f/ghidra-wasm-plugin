@@ -5,7 +5,7 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
 > the useful work found in downstream forks, and extends the plugin with substantial
 > modern-WASM support (GC, new EH, function references, memory64, multi-memory,
 > stack switching, JS string builtins, wide arithmetic, component-model extraction,
-> and more). It is verified to build and run against Ghidra 12.1.x (12.1.3 and 12.1.4).
+> and more). It is verified to build and run against Ghidra 12.2 and 12.1.x (12.1.3 and 12.1.4).
 > Prebuilt extensions are attached to the
 > [releases](https://github.com/J0s3f/ghidra-wasm-plugin/releases) of this fork. See
 > [MERGE_NOTES.md](MERGE_NOTES.md) for the list of merged changes and verification results
@@ -86,7 +86,7 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
 The easiest way to install the plugin is as a Ghidra extension. Grab a
 [release](https://github.com/J0s3f/ghidra-wasm-plugin/releases) that is
 compatible with your version of Ghidra — for example, if you're using Ghidra
-12.1.4, download the file beginning with `ghidra_12.1.4_PUBLIC`. You don't need
+12.2, download the file beginning with `ghidra_12.2_PUBLIC`. You don't need
 to unzip the file: simply launch Ghidra, go to "File → Install Extensions",
 select the + icon, and select the zip file. Restart Ghidra to load the extension
 and you should be good to go. **Note:** if you upgrade your version of Ghidra,
@@ -142,9 +142,9 @@ The plugin ships a comprehensive test harness under `test-scripts/`:
 
 | Workflow | What it enforces |
 | --- | --- |
-| `.github/workflows/build.yml` | Builds the extension against Ghidra 12.1.4 and 12.1.3. |
-| `.github/workflows/probes.yml` | Runs the 260-probe suite + fixture decompile baseline + fixture-validity gate (wabt). |
-| `.github/workflows/spectest.yml` | Runs the spec core subset (271 modules) and checks the decode/decompile baseline. |
+| `.github/workflows/build.yml` | Builds the extension against Ghidra 12.2 (Java 25), 12.1.4 and 12.1.3 (Java 21). |
+| `.github/workflows/probes.yml` | Runs the 260-probe suite + fixture decompile baseline + fixture-validity gate (wabt) on Ghidra 12.2 and 12.1.4. |
+| `.github/workflows/spectest.yml` | Runs the spec core subset (271 modules) and checks the decode/decompile baseline on Ghidra 12.2 and 12.1.4. |
 | `.github/workflows/release.yml` | Builds and publishes release assets on tag push (`v*`). |
 
 ## Tips

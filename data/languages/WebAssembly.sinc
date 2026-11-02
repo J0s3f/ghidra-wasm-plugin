@@ -395,7 +395,12 @@ multi_blocktype: SLeb128 is bytev=0x64; SLeb128 {
 	if (index < ULeb128:4) goto <selected>;
 	index = ULeb128:4;
 <selected>
-	BRTableInput = brTableTargetCallOther(index);
+	# The label must not sit on the callother: the decompiler replaces that op with its injection,
+	# which leaves the branch without a target (Ghidra 12.2 rejects it as "Bad relative branch",
+	# earlier versions silently redirect it to the next instruction, skipping the selector load).
+	# A copy into a local would be folded away by the SLEIGH optimizer, so go through the register.
+	BRTableInput = index;
+	BRTableInput = brTableTargetCallOther(BRTableInput);
 }
 
 :return is opc=0x0f; ctx_is_directive=0 {

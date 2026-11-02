@@ -74,6 +74,7 @@ public class PatchRegressionTest extends RegressionTest {
       var result=d.decompileFunction(f,30,monitor);
       check(result.decompileCompleted() && result.getDecompiledFunction()!=null,"Patch decompiles: "+result.getErrorMessage());
       check(result.getHighFunction().getBasicBlocks().size()<40,"Patch CFG remains compact");
+      if(table) check(result.getDecompiledFunction().getC().contains(" * 4 +"),"In-range selectors are loaded, not branched over: "+result.getDecompiledFunction().getC());
       System.out.println("PATCH DECOMP "+p.getName()+" "+result.getDecompiledFunction().getC());
     } finally {d.dispose();}
   }

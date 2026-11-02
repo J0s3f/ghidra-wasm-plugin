@@ -51,7 +51,7 @@ public class RegressionTest {
   static void init() throws Exception {
     var config = new HeadlessGhidraApplicationConfiguration();
     config.setInitializeLogging(false);
-    Application.initializeApplication(new SourceLayout(new File(System.getProperty("review.ghidra","C:/Tools/ghidra_12.1.4_PUBLIC"))), config);
+    Application.initializeApplication(new SourceLayout(new File(System.getProperty("review.ghidra","C:/Tools/ghidra_12.2_PUBLIC"))), config);
     lang = DefaultLanguageService.getLanguageService().getLanguage(new LanguageID("Wasm:LE:32:default"));
     System.out.println("REVIEW classes="+WasmLoader.class.getProtectionDomain().getCodeSource().getLocation());
     var cs=lang.getCompilerSpecByID(new CompilerSpecID("default"));

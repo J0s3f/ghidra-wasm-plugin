@@ -3,10 +3,10 @@
 Run from the repository root:
 
 ```powershell
-pwsh -NoProfile -File test-scripts/run-regressions.ps1 -GhidraDir C:/Tools/ghidra_12.1.4_PUBLIC
+pwsh -NoProfile -File test-scripts/run-regressions.ps1 -GhidraDir C:/Tools/ghidra_12.2_PUBLIC
 ```
 
-Requirements: JDK 21 or later, Ghidra 12.1.4, Python 3, Node 26, and PowerShell 7.
+Requirements: JDK 25 (Ghidra 12.2) or JDK 21 or later (Ghidra 12.1.x), Python 3, Node 26, and PowerShell 7.
 `GHIDRA_INSTALL_DIR` or the local `.ghidra-install` file supplies the default installation.
 
 The runner compiles all production Java and SLEIGH sources into `build/code-regressions`,

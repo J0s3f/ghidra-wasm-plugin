@@ -15,7 +15,9 @@ $jars = (Get-ChildItem (Join-Path $GhidraDir 'Ghidra') -Recurse -File -Filter '*
 $dependencies = $jars -join [IO.Path]::PathSeparator
 $sources = @(Get-ChildItem (Join-Path $repo 'src/main/java') -Recurse -File -Filter '*.java') +
     @(Get-ChildItem (Join-Path $PSScriptRoot 'regressions') -File -Filter '*.java')
-$compilerArgs = @('--release', '21', '-cp', ('"' + $dependencies.Replace('\','/') + '"'),
+# The class files of the install set the language level: 12.1.x ships Java 21, 12.2 ships Java 25.
+$javaRelease = (Select-String -LiteralPath (Join-Path $GhidraDir 'Ghidra/application.properties') -Pattern '^application\.java\.compiler=(\d+)').Matches[0].Groups[1].Value
+$compilerArgs = @('--release', $javaRelease, '-cp', ('"' + $dependencies.Replace('\','/') + '"'),
     '-d', ('"' + $classes.Replace('\','/') + '"')) +
     @($sources | ForEach-Object { '"' + $_.FullName.Replace('\','/') + '"' })
 $argsFile = Join-Path $OutDir 'javac.args'

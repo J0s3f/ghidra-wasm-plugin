@@ -19,7 +19,7 @@ verification commands; follow it. In short, for this repository:
 
 - Build and test only against your own pinned Ghidra install (recorded in
   `test-scripts/.ghidra-install`); never modify the shared/live install
-  (`C:\Tools\ghidra_12.1.4_PUBLIC` on the integrator's machine).
+  (`C:\Tools\ghidra_12.2_PUBLIC` on the integrator's machine).
 - Commit on your own branch only. Do not push, do not merge, do not rebase.
 - Reports stay off `main` (they are archived on the `archive/reports` branch).
 - Keep your worktree clean: no debug scripts, no stray files, no committed build outputs; scratch
