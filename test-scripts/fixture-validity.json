@@ -175,6 +175,9 @@
       "class": "unsupported",
       "why": "000001f: error: unexpected opcode: 0xe0"
     },
+    "A11_constant_copy_896_bytes.wasm": {
+      "class": "valid"
+    },
     "B01_limits_shared_max.wasm": {
       "class": "valid"
     },
@@ -921,6 +924,9 @@
       "class": "valid"
     },
     "ST04_const_offset_add.wasm": {
+      "class": "valid"
+    },
+    "ST05_sparse_offsets_no_giant_struct.wasm": {
       "class": "valid"
     },
     "bare_component_header.wasm": {
