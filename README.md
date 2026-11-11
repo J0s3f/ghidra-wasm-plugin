@@ -76,9 +76,14 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
   were 352 structs and 255 retyped parameters on the reference module.
 - **Linear-memory locations**: the enabled-by-default `Wasm Linear Memory Globals`
   analyzer marks constant-address and resolved scalar and SIMD accesses with generic-width
-  data and, when initialization is known, `data_` or `bss_` labels. These are access-based hints,
-  not recovered source-level variable types or proof of object boundaries. Existing
-  defined data and labels are preserved; unresolved and conflicting accesses may be skipped.
+  data and, when initialization is known, `data_` or `bss_` labels. Constant bases are
+  followed through locals, calls and other operations within straight-line code, but not
+  across control-flow joins; accesses whose address wraps the index type trap and are ignored.
+  `bss_` is applied only at or above the memory's lowest initialized byte, so null-region
+  accesses stay unlabeled. These are access-based hints, not recovered source-level variable
+  types or proof of object boundaries. The analyzer runs after string recovery; existing
+  defined data (including strings) and labels are preserved, and unresolved and conflicting
+  accesses may be skipped.
 - **B9 warning**: a module that declares content but yields nothing decoded logs
   "Module accepted but nothing was decoded"
 

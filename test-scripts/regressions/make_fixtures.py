@@ -90,12 +90,23 @@ write('linear_globals_unknown.wasm',module(type_section(functype([I32],[])),func
 #
 # These accesses must be discovered without pre-existing references. The dynamic
 # pointer's memarg is deliberately distinct from all constant target addresses.
-write('linear_globals_direct.wasm',module(type_section(functype([I32],[])),func_section([0]),
-    memory_section([(0,1),(0,1)]),code_section([
-        i32_const(0x100)+b'\x28\x02\x08'+drop()+
-        i32_const(0x200)+i32_const(17)+b'\x36\x02\x0c'+
-        i32_const(0x100)+b'\x28\x42\x01\x10'+drop()+
-        local_get(0)+b'\x28\x02'+uleb(0x400)+drop()+END]),
+# Constant bases must survive calls, unmodelled operations and locals, but not
+# dropped values, control-flow joins, the null region or a wrapping address.
+direct_code = (
+    i32_const(0x100)+b'\x28\x02\x08'+drop()+
+    i32_const(0x200)+i32_const(17)+b'\x36\x02\x0c'+
+    i32_const(0x100)+b'\x28\x42\x01\x10'+drop()+
+    local_get(0)+b'\x28\x02'+uleb(0x400)+drop()+
+    i32_const(0x200)+call(1)+b'\x36\x02\x40'+
+    i32_const(0x200)+local_get(0)+i32_const(3)+b'\x74'+b'\x36\x02\x50'+
+    i32_const(0x260)+local_set(1)+local_get(1)+b'\x28\x02\x00'+drop()+
+    i32_const(0x680)+drop()+call(1)+b'\x28\x02\x00'+drop()+
+    local_get(0)+if_(I32,i32_const(0x600),i32_const(0x700))+b'\x28\x02\x00'+drop()+
+    i32_const(0)+b'\x28\x02\x00'+drop()+
+    i32_const(-4)+b'\x28\x02'+uleb(0x304)+drop()+END)  # 0xfffffffc+0x304 traps
+write('linear_globals_direct.wasm',module(type_section(functype([I32],[]),functype([],[I32])),
+    func_section([0,1]),memory_section([(0,1),(0,1)]),
+    section(10,vec([body(direct_code,[(1,I32)]),body(i32_const(7)+END)])),
     data_section([active_data(i32_const(0x108)+END,b'ABCD'),
                   active_data(i32_const(0x110)+END,b'WXYZ',1)])))
 

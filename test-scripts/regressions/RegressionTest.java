@@ -277,13 +277,31 @@ public class RegressionTest {
       if(p.getName().equals("linear_globals.wasm") || p.getName().equals("linear_globals_unknown.wasm"))
         linearGlobalsTests(p);
       if(p.getName().equals("linear_globals_direct.wasm")) {
-        Address entry=state.getFunction(0).getStartAddr();
+        var f0=state.getFunction(0);
+        Address entry=f0.getStartAddr();
+        // Reference analysis computes 0xfffffffc+0x304 modulo 2^32, although the access traps.
+        Instruction wrapped=null;
+        for(var ins:p.getListing().getInstructions(new AddressSet(entry,f0.getEndAddr()),true))
+          if(ins.getMnemonicString().equals("i32.load")) wrapped=ins;
+        p.getReferenceManager().addMemoryReference(wrapped.getAddress(),
+          WasmLoader.getMemoryAddress(p.getAddressFactory(),0,0x300,false),RefType.READ,SourceType.ANALYSIS,0);
         new WasmLinearMemoryAnalyzer().added(p,new AddressSet(entry,entry),monitor,new MessageLog());
         checkGlobal(p,0,0x108,"data_108",4);
         checkGlobal(p,0,0x20c,"bss_20c",4);
         checkGlobal(p,1,0x110,"data_m1_110",4);
         checkNoGlobalLabel(p,0,0x400,"Dynamic pointer plus offset must not become a global");
         checkNoGlobalLabel(p,0,0x100,"Base without its memarg offset must not become a global");
+        checkGlobal(p,0,0x240,"bss_240",4);
+        checkGlobal(p,0,0x250,"bss_250",4);
+        checkGlobal(p,0,0x260,"bss_260",4);
+        checkNoGlobalLabel(p,0,0x680,"A dropped constant must not stand in for a call result");
+        checkNoGlobalLabel(p,0,0x600,"Constants joined from different paths are not a constant address");
+        checkNoGlobalLabel(p,0,0x700,"Constants joined from different paths are not a constant address");
+        checkNoGlobalLabel(p,0,0x0,"An access below all initialized data must not become bss");
+        checkNoGlobalLabel(p,0,0x300,"A wrapped reference target of a trapping access must not become a global");
+        check(new WasmLinearMemoryAnalyzer().getPriority().priority()>
+          new ghidra.app.plugin.core.string.StringsAnalyzer().getPriority().priority(),
+          "Linear-memory labels must follow string recovery so string names survive");
       }
       if(p.getName().equals("func_code_mismatch.wasm")) check(state.getFunctions().size()==1,"Function/code section mismatch enumerates only functions with bodies");
       if(p.getName().equals("label_names_repeat.wasm")) {
