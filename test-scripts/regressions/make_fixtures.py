@@ -56,6 +56,49 @@ simple('oob_store_simd',[],i32_const(65528)+b'\xfd\x0c'+bytes(16)+b'\xfd\x0b\x04
 simple('multi_memarg',[I32],i32_const(0)+b'\x28\x42\x01\x10',extra=[memory_section([(0,1),(0,1)])])
 simple('overlap_struct',[],local_get(0)+b'\x29\x03\x00'+drop()+local_get(0)+b'\x28\x02\x04'+drop(),extra=[memory_section([(0,1)])],locals_raw=b'\x01\x01\x7f')
 
+# Analysis references are attached by the Java regression harness, as they would be by
+# Ghidra's reference analysis. Include distinct widths, intersections and memories.
+globals_ops = [
+    local_get(0)+b'\x28\x02\x00'+drop(),  # initialized i32
+    local_get(0)+b'\x29\x03\x00'+drop(),  # zero-filled i64
+    local_get(0)+b'\x28\x02\x00'+drop(),  # partly initialized
+    local_get(0)+b'\x28\x02\x00'+drop(),  # user-defined data
+    local_get(0)+b'\x28\x02\x00'+drop(),  # user-defined symbol
+    local_get(0)+simd_op(0)+b'\x04\x00'+drop(),  # v128.load: 16 bytes
+    local_get(0)+simd_op(7)+b'\x00\x00'+drop(),  # v128.load8_splat: 1 byte
+    local_get(0)+b'\x28\x02\x00'+drop(),  # narrow access at same address as i64
+    local_get(0)+b'\x29\x03\x00'+drop(),  # overlapping 8-byte access
+    local_get(0)+b'\x28\x02\x00'+drop(),  # inside the preceding access
+    local_get(0)+b'\x28\x42\x01\x00'+drop(),  # memory 1
+    local_get(0)+i32_const(1)+b'\x36\x02\x00',  # zero-filled store target
+    local_get(0)+b'\x28\x02\x00'+drop(),  # existing undefined4 data
+    local_get(0)+b'\x28\x02\x00'+drop(),  # interior of existing defined data
+    local_get(0)+b'\x28\x02\x00'+drop(),  # existing undefined8, different width
+]
+write('linear_globals.wasm',module(type_section(functype([I32],[])),func_section([0]),
+    memory_section([(0,1),(0,1)]),code_section([b''.join(globals_ops)+END]),
+    data_section([active_data(i32_const(0x100)+END,b'ABCD'),
+                  active_data(i32_const(0x300)+END,b'XY'),
+                  active_data(i32_const(0x600)+END,bytes(range(16))),
+                  active_data(i32_const(0x100)+END,b'WXYZ',1)])))
+# A passive segment may be copied to any location at runtime. It must prevent a
+# definite bss classification, but not a fully covered active data classification.
+write('linear_globals_unknown.wasm',module(type_section(functype([I32],[])),func_section([0]),
+    memory_section([(0,1)]),code_section([
+        local_get(0)+b'\x28\x02\x00'+drop()+local_get(0)+b'\x28\x02\x00'+drop()+END]),
+    data_section([active_data(i32_const(0x100)+END,b'ABCD'),b'\x01\x01Z'])))
+#
+# These accesses must be discovered without pre-existing references. The dynamic
+# pointer's memarg is deliberately distinct from all constant target addresses.
+write('linear_globals_direct.wasm',module(type_section(functype([I32],[])),func_section([0]),
+    memory_section([(0,1),(0,1)]),code_section([
+        i32_const(0x100)+b'\x28\x02\x08'+drop()+
+        i32_const(0x200)+i32_const(17)+b'\x36\x02\x0c'+
+        i32_const(0x100)+b'\x28\x42\x01\x10'+drop()+
+        local_get(0)+b'\x28\x02'+uleb(0x400)+drop()+END]),
+    data_section([active_data(i32_const(0x108)+END,b'ABCD'),
+                  active_data(i32_const(0x110)+END,b'WXYZ',1)])))
+
 # A section claiming 5 payload bytes, with just the count byte present.
 write('truncated_datacount.wasm',module(b'\x0c\x05\x00'))
 # A type section with size 1 whose count/type/arity parser reads the next custom section as types.

@@ -18,6 +18,7 @@ import ghidra.app.emulator.EmulatorHelper;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.program.emulation.WasmEmulationHelper;
 import ghidra.util.task.TaskMonitor;
+import ghidra.program.model.symbol.*;
 import wasm.*;
 import wasm.analysis.*;
 import wasm.format.*;
@@ -123,6 +124,72 @@ public class RegressionTest {
       check(op.getInput(1).getOffset()==0 && op.getInput(2).getOffset()==srcIndex && op.getInput(3).getSize()==dstWidth && op.getInput(4).getSize()==srcWidth,"Dynamic copy retains memories and widths");
     }
   }
+  static void linearGlobalsTests(ProgramDB p) throws Exception {
+    boolean unknown=p.getName().equals("linear_globals_unknown.wasm");
+    long[] offsets=unknown ? new long[]{0x100,0x200} :
+      new long[]{0x100,0x200,0x300,0x400,0x500,0x600,0x700,0x800,0x800,0x804,0x100,0x900,0xa00,0xb04,0xc00};
+    int n=0;
+    var refs=p.getReferenceManager();
+    for(var ins:p.getListing().getInstructions(true)) {
+      boolean load=ins.getMnemonicString().contains(".load");
+      boolean store=ins.getMnemonicString().contains(".store");
+      if(!load && !store) continue;
+      check(n<offsets.length,"Unexpected memory access in linear globals fixture");
+      int mem=(!unknown && n==10)?1:0;
+      Address target=WasmLoader.getMemoryAddress(p.getAddressFactory(),mem,offsets[n],false);
+      refs.addMemoryReference(ins.getAddress(),target,load?RefType.READ:RefType.WRITE,SourceType.ANALYSIS,0);
+      n++;
+    }
+    check(n==offsets.length,"All linear globals fixture accesses disassembled");
+    var space=p.getAddressFactory().getAddressSpace("memory");
+    if(!unknown) {
+      p.getListing().createData(space.getAddress(0x400),DWordDataType.dataType);
+      p.getSymbolTable().createLabel(space.getAddress(0x500),"user_global",SourceType.USER_DEFINED);
+      p.getListing().createData(space.getAddress(0xa00),Undefined4DataType.dataType);
+      p.getListing().createData(space.getAddress(0xb00),QWordDataType.dataType);
+      p.getListing().createData(space.getAddress(0xc00),Undefined8DataType.dataType);
+    }
+    new WasmLinearMemoryAnalyzer().added(p,p.getMemory(),monitor,new MessageLog());
+    checkGlobal(p,0,0x100,"data_100",4);
+    if(unknown) {
+      checkNoGlobalLabel(p,0,0x200,"Unknown initialization must not become bss");
+      return;
+    }
+    checkGlobal(p,0,0x200,"bss_200",8);
+    checkNoGlobalLabel(p,0,0x300,"Partially initialized access must not be classified");
+    check(p.getListing().getDataAt(space.getAddress(0x400)).getDataType().isEquivalent(DWordDataType.dataType),
+      "Existing user data type is preserved");
+    checkNoGlobalLabel(p,0,0x400,"Existing semantic data must not acquire an inferred label");
+    check(p.getSymbolTable().getPrimarySymbol(space.getAddress(0x500)).getName().equals("user_global"),
+      "Existing user symbol is preserved");
+    checkGlobal(p,0,0x600,"data_600",16);
+    checkGlobal(p,0,0x700,"bss_700",1);
+    checkGlobal(p,0,0x800,"bss_800",8);
+    checkNoGlobalLabel(p,0,0x804,"Intersecting reference must not create a second global");
+    checkGlobal(p,1,0x100,"data_m1_100",4);
+    checkGlobal(p,0,0x900,"bss_900",4);
+    checkGlobal(p,0,0xa00,"bss_a00",4);
+    check(p.getListing().getDataAt(space.getAddress(0xa00)).getDataType().isEquivalent(Undefined4DataType.dataType),
+      "Matching undefined data remains unchanged");
+    checkNoGlobalLabel(p,0,0xb04,"Interior of existing data must not acquire an inferred label");
+    check(p.getListing().getDataAt(space.getAddress(0xb00)).getDataType().isEquivalent(QWordDataType.dataType),
+      "Containing data remains unchanged");
+    checkNoGlobalLabel(p,0,0xc00,"Different-width undefined data must not acquire an inferred label");
+    check(p.getListing().getDataAt(space.getAddress(0xc00)).getDataType().isEquivalent(Undefined8DataType.dataType),
+      "Different-width undefined data remains unchanged");
+  }
+  static void checkGlobal(Program p,int mem,long offset,String name,int size) {
+    Address a=WasmLoader.getMemoryAddress(p.getAddressFactory(),mem,offset,false);
+    var symbol=p.getSymbolTable().getPrimarySymbol(a);
+    check(symbol!=null && symbol.getName().equals(name),"Expected "+name+" at "+a+", got "+symbol);
+    var data=p.getListing().getDataAt(a);
+    check(data!=null && data.getLength()==size,"Expected "+size+" bytes at "+a);
+  }
+  static void checkNoGlobalLabel(Program p,int mem,long offset,String message) {
+    Address a=WasmLoader.getMemoryAddress(p.getAddressFactory(),mem,offset,false);
+    var symbol=p.getSymbolTable().getPrimarySymbol(a);
+    check(symbol==null || symbol.isDynamic() || (!symbol.getName().startsWith("data_") && !symbol.getName().startsWith("bss_")),message);
+  }
   static void inspect(ProgramDB p) throws Exception {
     int tx=p.startTransaction("analyze");
     var state=WasmAnalysis.getState(p);
@@ -206,6 +273,17 @@ public class RegressionTest {
             }
           }
         } catch (Throwable e) { throw new AssertionError("Analysis failed in "+p.getName()+" "+f.getName(),e); }
+      }
+      if(p.getName().equals("linear_globals.wasm") || p.getName().equals("linear_globals_unknown.wasm"))
+        linearGlobalsTests(p);
+      if(p.getName().equals("linear_globals_direct.wasm")) {
+        Address entry=state.getFunction(0).getStartAddr();
+        new WasmLinearMemoryAnalyzer().added(p,new AddressSet(entry,entry),monitor,new MessageLog());
+        checkGlobal(p,0,0x108,"data_108",4);
+        checkGlobal(p,0,0x20c,"bss_20c",4);
+        checkGlobal(p,1,0x110,"data_m1_110",4);
+        checkNoGlobalLabel(p,0,0x400,"Dynamic pointer plus offset must not become a global");
+        checkNoGlobalLabel(p,0,0x100,"Base without its memarg offset must not become a global");
       }
       if(p.getName().equals("func_code_mismatch.wasm")) check(state.getFunctions().size()==1,"Function/code section mismatch enumerates only functions with bodies");
       if(p.getName().equals("label_names_repeat.wasm")) {

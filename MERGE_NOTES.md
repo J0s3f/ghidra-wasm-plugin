@@ -2,8 +2,7 @@
 
 This branch (`main`) consolidates the useful outstanding work found in
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin) pull requests and
-forks, and adapts it so the plugin builds and works against modern Ghidra (12.1.x, verified with
-Ghidra 12.1.4).
+forks, and adapts it so the plugin builds and works against modern Ghidra (12.1.x and 12.2).
 
 ## What was merged
 
@@ -14,7 +13,8 @@ Ghidra 12.1.4).
 | [PR #33](https://github.com/nneonneo/ghidra-wasm-plugin/pull/33) / [PR #30](https://github.com/nneonneo/ghidra-wasm-plugin/pull/30) (Yanndroid / atouboot) | Fix for the removed `CompositeDataTypeImpl.checkAncestry` in Ghidra 12.1.2+/12.2 | Reimplemented version-agnostically in `StructureBuilder` using only stable public API (no dependency on `DataTypeUtilities`), so it builds and runs on 12.1.x *and* 12.2+ |
 | [PR #5](https://github.com/nneonneo/ghidra-wasm-plugin/pull/5) (cmorin6) | `WasmFunctionVariableNameAnalyzer` – applies local variable names from the `.name` section | Adapted to the current API (`funcidx` field/ctor), processor name fixed to `WebAssembly`, local-register stride detected at runtime (16 bytes in the current SLEIGH spec, was 8 in the original PR) |
 | [PR #23](https://github.com/nneonneo/ghidra-wasm-plugin/pull/23) (antoniovazquezblanco) | CI compilation pipeline | Modernized: Java 21, Gradle 9.2.1, Ghidra 12.1.4 + 12.1.3 matrix, `setup-ghidra` action |
-| [ManuMassi/improve-decompilation-fidelity](https://github.com/ManuMassi/ghidra-wasm-plugin/tree/improve-decompilation-fidelity) (fork, 5 commits, not a PR) | Decompilation fidelity: vararg functions, function signature types, DWARF import (block naming fix + disabling line info import to avoid `AddressOutOfBounds`), function tables marked read-only for constant folding, `main`/`printf`/`scanf` naming on stripped binaries, constant `memory.copy` initializer materialization | The single biggest decompilation-quality improvement found in any fork |
+| [ManuMassi/improve-decompilation-fidelity](https://github.com/ManuMassi/ghidra-wasm-plugin/tree/improve-decompilation-fidelity) (fork) | Decompilation fidelity: vararg functions, function signature types, DWARF import (block naming fix + disabling line info import to avoid `AddressOutOfBounds`), function tables marked read-only for constant folding, `main`/`printf`/`scanf` naming on stripped binaries, constant `memory.copy` initializer materialization | Adapted to the fork's current analysis and memory model |
+| [Linear-memory globals](https://github.com/ManuMassi/ghidra-wasm-plugin/commit/e218eef6841312e3a49a13075fed3d901efafbe6) (ManuMassi) | Names and types linear-memory locations reached by provably constant or resolved accesses | Adapted rather than cherry-picked for isolated multi-memory address spaces and conservative handling of inferred types, overlapping accesses and initialization |
 
 ## The fork's own workstreams (since the upstream merges)
 
