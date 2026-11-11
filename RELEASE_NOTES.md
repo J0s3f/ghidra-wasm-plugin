@@ -1,4 +1,4 @@
-# Ghidra-WASM 2.9.0
+# Ghidra-WASM 2.10.0
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
@@ -13,7 +13,7 @@ The release assets are *cleaned* zips: the development harness (`test-scripts/`)
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
 
-## Unreleased
+## New in 2.10.0 (since 2.9.0)
 
 * The new **Wasm Linear Memory Globals** analyzer marks scalar and SIMD memory accesses whose
   address is the same constant on every path with generic-width data and, when
@@ -31,6 +31,9 @@ configuration (`.github/`) and internal documentation (`REPORT-*.md`) are exclud
 
 * A function that fails Wasm stack analysis no longer aborts linear-memory global
   recovery for the other functions in the module.
+
+**Upgrade:** the analyzer is enabled by default. Programs already imported keep their current
+listing until they are re-analyzed (**Analysis → Auto Analyze**), which adds the labels.
 
 ## New in 2.9.0 (since 2.8.4)
 
