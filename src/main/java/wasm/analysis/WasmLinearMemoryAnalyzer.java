@@ -20,9 +20,12 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
@@ -31,7 +34,6 @@ import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.ArrayDataType;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataUtilities;
@@ -45,13 +47,12 @@ import ghidra.program.model.lang.Register;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
-import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.Varnode;
+import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
-import ghidra.program.model.symbol.ReferenceIterator;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.Msg;
@@ -65,13 +66,14 @@ import wasm.format.sections.structures.WasmResizableLimits;
 
 /** Materialize conservative representations of directly referenced linear-memory locations. */
 public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
+	/** Exception handler entries: reached from any throwing instruction of their try body. */
+	private static final Set<String> HANDLER_ENTRIES = Set.of("catch", "catch_all");
 	/**
-	 * Instructions at which operand-stack and local contents of different paths can meet, or
-	 * at which control transfers through a continuation.
+	 * Instructions whose branches stand for exceptional or continuation transfers: their
+	 * targets are reached in states of other instructions, so they start with nothing known.
 	 */
-	private static final Set<String> REGION_BOUNDARIES = Set.of("block", "loop", "if", "else", "end",
-		"try", "try_table", "catch", "catch_all", "delegate", "resume", "resume_throw",
-		"resume_throw_ref", "suspend", "switch");
+	private static final Set<String> EXCEPTIONAL_SOURCES = Set.of("try_table", "resume",
+		"resume_throw", "resume_throw_ref", "suspend", "switch");
 
 	private static final class MemoryInfo {
 		final int index;
@@ -133,19 +135,13 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			throws CancelledException {
 		WasmAnalysis state = WasmAnalysis.getState(program);
 		List<MemoryInfo> memories = buildMemories(program, state.getModule(), monitor);
-		Map<AddressSpace, MemoryInfo> bySpace = new HashMap<>();
-		for (MemoryInfo info : memories) {
-			if (info != null) {
-				bySpace.put(WasmLoader.getMemorySpace(program.getAddressFactory(), info.index, info.is64), info);
-			}
-		}
 		List<Candidate> candidates = new ArrayList<>();
-		RegisterTracker registers = RegisterTracker.create(program);
-		// Function analyzers are scheduled with function entry points, not necessarily their
-		// bodies. Instructions of the supplied set outside those bodies are scanned without the
-		// function's stack effects, which only makes calls more conservative.
-		AddressSet remaining = new AddressSet(set);
-		for (Function function : program.getListing().getFunctions(set, true)) {
+		RegisterTransfer transfer = RegisterTransfer.create(program);
+		// Function analyzers are scheduled with function entry points; one-time analysis may
+		// select any range. Constant propagation always covers whole functions.
+		Iterator<Function> functions = program.getFunctionManager().getFunctionsOverlapping(set);
+		while (functions.hasNext()) {
+			Function function = functions.next();
 			monitor.checkCancelled();
 			WasmFunctionAnalysis analysis = null;
 			try {
@@ -154,10 +150,8 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			catch (IOException e) {
 				Msg.debug(this, "No stack effects for " + function.getEntryPoint() + ": " + e);
 			}
-			scan(program, function.getBody(), analysis, registers, memories, bySpace, candidates, monitor);
-			remaining.delete(function.getBody());
+			scan(program, function, analysis, transfer, memories, candidates, monitor);
 		}
-		scan(program, remaining, null, registers, memories, bySpace, candidates, monitor);
 		// The first candidate at an address is the widest. Earlier addresses win other overlaps.
 		candidates.sort(Comparator.comparing((Candidate c) -> c.address)
 			.thenComparing(Comparator.comparingInt((Candidate c) -> c.width).reversed()));
@@ -206,57 +200,110 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 		return "bss";
 	}
 
-	private static void scan(Program program, AddressSetView body, WasmFunctionAnalysis analysis,
-			RegisterTracker registers, List<MemoryInfo> memories, Map<AddressSpace, MemoryInfo> bySpace,
-			List<Candidate> candidates, TaskMonitor monitor) throws CancelledException {
-		if (body.isEmpty()) return;
-		Instruction previous = null;
-		InstructionIterator instructions = program.getListing().getInstructions(body, true);
-		while (instructions.hasNext()) {
-			Instruction instruction = instructions.next();
+	/**
+	 * Collect accesses whose base is the same constant on every path reaching them: a forward
+	 * data flow over the function's control-flow graph whose join keeps only the register values
+	 * all incoming paths agree on. References from Ghidra's constant propagation are not used:
+	 * it records one reference per value reaching an access along some path, including both
+	 * sides of a join and individual loop iterations, and computes addresses modulo the index
+	 * width.
+	 */
+	private static void scan(Program program, Function function, WasmFunctionAnalysis analysis,
+			RegisterTransfer transfer, List<MemoryInfo> memories, List<Candidate> candidates,
+			TaskMonitor monitor) throws CancelledException {
+		Map<Address, Instruction> instructions = new HashMap<>();
+		for (Instruction instruction : program.getListing().getInstructions(function.getBody(), true)) {
+			instructions.put(instruction.getAddress(), instruction);
+		}
+		Map<Address, List<Address>> successors = new HashMap<>();
+		Map<Address, Set<Address>> predecessors = new HashMap<>();
+		// Entries whose incoming states are not all modelled start with nothing known.
+		Set<Address> opaqueEntries = new HashSet<>();
+		opaqueEntries.add(function.getEntryPoint());
+		for (Instruction instruction : instructions.values()) {
 			monitor.checkCancelled();
 			Address site = instruction.getAddress();
 			String mnemonic = instruction.getMnemonicString();
-			if (previous == null || !site.equals(previous.getFallThrough()) ||
-					program.getFunctionManager().getFunctionAt(site) != null ||
-					hasIncomingFlow(program, site) || REGION_BOUNDARIES.contains(mnemonic)) {
-				registers.clear();
-			}
-			previous = instruction;
-			Known base = registers.apply(instruction, analysis);
-			int width = accessWidth(mnemonic);
-			if (width == 0) continue;
-			Memarg memarg = readMemarg(instruction);
-			if (memarg == null || memarg.memory() < 0 || memarg.memory() >= memories.size()) continue;
-			MemoryInfo memory = memories.get(memarg.memory());
-			if (memory == null) continue;
-			if (base != null && base.size() == (memory.is64 ? 8 : 4)) {
-				BigInteger effective = WasmLoader.unsignedLong(base.value()).add(memarg.offset());
-				if (memory.fitsIndex(effective, width)) {
-					candidates.add(new Candidate(WasmLoader.getMemoryAddress(program.getAddressFactory(),
-						memory.index, effective.longValue(), memory.is64), width, memory));
+			if (HANDLER_ENTRIES.contains(mnemonic)) opaqueEntries.add(site);
+			List<Address> next = new ArrayList<>();
+			Address fallThrough = instruction.getFallThrough();
+			if (fallThrough != null && instructions.containsKey(fallThrough)) next.add(fallThrough);
+			if (!instruction.getFlowType().isCall()) {
+				for (Address target : instruction.getFlows()) {
+					if (!instructions.containsKey(target)) continue;
+					if (EXCEPTIONAL_SOURCES.contains(mnemonic)) opaqueEntries.add(target);
+					else next.add(target);
 				}
 			}
-			boolean load = mnemonic.contains(".load");
-			for (Reference ref : instruction.getReferencesFrom()) {
-				if (load ? !ref.getReferenceType().isRead() : !ref.getReferenceType().isWrite()) continue;
-				Address address = ref.getToAddress();
-				if (bySpace.get(address.getAddressSpace()) != memory) continue;
-				// Reference analysis computes base + offset in the index width. A target below the
-				// static offset wrapped around: the real access is out of bounds and traps.
-				BigInteger target = WasmLoader.unsignedLong(address.getOffset());
-				if (target.compareTo(memarg.offset()) < 0 || !memory.fitsIndex(target, width)) continue;
-				candidates.add(new Candidate(address, width, memory));
+			successors.put(site, next);
+			for (Address target : next) predecessors.computeIfAbsent(target, a -> new HashSet<>()).add(site);
+		}
+		// A flow into the function that the graph does not model (from elsewhere, or not listed
+		// by its source) may carry any state.
+		for (Address site : instructions.keySet()) {
+			monitor.checkCancelled();
+			Set<Address> modelled = predecessors.getOrDefault(site, Set.of());
+			for (Reference ref : program.getReferenceManager().getReferencesTo(site)) {
+				RefType type = ref.getReferenceType();
+				if (type.isFlow() && !type.isCall() && !modelled.contains(ref.getFromAddress())) {
+					opaqueEntries.add(site);
+				}
+			}
+		}
+		Map<Address, PcodeOp[]> pcode = new HashMap<>();
+		Map<Address, Map<Long, Known>> entryStates = new HashMap<>();
+		TreeSet<Address> work = new TreeSet<>();
+		for (Address entry : opaqueEntries) {
+			if (!instructions.containsKey(entry)) continue;
+			entryStates.put(entry, new HashMap<>());
+			work.add(entry);
+		}
+		while (!work.isEmpty()) {
+			monitor.checkCancelled();
+			Address site = work.pollFirst();
+			Instruction instruction = instructions.get(site);
+			Map<Long, Known> exit = new HashMap<>(entryStates.get(site));
+			transfer.apply(exit, instruction, pcode.computeIfAbsent(site, a -> instruction.getPcode()), analysis);
+			for (Address target : successors.get(site)) {
+				if (opaqueEntries.contains(target)) continue;
+				Map<Long, Known> current = entryStates.get(target);
+				if (current == null) {
+					entryStates.put(target, new HashMap<>(exit));
+					work.add(target);
+				}
+				else if (current.entrySet().retainAll(exit.entrySet())) {
+					work.add(target);
+				}
+			}
+		}
+		// Instructions never reached keep no state and yield no candidates.
+		for (Map.Entry<Address, Map<Long, Known>> entry : entryStates.entrySet()) {
+			monitor.checkCancelled();
+			Instruction instruction = instructions.get(entry.getKey());
+			int width = accessWidth(instruction.getMnemonicString());
+			if (width == 0) continue;
+			Known base = transfer.apply(new HashMap<>(entry.getValue()), instruction,
+				pcode.get(entry.getKey()), analysis);
+			Memarg memarg = readMemarg(instruction);
+			if (base == null || memarg == null || memarg.memory() < 0 || memarg.memory() >= memories.size()) {
+				continue;
+			}
+			MemoryInfo memory = memories.get(memarg.memory());
+			if (memory == null || base.size() != (memory.is64 ? 8 : 4)) continue;
+			BigInteger effective = WasmLoader.unsignedLong(base.value()).add(memarg.offset());
+			if (memory.fitsIndex(effective, width)) {
+				candidates.add(new Candidate(WasmLoader.getMemoryAddress(program.getAddressFactory(),
+					memory.index, effective.longValue(), memory.is64), width, memory));
 			}
 		}
 	}
 
 	/**
-	 * Constant contents of the operand-stack and local registers within one straight-line region,
+	 * Transfer function over the constant contents of the operand-stack and local registers,
 	 * derived from each instruction's raw p-code. Operations without a modelled result make their
 	 * outputs unknown; effects the raw p-code does not show invalidate what they may write.
 	 */
-	private static final class RegisterTracker {
+	private static final class RegisterTransfer {
 		/** Register banks are this far apart in WebAssembly.slaspec. */
 		private static final long BANK_SIZE = 0x10000000L;
 
@@ -266,9 +313,8 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 		private final long slotSize;
 		private final long localsBase;
 		private final Register stackHeight;
-		private final Map<Long, Known> known = new HashMap<>();
 
-		private RegisterTracker(Program program, long stackBase, long slotSize, long localsBase,
+		private RegisterTransfer(Program program, long stackBase, long slotSize, long localsBase,
 				Register stackHeight) {
 			this.program = program;
 			this.injectLibrary = program.getCompilerSpec().getPcodeInjectLibrary();
@@ -278,7 +324,7 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			this.stackHeight = stackHeight;
 		}
 
-		static RegisterTracker create(Program program) {
+		static RegisterTransfer create(Program program) {
 			Register s0 = program.getRegister("s0");
 			Register s1 = program.getRegister("s1");
 			Register l0 = program.getRegister("l0");
@@ -286,25 +332,26 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			if (s0 == null || s1 == null || l0 == null || height == null) {
 				throw new IllegalStateException("WebAssembly stack or local registers are missing");
 			}
-			return new RegisterTracker(program, s0.getOffset(), s1.getOffset() - s0.getOffset(),
+			return new RegisterTransfer(program, s0.getOffset(), s1.getOffset() - s0.getOffset(),
 				l0.getOffset(), height);
 		}
 
-		void clear() {
-			known.clear();
-		}
-
-		/** Apply the instruction; return the known base operand of its memory access, if any. */
-		Known apply(Instruction instruction, WasmFunctionAnalysis analysis) {
+		/**
+		 * Update {@code known} (register offset to value) across the instruction; return the
+		 * known base operand of its memory access, if any. The result holds on every successor.
+		 */
+		Known apply(Map<Long, Known> known, Instruction instruction, PcodeOp[] pcode,
+				WasmFunctionAnalysis analysis) {
 			// Slots at or above the operand-stack height hold dropped values: a push that the raw
 			// p-code does not spell out must not expose one of them.
 			BigInteger height = instruction.getValue(stackHeight, false);
-			invalidateStackFrom(height == null || height.bitLength() > 31 ? 0 : height.intValue());
+			invalidateStackFrom(known, height == null || height.bitLength() > 31 ? 0 : height.intValue());
 			Map<Long, Known> uniques = new HashMap<>();
 			Map<Long, Known> addressBases = new HashMap<>();
+			List<Varnode> written = new ArrayList<>();
 			Known accessBase = null;
 			boolean branches = false;
-			for (PcodeOp op : instruction.getPcode()) {
+			for (PcodeOp op : pcode) {
 				switch (op.getOpcode()) {
 				case PcodeOp.BRANCH, PcodeOp.CBRANCH, PcodeOp.BRANCHIND, PcodeOp.RETURN:
 					branches = true;
@@ -319,57 +366,73 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 							accessBase = addressBases.get(op.getInput(2).getOffset());
 						}
 					}
+					else if ("popCallOther".equals(name) || "callPrologueCallOther".equals(name) ||
+							"callEpilogueCallOther".equals(name)) {
+						// These copy operand-stack values out to temporary, input, output or
+						// saved registers; they write no stack slot or local.
+					}
+					else if ("pushCallOther".equals(name)) {
+						// Writes the slots from the push height, and nothing without a stack effect.
+						WasmFunctionAnalysis.StackEffect effect =
+							analysis == null ? null : analysis.getStackEffect(instruction.getAddress());
+						if (analysis == null) known.clear();
+						else if (effect != null) invalidateStackFrom(known, effect.getPushHeight());
+					}
 					else if (name == null || (!"memory_copy".equals(name) &&
 							injectLibrary.getPayload(InjectPayload.CALLOTHERFIXUP_TYPE, name) != null)) {
-						// Dynamic fixups (calls, branch relocation, function entry) write stack
+						// Other dynamic fixups (function entry, constructors) may write stack
 						// slots the raw p-code does not name: at most those above the pops.
 						WasmFunctionAnalysis.StackEffect effect =
 							analysis == null ? null : analysis.getStackEffect(instruction.getAddress());
 						if (effect == null) known.clear();
-						else invalidateStackFrom(Math.min(effect.getPopHeight(), effect.getPushHeight()));
+						else invalidateStackFrom(known, Math.min(effect.getPopHeight(), effect.getPushHeight()));
 					}
-					write(op.getOutput(), null, uniques);
+					write(known, op.getOutput(), null, uniques);
 					break;
 				}
 				default: {
-					Known result = evaluate(op, uniques);
+					Known result = evaluate(known, op, uniques);
 					Varnode out = op.getOutput();
 					if (op.getOpcode() == PcodeOp.INT_ADD && out != null && out.isUnique()) {
 						// A memarg address: offset constant plus base operand.
 						Varnode baseInput = op.getInput(0).isConstant() ? op.getInput(1) : op.getInput(0);
-						Known base = read(baseInput, uniques);
+						Known base = read(known, baseInput, uniques);
 						if (base != null) addressBases.put(out.getOffset(), base);
 					}
-					write(out, result, uniques);
+					write(known, out, result, uniques);
+					if (out != null) written.add(out);
 				}
 				}
 			}
-			if (branches) known.clear();
+			// With branches inside the p-code, a write may happen on only some of the paths.
+			if (branches) {
+				for (Varnode out : written) write(known, out, null, uniques);
+			}
 			return accessBase;
 		}
 
-		private Known evaluate(PcodeOp op, Map<Long, Known> uniques) {
+		private Known evaluate(Map<Long, Known> known, PcodeOp op, Map<Long, Known> uniques) {
 			Varnode out = op.getOutput();
 			if (out == null || out.getSize() > 8) return null;
 			int size = out.getSize();
 			switch (op.getOpcode()) {
 			case PcodeOp.COPY: {
-				Known value = read(op.getInput(0), uniques);
+				Known value = read(known, op.getInput(0), uniques);
 				return value != null && value.size() == size ? value : null;
 			}
 			case PcodeOp.INT_ZEXT: {
-				Known value = read(op.getInput(0), uniques);
+				Known value = read(known, op.getInput(0), uniques);
 				return value == null ? null : new Known(value.value(), size);
 			}
 			case PcodeOp.INT_SEXT: {
-				Known value = read(op.getInput(0), uniques);
+				Known value = read(known, op.getInput(0), uniques);
 				if (value == null) return null;
 				int shift = 64 - value.size() * 8;
 				return new Known(mask((value.value() << shift) >> shift, size), size);
 			}
 			case PcodeOp.INT_ADD, PcodeOp.INT_SUB, PcodeOp.INT_MULT: {
-				Known left = read(op.getInput(0), uniques);
-				Known right = read(op.getInput(1), uniques);
+				Known left = read(known, op.getInput(0), uniques);
+				Known right = read(known, op.getInput(1), uniques);
 				if (left == null || right == null || left.size() != size || right.size() != size) return null;
 				long value = op.getOpcode() == PcodeOp.INT_ADD ? left.value() + right.value()
 					: op.getOpcode() == PcodeOp.INT_SUB ? left.value() - right.value()
@@ -381,7 +444,7 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			}
 		}
 
-		private Known read(Varnode varnode, Map<Long, Known> uniques) {
+		private Known read(Map<Long, Known> known, Varnode varnode, Map<Long, Known> uniques) {
 			if (varnode.getSize() > 8) return null;
 			Known value;
 			if (varnode.isConstant()) {
@@ -399,7 +462,7 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			return value != null && value.size() == varnode.getSize() ? value : null;
 		}
 
-		private void write(Varnode out, Known value, Map<Long, Known> uniques) {
+		private void write(Map<Long, Known> known, Varnode out, Known value, Map<Long, Known> uniques) {
 			if (out == null) return;
 			if (out.isUnique()) {
 				if (value == null) uniques.remove(out.getOffset());
@@ -413,7 +476,7 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			if (value != null) known.put(start, value);
 		}
 
-		private void invalidateStackFrom(int height) {
+		private void invalidateStackFrom(Map<Long, Known> known, int height) {
 			long from = stackBase + Math.max(0, height) * slotSize;
 			known.keySet().removeIf(offset -> offset >= from && offset < stackBase + BANK_SIZE);
 		}
@@ -428,14 +491,6 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 		private static long mask(long value, int size) {
 			return size >= 8 ? value : value & ((1L << (size * 8)) - 1);
 		}
-	}
-
-	private static boolean hasIncomingFlow(Program program, Address address) {
-		ReferenceIterator refs = program.getReferenceManager().getReferencesTo(address);
-		while (refs.hasNext()) {
-			if (refs.next().getReferenceType().isFlow()) return true;
-		}
-		return false;
 	}
 
 	/** Parse the memarg immediates; null when malformed or unrepresentable. */

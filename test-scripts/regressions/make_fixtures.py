@@ -56,24 +56,26 @@ simple('oob_store_simd',[],i32_const(65528)+b'\xfd\x0c'+bytes(16)+b'\xfd\x0b\x04
 simple('multi_memarg',[I32],i32_const(0)+b'\x28\x42\x01\x10',extra=[memory_section([(0,1),(0,1)])])
 simple('overlap_struct',[],local_get(0)+b'\x29\x03\x00'+drop()+local_get(0)+b'\x28\x02\x04'+drop(),extra=[memory_section([(0,1)])],locals_raw=b'\x01\x01\x7f')
 
-# Analysis references are attached by the Java regression harness, as they would be by
-# Ghidra's reference analysis. Include distinct widths, intersections and memories.
+# Constant-address accesses of distinct widths, intersections and memories. The
+# harness adds pre-existing data and symbols before running the analyzer.
+def load_at(address, op):
+    return i32_const(address)+op+drop()
 globals_ops = [
-    local_get(0)+b'\x28\x02\x00'+drop(),  # initialized i32
-    local_get(0)+b'\x29\x03\x00'+drop(),  # zero-filled i64
-    local_get(0)+b'\x28\x02\x00'+drop(),  # partly initialized
-    local_get(0)+b'\x28\x02\x00'+drop(),  # user-defined data
-    local_get(0)+b'\x28\x02\x00'+drop(),  # user-defined symbol
-    local_get(0)+simd_op(0)+b'\x04\x00'+drop(),  # v128.load: 16 bytes
-    local_get(0)+simd_op(7)+b'\x00\x00'+drop(),  # v128.load8_splat: 1 byte
-    local_get(0)+b'\x28\x02\x00'+drop(),  # narrow access at same address as i64
-    local_get(0)+b'\x29\x03\x00'+drop(),  # overlapping 8-byte access
-    local_get(0)+b'\x28\x02\x00'+drop(),  # inside the preceding access
-    local_get(0)+b'\x28\x42\x01\x00'+drop(),  # memory 1
-    local_get(0)+i32_const(1)+b'\x36\x02\x00',  # zero-filled store target
-    local_get(0)+b'\x28\x02\x00'+drop(),  # existing undefined4 data
-    local_get(0)+b'\x28\x02\x00'+drop(),  # interior of existing defined data
-    local_get(0)+b'\x28\x02\x00'+drop(),  # existing undefined8, different width
+    load_at(0x100,b'\x28\x02\x00'),  # initialized i32
+    load_at(0x200,b'\x29\x03\x00'),  # zero-filled i64
+    load_at(0x300,b'\x28\x02\x00'),  # partly initialized
+    load_at(0x400,b'\x28\x02\x00'),  # user-defined data
+    load_at(0x500,b'\x28\x02\x00'),  # user-defined symbol
+    load_at(0x600,simd_op(0)+b'\x04\x00'),  # v128.load: 16 bytes
+    load_at(0x700,simd_op(7)+b'\x00\x00'),  # v128.load8_splat: 1 byte
+    load_at(0x800,b'\x28\x02\x00'),  # narrow access at same address as i64
+    load_at(0x800,b'\x29\x03\x00'),  # overlapping 8-byte access
+    load_at(0x804,b'\x28\x02\x00'),  # inside the preceding access
+    load_at(0x100,b'\x28\x42\x01\x00'),  # memory 1
+    i32_const(0x900)+i32_const(1)+b'\x36\x02\x00',  # zero-filled store target
+    load_at(0xa00,b'\x28\x02\x00'),  # existing undefined4 data
+    load_at(0xb04,b'\x28\x02\x00'),  # interior of existing defined data
+    load_at(0xc00,b'\x28\x02\x00'),  # existing undefined8, different width
 ]
 write('linear_globals.wasm',module(type_section(functype([I32],[])),func_section([0]),
     memory_section([(0,1),(0,1)]),code_section([b''.join(globals_ops)+END]),
@@ -85,13 +87,14 @@ write('linear_globals.wasm',module(type_section(functype([I32],[])),func_section
 # definite bss classification, but not a fully covered active data classification.
 write('linear_globals_unknown.wasm',module(type_section(functype([I32],[])),func_section([0]),
     memory_section([(0,1)]),code_section([
-        local_get(0)+b'\x28\x02\x00'+drop()+local_get(0)+b'\x28\x02\x00'+drop()+END]),
+        load_at(0x100,b'\x28\x02\x00')+load_at(0x200,b'\x28\x02\x00')+END]),
     data_section([active_data(i32_const(0x100)+END,b'ABCD'),b'\x01\x01Z'])))
 #
 # These accesses must be discovered without pre-existing references. The dynamic
 # pointer's memarg is deliberately distinct from all constant target addresses.
-# Constant bases must survive calls, unmodelled operations and locals, but not
-# dropped values, control-flow joins, the null region or a wrapping address.
+# Constant bases must survive calls, unmodelled operations and locals, and joins
+# where every path agrees, but not dropped values, joins of different values, loop
+# induction variables, the null region or a wrapping address.
 direct_code = (
     i32_const(0x100)+b'\x28\x02\x08'+drop()+
     i32_const(0x200)+i32_const(17)+b'\x36\x02\x0c'+
@@ -102,6 +105,9 @@ direct_code = (
     i32_const(0x260)+local_set(1)+local_get(1)+b'\x28\x02\x00'+drop()+
     i32_const(0x680)+drop()+call(1)+b'\x28\x02\x00'+drop()+
     local_get(0)+if_(I32,i32_const(0x600),i32_const(0x700))+b'\x28\x02\x00'+drop()+
+    i32_const(0x2c0)+local_set(1)+local_get(0)+if_(0x40,b'\x01')+local_get(1)+b'\x28\x02\x00'+drop()+
+    i32_const(0x2e0)+local_set(1)+loop(0x40,local_get(1)+b'\x28\x02\x00'+drop()+
+        local_get(1)+i32_const(4)+b'\x6a'+local_set(1)+local_get(0)+br_if(0))+
     i32_const(0)+b'\x28\x02\x00'+drop()+
     i32_const(-4)+b'\x28\x02'+uleb(0x304)+drop()+END)  # 0xfffffffc+0x304 traps
 write('linear_globals_direct.wasm',module(type_section(functype([I32],[]),functype([],[I32])),

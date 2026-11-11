@@ -126,21 +126,6 @@ public class RegressionTest {
   }
   static void linearGlobalsTests(ProgramDB p) throws Exception {
     boolean unknown=p.getName().equals("linear_globals_unknown.wasm");
-    long[] offsets=unknown ? new long[]{0x100,0x200} :
-      new long[]{0x100,0x200,0x300,0x400,0x500,0x600,0x700,0x800,0x800,0x804,0x100,0x900,0xa00,0xb04,0xc00};
-    int n=0;
-    var refs=p.getReferenceManager();
-    for(var ins:p.getListing().getInstructions(true)) {
-      boolean load=ins.getMnemonicString().contains(".load");
-      boolean store=ins.getMnemonicString().contains(".store");
-      if(!load && !store) continue;
-      check(n<offsets.length,"Unexpected memory access in linear globals fixture");
-      int mem=(!unknown && n==10)?1:0;
-      Address target=WasmLoader.getMemoryAddress(p.getAddressFactory(),mem,offsets[n],false);
-      refs.addMemoryReference(ins.getAddress(),target,load?RefType.READ:RefType.WRITE,SourceType.ANALYSIS,0);
-      n++;
-    }
-    check(n==offsets.length,"All linear globals fixture accesses disassembled");
     var space=p.getAddressFactory().getAddressSpace("memory");
     if(!unknown) {
       p.getListing().createData(space.getAddress(0x400),DWordDataType.dataType);
@@ -279,10 +264,18 @@ public class RegressionTest {
       if(p.getName().equals("linear_globals_direct.wasm")) {
         var f0=state.getFunction(0);
         Address entry=f0.getStartAddr();
-        // Reference analysis computes 0xfffffffc+0x304 modulo 2^32, although the access traps.
-        Instruction wrapped=null;
-        for(var ins:p.getListing().getInstructions(new AddressSet(entry,f0.getEndAddr()),true))
-          if(ins.getMnemonicString().equals("i32.load")) wrapped=ins;
+        // Ghidra's reference analysis records one reference per path value: both constants
+        // at the if/else join, and 0xfffffffc+0x304 modulo 2^32 although that access traps.
+        // Neither is a proven address.
+        Instruction joined=null,wrapped=null;
+        String before="";
+        for(var ins:p.getListing().getInstructions(new AddressSet(entry,f0.getEndAddr()),true)) {
+          if(ins.getMnemonicString().equals("i32.load")) { if(before.equals("end")) joined=ins; wrapped=ins; }
+          before=ins.getMnemonicString();
+        }
+        for(long target:new long[]{0x600,0x700})
+          p.getReferenceManager().addMemoryReference(joined.getAddress(),
+            WasmLoader.getMemoryAddress(p.getAddressFactory(),0,target,false),RefType.READ,SourceType.ANALYSIS,0);
         p.getReferenceManager().addMemoryReference(wrapped.getAddress(),
           WasmLoader.getMemoryAddress(p.getAddressFactory(),0,0x300,false),RefType.READ,SourceType.ANALYSIS,0);
         new WasmLinearMemoryAnalyzer().added(p,new AddressSet(entry,entry),monitor,new MessageLog());
@@ -297,6 +290,9 @@ public class RegressionTest {
         checkNoGlobalLabel(p,0,0x680,"A dropped constant must not stand in for a call result");
         checkNoGlobalLabel(p,0,0x600,"Constants joined from different paths are not a constant address");
         checkNoGlobalLabel(p,0,0x700,"Constants joined from different paths are not a constant address");
+        checkGlobal(p,0,0x2c0,"bss_2c0",4);
+        checkNoGlobalLabel(p,0,0x2e0,"A loop induction variable is not a constant address");
+        checkNoGlobalLabel(p,0,0x2e4,"A loop induction variable is not a constant address");
         checkNoGlobalLabel(p,0,0x0,"An access below all initialized data must not become bss");
         checkNoGlobalLabel(p,0,0x300,"A wrapped reference target of a trapping access must not become a global");
         check(new WasmLinearMemoryAnalyzer().getPriority().priority()>
