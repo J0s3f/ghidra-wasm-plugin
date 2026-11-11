@@ -13,6 +13,9 @@ Probe prefix: ST (struct synthesis).
   ST03  Accesses go through a global.get (not a local).  Documented behaviour:
         no struct is synthesized (globals are skipped in v1).
 
+  ST05  Accesses at offsets a few MB apart: no multi-megabyte struct may be synthesized
+        and every function must still decompile.
+
 Usage: python probes_struct_synth.py <output-dir>
 """
 import os
@@ -238,4 +241,37 @@ write("ST04_const_offset_add.wasm", module(
     ST04_MEMORY,
     ST04_EXPORTS,
     code_section([ST04_MAIN]),
+))
+
+
+# ---------------------------------------------------------------- ST05: widely separated offsets -> no giant struct
+
+# Same shape as ST01 (main -> reader, main -> writer), but the accessed offsets are 0, 4 and
+# ~6 MB. Padding the gaps byte by byte would give a multi-million-component struct that the
+# decompiler cannot serialize ("Response buffer size exceeded"). The analyzer must skip such
+# sparse classes instead, and all functions must still decompile.
+
+ST05_FAR = 6000000
+
+ST05_READER = (
+    local_get(0) + i32_load(0) +
+    local_get(0) + i32_load(4) +
+    b"j" +
+    local_get(0) + i32_load(ST05_FAR) +
+    b"j" +
+    END
+)
+
+ST05_WRITER = (
+    local_get(0) + local_get(1) + i32_store(0) +
+    local_get(0) + local_get(1) + i32_store(ST05_FAR) +
+    END
+)
+
+write("ST05_sparse_offsets_no_giant_struct.wasm", module(
+    ST01_TYPES,
+    ST01_FUNCS,
+    ST01_MEMORY,
+    ST01_EXPORTS,
+    code_section([ST01_MAIN, ST05_READER, ST05_WRITER]),
 ))

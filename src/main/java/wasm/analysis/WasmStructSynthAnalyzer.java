@@ -67,6 +67,15 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 	/** Maximum number of fields in a synthesized structure. */
 	private static final int MAX_FIELDS = 64;
 
+	/**
+	 * Maximum extent (highest accessed byte + 1) of a synthesized structure. Gaps between fields
+	 * are padded with one component per byte, so offsets that are far apart (typically absolute
+	 * addresses reached through a base that is really a constant) would create structures with
+	 * millions of components that the decompiler cannot serialize ("Response buffer size
+	 * exceeded"). Such sparse classes are not structures; skip them.
+	 */
+	private static final int MAX_STRUCT_EXTENT = 0x4000;
+
 	/** Minimum number of distinct offsets to synthesize a struct. */
 	private static final int MIN_OFFSETS = 2;
 
@@ -334,6 +343,14 @@ public class WasmStructSynthAnalyzer extends AbstractAnalyzer {
 			if (offsets.size() < MIN_OFFSETS) continue;
 			if (offsets.size() > MAX_FIELDS) {
 				Msg.debug(this, "Skipping struct with " + offsets.size() + " fields (cap=" + MAX_FIELDS + ")");
+				continue;
+			}
+
+			Map.Entry<Integer, Integer> last = offsets.lastEntry();
+			// The structure is padded from offset 0, so the extent is the end of the last field.
+			if ((long) last.getKey() + last.getValue() > MAX_STRUCT_EXTENT) {
+				Msg.debug(this, "Skipping sparse struct extending to " +
+					((long) last.getKey() + last.getValue()) + " (cap=" + MAX_STRUCT_EXTENT + ")");
 				continue;
 			}
 

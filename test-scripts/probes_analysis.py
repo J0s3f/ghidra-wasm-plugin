@@ -147,3 +147,22 @@ write("A09_unimp_mul_wide_u.wasm", _unimp_module(
 # causes (here i32.add with an empty stack) must not blank the body: the whole function still
 # disassembles (undefined_bytes == 0) and decompiles.
 write("A10_unimp_then_stack_error.wasm", _unimp_module(b"\xE0" + uleb(0) + b"\x6A" + _tail()))
+
+
+# A11: memory.copy of a few hundred constant bytes out of a read-only data segment. The plugin
+#      materializes such copies as inline constant stores; emitting one load per byte instead
+#      made decompile time grow roughly quadratically with the length (hundreds of bytes
+#      already took seconds, 896 bytes exceeded the decompiler timeout / response limit).
+#      The function must decompile (decompiled == funcs, decompile_failed == 0).
+_A11_BYTES = bytes((i * 7 + 3) & 0xFF for i in range(896))
+write("A11_constant_copy_896_bytes.wasm", module(
+    type_section(functype([I32], [])),
+    func_section([0]),
+    memory_section([(0x00, 1)]),
+    export_section([("f", 0, 0)]),
+    code_section([
+        local_get(0) + i32_const(256) + b"j" + i32_const(1024) + i32_const(len(_A11_BYTES)) +
+        misc_op(10) + uleb(0) + uleb(0) + END
+    ]),
+    data_section([active_data(i32_const(1024) + END, _A11_BYTES)]),
+))

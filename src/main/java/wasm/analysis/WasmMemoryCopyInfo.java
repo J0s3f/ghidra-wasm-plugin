@@ -18,6 +18,7 @@ package wasm.analysis;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.util.IntPropertyMap;
+import ghidra.program.model.util.LongPropertyMap;
 import ghidra.util.exception.DuplicateNameException;
 
 /**
@@ -29,9 +30,38 @@ import ghidra.util.exception.DuplicateNameException;
  */
 public class WasmMemoryCopyInfo {
 	public static final String PROPERTY_NAME = "WasmMemoryCopyLen";
+	/** Constant source offset (in the source memory) of the same callsite. */
+	public static final String SOURCE_PROPERTY_NAME = "WasmMemoryCopySrc";
 	public static void clear(Program program, Address callsite) {
 		IntPropertyMap map = program.getUsrPropertyManager().getIntPropertyMap(PROPERTY_NAME);
 		if (map != null) { map.remove(callsite); }
+		LongPropertyMap sources = program.getUsrPropertyManager().getLongPropertyMap(SOURCE_PROPERTY_NAME);
+		if (sources != null) { sources.remove(callsite); }
+	}
+
+	/** The constant source offset recorded by the analyzer, or null if unknown. */
+	public static Long getSource(Program program, Address callsite) {
+		LongPropertyMap map = program.getUsrPropertyManager().getLongPropertyMap(SOURCE_PROPERTY_NAME);
+		if (map == null || !map.hasProperty(callsite)) {
+			return null;
+		}
+		try {
+			return map.getLong(callsite);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	public static void putSource(Program program, Address callsite, long source) {
+		LongPropertyMap map = program.getUsrPropertyManager().getLongPropertyMap(SOURCE_PROPERTY_NAME);
+		if (map == null) {
+			try {
+				map = program.getUsrPropertyManager().createLongPropertyMap(SOURCE_PROPERTY_NAME);
+			} catch (DuplicateNameException e) {
+				return;
+			}
+		}
+		map.add(callsite, source);
 	}
 
 	public static Integer getLength(Program program, Address callsite) {

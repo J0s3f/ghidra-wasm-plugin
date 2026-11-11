@@ -126,6 +126,7 @@ public class WasmMemoryCopyAnalyzer extends AbstractAnalyzer {
 			ghidra.program.model.mem.MemoryBlock block = program.getMemory().getBlock(source);
 			if (block != null && block.isInitialized() && !block.isWrite() && block.contains(source.add(len - 1))) {
 				WasmMemoryCopyInfo.putLength(program, addr, len.intValue());
+				WasmMemoryCopyInfo.putSource(program, addr, src);
 			}
 			return;
 		}

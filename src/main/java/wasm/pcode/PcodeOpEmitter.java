@@ -152,6 +152,56 @@ public class PcodeOpEmitter {
 		}
 	}
 
+	/**
+	 * Short copy from a read-only source at a known constant offset: one LOAD at a constant
+	 * address followed by its STORE, so the decompiler keeps the reference to the source symbol
+	 * (for example a string). The source is read-only, so interleaving the loads and stores
+	 * cannot change the result. Long copies use {@link #emitConstantStores} instead.
+	 */
+	public void emitConstantSourceCopy(long srcOffset, int srcSize, long srcMemidx, Varnode dst,
+			int count, long dstMemidx) {
+		AddressSpace srcSpace = wasm.WasmLoader.getMemorySpace(addressFactory, (int) srcMemidx, srcSize == 8);
+		AddressSpace dstSpace = wasm.WasmLoader.getMemorySpace(addressFactory, (int) dstMemidx, dst.getSize() == 8);
+		for (int i = 0; i < count; i++) {
+			Varnode value = newUnique(1);
+			PcodeOp load = newOp(PcodeOp.LOAD);
+			load.setInput(constVn(srcSpace.getSpaceID(), 4), 0);
+			load.setInput(constVn(srcOffset + i, srcSize), 1);
+			load.setOutput(value);
+			Varnode dp = newUnique(dst.getSize());
+			PcodeOp addDst = newOp(PcodeOp.INT_ADD);
+			addDst.setInput(dst, 0);
+			addDst.setInput(constVn(i, dst.getSize()), 1);
+			addDst.setOutput(dp);
+			PcodeOp store = newOp(PcodeOp.STORE);
+			store.setInput(constVn(dstSpace.getSpaceID(), 4), 0);
+			store.setInput(dp, 1);
+			store.setInput(value, 2);
+		}
+	}
+
+	/**
+	 * Store known constant bytes (one STORE per byte, no loads). For long copies out of read-only
+	 * memory the bytes are read when the p-code is generated: every LOAD in the unrolled copy
+	 * makes the decompiler's cost grow roughly quadratically with the length (512 bytes already
+	 * take ~13 s, 896 bytes exceed the decompiler's timeout or response limit), whereas constant
+	 * stores stay linear and fold into inline initializers.
+	 */
+	public void emitConstantStores(Varnode dst, byte[] bytes, long dstMemidx) {
+		AddressSpace dstSpace = wasm.WasmLoader.getMemorySpace(addressFactory, (int) dstMemidx, dst.getSize() == 8);
+		for (int i = 0; i < bytes.length; i++) {
+			Varnode dp = newUnique(dst.getSize());
+			PcodeOp addDst = newOp(PcodeOp.INT_ADD);
+			addDst.setInput(dst, 0);
+			addDst.setInput(constVn(i, dst.getSize()), 1);
+			addDst.setOutput(dp);
+			PcodeOp store = newOp(PcodeOp.STORE);
+			store.setInput(constVn(dstSpace.getSpaceID(), 4), 0);
+			store.setInput(dp, 1);
+			store.setInput(constVn(bytes[i] & 0xff, 1), 2);
+		}
+	}
+
 	/** Emit a CALLOTHER to the named pcodeop with the given inputs (no output). */
 	public void emitCallOther(int pcodeopIndex, Varnode... inputs) {
 		PcodeOp op = newOp(PcodeOp.CALLOTHER);

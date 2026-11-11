@@ -16,6 +16,7 @@
 package wasm.pcode;
 
 import ghidra.app.plugin.processors.sleigh.SleighLanguage;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.lang.InjectContext;
 import ghidra.program.model.lang.InjectPayloadCallother;
 import ghidra.program.model.listing.Program;
@@ -36,6 +37,14 @@ import wasm.analysis.WasmMemoryCopyInfo;
  * callers must preserve memory.copy's overlapping-range semantics.
  */
 public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
+
+	/**
+	 * Copies up to this many bytes keep per-byte loads from the constant source address, so the
+	 * decompiler shows the source symbol (a string, a table). Decompile cost grows roughly
+	 * quadratically with the number of loads (128 bytes ~0.5 s, 512 bytes ~13 s), so longer
+	 * copies store the constant bytes directly.
+	 */
+	private static final int MAX_SYMBOLIC_BYTES = 128;
 
 	private int copyOpIndex = -1;
 
@@ -69,8 +78,19 @@ public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 			 * would not link. Word granularity is more compact but the
 			 * address-table analyzer types the folded words as pointers.
 			 */
-			ops.emitUnrolledCopy64(src, dst, nbytes, 1,
-					con.inputlist.get(1).getOffset(), con.inputlist.get(0).getOffset());
+			Long source = WasmMemoryCopyInfo.getSource(program, con.baseAddr);
+			byte[] constant = source != null && nbytes > MAX_SYMBOLIC_BYTES
+					? readConstantSource(program, con, source, nbytes) : null;
+			if (constant != null) {
+				ops.emitConstantStores(dst, constant, con.inputlist.get(0).getOffset());
+			} else if (source != null && nbytes <= MAX_SYMBOLIC_BYTES) {
+				ops.emitConstantSourceCopy(source, src.getSize(), con.inputlist.get(1).getOffset(),
+						dst, nbytes, con.inputlist.get(0).getOffset());
+			} else {
+				// No recorded source (database analyzed by an older version) or unreadable bytes.
+				ops.emitUnrolledCopy64(src, dst, nbytes, 1,
+						con.inputlist.get(1).getOffset(), con.inputlist.get(0).getOffset());
+			}
 		} else {
 			int idx = copyIndex(program);
 			if (idx >= 0) {
@@ -79,6 +99,18 @@ public class InjectPayloadWasmMemoryCopy extends InjectPayloadCallother {
 			}
 		}
 		return ops.getPcodeOps();
+	}
+
+	private static byte[] readConstantSource(Program program, InjectContext con, long source,
+			int nbytes) {
+		try {
+			Address address = wasm.WasmLoader.getMemoryAddress(program.getAddressFactory(),
+				(int) con.inputlist.get(1).getOffset(), source, con.inputlist.get(3).getSize() == 8);
+			byte[] bytes = new byte[nbytes];
+			return program.getMemory().getBytes(address, bytes) == nbytes ? bytes : null;
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 	private int copyIndex(Program program) {
