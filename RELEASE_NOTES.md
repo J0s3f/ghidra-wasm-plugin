@@ -13,14 +13,23 @@ The release assets are *cleaned* zips: the development harness (`test-scripts/`)
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
 
-## New in 2.10.1 (packaging fix, no analyzer changes)
+## New in 2.10.1
 
-* The extension could install but stay invisible (`No load spec found for import file`), because
-  Ghidra only scans `<module>/lib/*.jar` when the jar name starts with the module directory name.
-* `settings.gradle` pins the project name to `ghidra-wasm-plugin`, so the archive layout no longer
-  depends on the checkout directory; `extension.properties` uses `name=@extname@` to match.
-* New `verifyExtensionLayout` build task fails the build if the archive layout would be ignored.
-  If upgrading from an install under another directory name, delete the old one first.
+* **Decompiler no longer times out or fails on large constant copies.** A `memory.copy` out of
+  read-only data was unrolled into one load per byte, and decompile time grew roughly
+  quadratically with the length (512 bytes took ~13 s; larger copies exceeded the decompiler's
+  timeout or response limit, leaving the function undecompiled). Copies of up to 128 bytes keep
+  the load form, now interleaved with the stores: the source symbol (for example a string) is
+  still referenced, with fewer lines and no per-byte temporaries. Longer copies are emitted as
+  constant stores read from the data at analysis time and decompile in milliseconds.
+* **Struct synthesis no longer creates huge structures.** The field count was capped but the
+  extent was not, so accesses through absolute addresses produced structures with millions of
+  padding components. Classes that would extend past 16 KiB are skipped.
+* **Packaging fix.** An installed extension could stay invisible (`No load spec found for import
+  file`) when its directory was not named like its jar. `settings.gradle` pins the project name,
+  `extension.properties` uses `name=@extname@`, and the new `verifyExtensionLayout` build task
+  fails the build if the layout would be ignored. When upgrading from an install under another
+  directory name, delete the old one first.
 
 ## New in 2.10.0 (since 2.9.0)
 
