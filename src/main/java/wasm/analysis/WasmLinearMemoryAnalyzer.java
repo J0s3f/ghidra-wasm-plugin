@@ -139,7 +139,7 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 			try {
 				analysis = state.getFunctionAnalysis(function.getEntryPoint());
 			}
-			catch (IOException e) {
+			catch (IOException | ValidationException e) {
 				analysis = null;
 			}
 			// Without the pre-analysis, stack effects and handler entries are unknown.

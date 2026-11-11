@@ -29,6 +29,9 @@ configuration (`.github/`) and internal documentation (`REPORT-*.md`) are exclud
   Based on [ManuMassi's analyzer](https://github.com/ManuMassi/ghidra-wasm-plugin/commit/e218eef6841312e3a49a13075fed3d901efafbe6),
   adapted for this fork's isolated memory spaces and conservative classification.
 
+* A function that fails Wasm stack analysis no longer aborts linear-memory global
+  recovery for the other functions in the module.
+
 ## New in 2.9.0 (since 2.8.4)
 
 * **Ghidra 12.2 support.** A build for Ghidra 12.2 is now released alongside 12.1.4 and 12.1.3.

@@ -185,6 +185,9 @@ public class RegressionTest {
       }
       for (var f:state.getFunctions()) {
         if (f.isImport()) continue;
+        // The dedicated invalid body is left to the analyzer under test; analyze
+        // both valid neighbors normally so their constants can be recovered.
+        if(p.getName().equals("linear_globals_invalid_function.wasm") && f.getFuncIdx()==1) continue;
         try {
           long started=System.nanoTime();
           var fa=state.getFunctionAnalysis(f.getStartAddr());
@@ -261,6 +264,11 @@ public class RegressionTest {
       }
       if(p.getName().equals("linear_globals.wasm") || p.getName().equals("linear_globals_unknown.wasm"))
         linearGlobalsTests(p);
+      if(p.getName().equals("linear_globals_invalid_function.wasm")) {
+        new WasmLinearMemoryAnalyzer().added(p,p.getMemory(),monitor,new MessageLog());
+        checkGlobal(p,0,0x100,"data_100",4);
+        checkGlobal(p,0,0x200,"data_200",4);
+      }
       if(p.getName().equals("linear_globals_direct.wasm")) {
         var f0=state.getFunction(0);
         Address entry=f0.getStartAddr();

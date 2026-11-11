@@ -83,6 +83,14 @@ write('linear_globals.wasm',module(type_section(functype([I32],[])),func_section
                   active_data(i32_const(0x300)+END,b'XY'),
                   active_data(i32_const(0x600)+END,bytes(range(16))),
                   active_data(i32_const(0x100)+END,b'WXYZ',1)])))
+# The middle function has a stack-invalid body; both valid neighbors must still
+# receive linear-memory analysis when the loader accepts the module.
+write('linear_globals_invalid_function.wasm',module(
+    type_section(functype([],[])),func_section([0,0,0]),memory_section([(0,1)]),
+    code_section([load_at(0x100,b'\x28\x02\x00')+END,drop()+END,
+                  load_at(0x200,b'\x28\x02\x00')+END]),
+    data_section([active_data(i32_const(0x100)+END,b'\x01\x02\x03\x04'),
+                  active_data(i32_const(0x200)+END,b'\x05\x06\x07\x08')])))
 # A passive segment may be copied to any location at runtime. It must prevent a
 # definite bss classification, but not a fully covered active data classification.
 write('linear_globals_unknown.wasm',module(type_section(functype([I32],[])),func_section([0]),
