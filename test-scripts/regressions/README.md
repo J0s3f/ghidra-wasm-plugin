@@ -18,7 +18,9 @@ Pass `-OutDir` to retain receipts elsewhere. Every stage exits nonzero on failur
 * `RegressionTest.java`: full instruction coverage of each valid fixture, reference-branch
   relocation, compiler specs, table64 pcode widths, table initialization, memory-copy
   inference/injection, named locals, memory offsets, struct layout, vararg loads, C-stack
-  options, numeric execution, memory growth, and trapping-store preservation.
+  options, numeric execution, memory growth, trapping-store preservation, and linear-memory
+  global recovery (constant propagation across calls, joins and loops; exception and
+  `resume` handler landings).
 * `PatchRegressionTest.java`: independent memory spaces at high offsets and indices,
   zero-sized/grown memory initialization, scalar/SIMD/atomic accesses, cross-memory and
   overlapping multi-page copies, trapping stores, and complete 16,384-case branch tables
@@ -27,6 +29,8 @@ Pass `-OutDir` to retain receipts elsewhere. Every stage exits nonzero on failur
   includes the existing call/store, operand-cache, and large `br_table` fixtures.
 * `oracle.mjs`: Node validates every positive/negative fixture and executes every numeric
   matrix function plus memory-isolation and large-table behavior independently of Ghidra.
+  `linear_globals_resume.wasm` is expected to be rejected: V8 does not implement stack
+  switching without a flag.
 * `test_emulate_reports.py`: report aggregation process exit codes, missing/empty reports,
   and stale unselected reports.
 

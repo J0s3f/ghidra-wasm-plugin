@@ -18,9 +18,12 @@ package wasm.analysis;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.program.model.address.Address;
@@ -89,6 +92,10 @@ public class WasmFunctionAnalysis {
 
 	private List<ControlFrame> controlStack = new ArrayList<>();
 	private Map<Address, StackEffect> stackEffects = new HashMap<>();
+	/** See {@link #getHandlerLandings()}; labels are resolved when their frame ends. */
+	private final Set<Address> handlerLandings = new HashSet<>();
+	private int pendingLandings;
+	private boolean unresolvedLandings;
 	private Map<Address, Long> globalGetSets = new HashMap<>();
 	private ContextRegister contextreg = new ContextRegister();
 
@@ -403,6 +410,8 @@ public class WasmFunctionAnalysis {
 		boolean unreachable = false;
 		boolean hasElse = false;
 		boolean hasHandler = false;
+		/** try_table catch clauses and resume handler clauses that land on this label. */
+		int landings = 0;
 		/**
 		 * @@NAME: the extended-name-section label index of this construct (source order), or -1 for
 		 * the function's own frame and for frames that do not introduce a label.
@@ -473,6 +482,17 @@ public class WasmFunctionAnalysis {
 			for (Address branch : branchAddresses) {
 				contextreg.setBranchTarget(branch, branchTarget);
 			}
+			if (landings > 0) {
+				handlerLandings.add(branchTarget);
+				pendingLandings -= landings;
+				landings = 0;
+			}
+		}
+
+		/** A handler clause lands on this label: an entry without a static branch. */
+		void addLanding() {
+			landings++;
+			pendingLandings++;
 		}
 
 		@Override
@@ -535,6 +555,16 @@ public class WasmFunctionAnalysis {
 
 	public StackEffect getStackEffect(Address address) {
 		return stackEffects.get(address);
+	}
+
+	/**
+	 * Instructions entered by a caught exception or a suspended continuation rather than by a
+	 * static branch: legacy catch/catch_all handler starts and the labels of try_table catch
+	 * clauses and resume handler clauses. Values reaching them come from arbitrary points of the
+	 * protected code. Null when a clause label could not be resolved.
+	 */
+	public Set<Address> getHandlerLandings() {
+		return unresolvedLandings || pendingLandings > 0 ? null : Collections.unmodifiableSet(handlerLandings);
 	}
 	// #endregion
 
@@ -833,6 +863,7 @@ public class WasmFunctionAnalysis {
 		if (block.blockKind != BlockKind.TRY && block.blockKind != BlockKind.CATCH) {
 			throw new ValidationException(instAddress, "catch without matching try");
 		}
+		handlerLandings.add(handlerStart);
 		block.addBranch(instAddress);
 		if (!block.hasHandler) {
 			block.hasHandler = true;
@@ -934,9 +965,18 @@ public class WasmFunctionAnalysis {
 		pushBlock(instAddress, new ControlFrame(instAddress, BlockKind.BLOCK, type, valueStack));
 	}
 
-	/** Mark the instruction at {@code instAddress} as a try_table catch clause directive. */
-	void ehMarkClause(Address instAddress) {
-		contextreg.setEhClause(instAddress);
+	/**
+	 * Mark the instruction at {@code clauseAddress} as a try_table catch clause directive whose
+	 * caught exceptions land on label {@code labelidx} of the context enclosing the try_table.
+	 */
+	void ehMarkClause(Address tryTable, Address clauseAddress, long labelidx) {
+		contextreg.setEhClause(clauseAddress);
+		getBlock(tryTable, labelidx).addLanding();
+	}
+
+	/** Catch clauses that could not be decoded: where they land is unknown. */
+	void ehUnresolvedClauses() {
+		unresolvedLandings = true;
 	}
 
 	/** throw_ref: pop an exnref and end the current block, exactly like legacy throw/rethrow. */
@@ -1245,13 +1285,16 @@ public class WasmFunctionAnalysis {
 			int kind = reader.readNextUnsignedByte();
 			if (kind == 0x00) { /* on <tag> <label> */
 				readLeb128(reader);
-				readLeb128(reader);
+				long labelidx = readLeb128(reader);
+				if (labelidx >= 0 && labelidx < controlStack.size()) getBlock(instAddress, labelidx).addLanding();
+				else unresolvedLandings = true;
 			} else if (kind == 0x01) { /* on <tag> switch */
 				readLeb128(reader);
 			} else {
 				Msg.warn(this, "Invalid stack-switching handler clause kind " + String.format("0x%02x", kind)
 						+ " at " + clauseAddress + " (rest of body not decoded)");
 				markUnimplemented();
+				unresolvedLandings = true;
 				return;
 			}
 			contextreg.setSsHandler(clauseAddress);

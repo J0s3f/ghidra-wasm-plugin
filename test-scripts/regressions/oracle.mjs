@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 const root=process.argv[2];
 const malformed=new Set(['huge_params.wasm','truncated_datacount.wasm','cross_section_type.wasm','func_code_mismatch.wasm',
   // spec-valid, but V8 caps array.new_fixed at 10000 elements
-  'unreachable_array_new_fixed.wasm']);
+  'unreachable_array_new_fixed.wasm',
+  // stack switching (resume), which V8 does not implement without a flag
+  'linear_globals_resume.wasm']);
 let count=0;
 for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.wasm'))) {
   assert.equal(WebAssembly.validate(fs.readFileSync(path.join(root,file))),!malformed.has(file),file);

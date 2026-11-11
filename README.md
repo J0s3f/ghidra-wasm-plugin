@@ -79,7 +79,10 @@ of modern WebAssembly (Wasm 3.0 + active proposals).
   with generic-width data and, when initialization is known, `data_` or `bss_` labels.
   Constant bases are propagated through locals, calls and other operations over each
   function's control flow; at joins and loop headers only values all incoming paths agree on
-  survive. Ghidra's reference analysis is not used, as it records one value per path.
+  survive. Exception handlers (`catch`/`catch_all`, `try_table` catch clauses) and `resume`
+  handler clauses are entered from arbitrary points of the protected code, so their landings
+  start with nothing known; a function whose handler labels cannot be resolved is skipped.
+  Ghidra's reference analysis is not used, as it records one value per path.
   Accesses whose address wraps the index type trap and are ignored, and `bss_` is applied
   only at or above the memory's lowest initialized byte, so null-region accesses stay
   unlabeled. These are access-based hints, not recovered source-level variable types or proof

@@ -19,7 +19,8 @@ configuration (`.github/`) and internal documentation (`REPORT-*.md`) are exclud
   address is the same constant on every path with generic-width data and, when
   initialization is known, `data_` or `bss_` labels. Constant bases are propagated through
   locals, calls and other operations; at control-flow joins only values all paths agree on
-  survive, and per-path references from Ghidra's reference analysis are not used. Wrapping
+  survive, exception and continuation handler landings start with nothing known, and
+  per-path references from Ghidra's reference analysis are not used. Wrapping
   (trapping) accesses are ignored and `bss_` starts at the memory's lowest initialized byte.
   These are analysis hints, not source-level variable types or guaranteed object boundaries.
   It runs after string recovery: existing defined data (including strings) and labels are

@@ -167,6 +167,7 @@ public class EH2Ops {
 				 */
 				Msg.warn(EH2Ops.class, "Invalid try_table catch clause kind " + String.format("0x%02x", kind)
 						+ " at " + clauseAddress);
+				func.ehUnresolvedClauses();
 				func.ehEnterTryTable(instAddress, analysis, blockTypeInfo, handlerLabel, handlerValue(handlerValues, func.ehBlockTypeParamCount(analysis, blockTypeInfo)));
 				return;
 			}
@@ -179,7 +180,7 @@ public class EH2Ops {
 				handlerLabel = labelidx;
 				handlerValues = pushed;
 			}
-			func.ehMarkClause(clauseAddress);
+			func.ehMarkClause(instAddress, clauseAddress, labelidx);
 		}
 
 		func.ehEnterTryTable(instAddress, analysis, blockTypeInfo, handlerLabel,

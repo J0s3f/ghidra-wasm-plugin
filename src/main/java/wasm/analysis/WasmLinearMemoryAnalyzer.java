@@ -66,14 +66,6 @@ import wasm.format.sections.structures.WasmResizableLimits;
 
 /** Materialize conservative representations of directly referenced linear-memory locations. */
 public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
-	/** Exception handler entries: reached from any throwing instruction of their try body. */
-	private static final Set<String> HANDLER_ENTRIES = Set.of("catch", "catch_all");
-	/**
-	 * Instructions whose branches stand for exceptional or continuation transfers: their
-	 * targets are reached in states of other instructions, so they start with nothing known.
-	 */
-	private static final Set<String> EXCEPTIONAL_SOURCES = Set.of("try_table", "resume",
-		"resume_throw", "resume_throw_ref", "suspend", "switch");
 
 	private static final class MemoryInfo {
 		final int index;
@@ -143,14 +135,20 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 		while (functions.hasNext()) {
 			Function function = functions.next();
 			monitor.checkCancelled();
-			WasmFunctionAnalysis analysis = null;
+			WasmFunctionAnalysis analysis;
 			try {
 				analysis = state.getFunctionAnalysis(function.getEntryPoint());
 			}
 			catch (IOException e) {
-				Msg.debug(this, "No stack effects for " + function.getEntryPoint() + ": " + e);
+				analysis = null;
 			}
-			scan(program, function, analysis, transfer, memories, candidates, monitor);
+			// Without the pre-analysis, stack effects and handler entries are unknown.
+			Set<Address> landings = analysis == null ? null : analysis.getHandlerLandings();
+			if (landings == null) {
+				Msg.debug(this, "Skipping " + function.getEntryPoint() + ": control flow is not fully known");
+				continue;
+			}
+			scan(program, function, analysis, landings, transfer, memories, candidates, monitor);
 		}
 		// The first candidate at an address is the widest. Earlier addresses win other overlaps.
 		candidates.sort(Comparator.comparing((Candidate c) -> c.address)
@@ -209,30 +207,28 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 	 * width.
 	 */
 	private static void scan(Program program, Function function, WasmFunctionAnalysis analysis,
-			RegisterTransfer transfer, List<MemoryInfo> memories, List<Candidate> candidates,
-			TaskMonitor monitor) throws CancelledException {
+			Set<Address> landings, RegisterTransfer transfer, List<MemoryInfo> memories,
+			List<Candidate> candidates, TaskMonitor monitor) throws CancelledException {
 		Map<Address, Instruction> instructions = new HashMap<>();
 		for (Instruction instruction : program.getListing().getInstructions(function.getBody(), true)) {
 			instructions.put(instruction.getAddress(), instruction);
 		}
 		Map<Address, List<Address>> successors = new HashMap<>();
 		Map<Address, Set<Address>> predecessors = new HashMap<>();
-		// Entries whose incoming states are not all modelled start with nothing known.
-		Set<Address> opaqueEntries = new HashSet<>();
+		// Entries whose incoming states are not all modelled start with nothing known: the
+		// function entry and handler landings, which a caught exception or a suspended
+		// continuation reaches from arbitrary points of the protected code.
+		Set<Address> opaqueEntries = new HashSet<>(landings);
 		opaqueEntries.add(function.getEntryPoint());
 		for (Instruction instruction : instructions.values()) {
 			monitor.checkCancelled();
 			Address site = instruction.getAddress();
-			String mnemonic = instruction.getMnemonicString();
-			if (HANDLER_ENTRIES.contains(mnemonic)) opaqueEntries.add(site);
 			List<Address> next = new ArrayList<>();
 			Address fallThrough = instruction.getFallThrough();
 			if (fallThrough != null && instructions.containsKey(fallThrough)) next.add(fallThrough);
 			if (!instruction.getFlowType().isCall()) {
 				for (Address target : instruction.getFlows()) {
-					if (!instructions.containsKey(target)) continue;
-					if (EXCEPTIONAL_SOURCES.contains(mnemonic)) opaqueEntries.add(target);
-					else next.add(target);
+					if (instructions.containsKey(target)) next.add(target);
 				}
 			}
 			successors.put(site, next);
@@ -373,17 +369,14 @@ public class WasmLinearMemoryAnalyzer extends AbstractAnalyzer {
 					}
 					else if ("pushCallOther".equals(name)) {
 						// Writes the slots from the push height, and nothing without a stack effect.
-						WasmFunctionAnalysis.StackEffect effect =
-							analysis == null ? null : analysis.getStackEffect(instruction.getAddress());
-						if (analysis == null) known.clear();
-						else if (effect != null) invalidateStackFrom(known, effect.getPushHeight());
+						WasmFunctionAnalysis.StackEffect effect = analysis.getStackEffect(instruction.getAddress());
+						if (effect != null) invalidateStackFrom(known, effect.getPushHeight());
 					}
 					else if (name == null || (!"memory_copy".equals(name) &&
 							injectLibrary.getPayload(InjectPayload.CALLOTHERFIXUP_TYPE, name) != null)) {
 						// Other dynamic fixups (function entry, constructors) may write stack
 						// slots the raw p-code does not name: at most those above the pops.
-						WasmFunctionAnalysis.StackEffect effect =
-							analysis == null ? null : analysis.getStackEffect(instruction.getAddress());
+						WasmFunctionAnalysis.StackEffect effect = analysis.getStackEffect(instruction.getAddress());
 						if (effect == null) known.clear();
 						else invalidateStackFrom(known, Math.min(effect.getPopHeight(), effect.getPushHeight()));
 					}

@@ -116,6 +116,45 @@ write('linear_globals_direct.wasm',module(type_section(functype([I32],[]),functy
     data_section([active_data(i32_const(0x108)+END,b'ABCD'),
                   active_data(i32_const(0x110)+END,b'WXYZ',1)])))
 
+# Handler landings are entered by a caught exception or a suspended continuation from any
+# point of the protected code, so constants of the instruction that set up the handler must
+# not reach them. The thrower (the last function) stands for any call that may throw.
+def try_table(clauses, code):
+    return b'\x1f\x40'+vec(clauses)+code+END
+def load_local1(control):
+    """Load through the landing's local, then a constant load proving the landing is analyzed."""
+    return local_get(1)+b'\x28\x02\x00'+drop()+i32_const(control)+b'\x28\x02\x00'+drop()
+def handler_module(name, codes):
+    """codes: (i32)->() bodies with one i32 local, then a ()->() thrower; tag 0 carries an i32."""
+    write(name,module(type_section(functype([I32],[]),functype([],[])),
+        func_section([0]*len(codes)+[1]),memory_section([(0,1)]),tag_section([(0,0)]),
+        section(10,vec([body(code,[(1,I32)]) for code in codes]+[body(END)])),
+        data_section([active_data(i32_const(0x10)+END,b'Z')])))
+handler_module('linear_globals_eh.wasm',[
+    # The try_table dispatches its only clause to the block end, whose sole other path returns.
+    i32_const(0x320)+local_set(1)+
+    block(I32,try_table([b'\x00\x00\x00'],i32_const(0x340)+local_set(1)+call(2))+b'\x0f')+
+    drop()+load_local1(0x360)+END,
+    # A second clause (catch_all) lands on a label that normal flow reaches with 0x3a0.
+    i32_const(0x3a0)+local_set(1)+
+    block(0x40,block(I32,try_table([b'\x00\x00\x00',b'\x02\x01'],
+        i32_const(0x3c0)+local_set(1)+call(2)+i32_const(0x3a0)+local_set(1))+br(1))+drop()+b'\x0f')+
+    load_local1(0x3e0)+END])
+# Legacy try (V8 rejects mixing it with try_table): the first handler is the try's branch
+# target, the second has no static entry and is analyzed from an empty state.
+handler_module('linear_globals_legacy_eh.wasm',[
+    i32_const(0x500)+local_set(1)+
+    b'\x06\x40'+i32_const(0x520)+local_set(1)+call(1)+
+    b'\x07\x00'+drop()+load_local1(0x560)+
+    b'\x19'+i32_const(0x540)+b'\x28\x02\x00'+drop()+END+END])
+# A resume handler clause lands on a label that normal flow reaches with 0x600. V8 does not
+# implement stack switching, so the oracle expects it to reject this module.
+handler_module('linear_globals_resume.wasm',[
+    i32_const(0x600)+local_set(1)+
+    block(0x40,i32_const(0x620)+local_set(1)+b'\xd0\x70'+b'\xe3\x01'+vec([b'\x00\x00\x00'])+
+        i32_const(0x600)+local_set(1))+
+    load_local1(0x640)+END])
+
 # A section claiming 5 payload bytes, with just the count byte present.
 write('truncated_datacount.wasm',module(b'\x0c\x05\x00'))
 # A type section with size 1 whose count/type/arity parser reads the next custom section as types.

@@ -299,6 +299,19 @@ public class RegressionTest {
           new ghidra.app.plugin.core.string.StringsAnalyzer().getPriority().priority(),
           "Linear-memory labels must follow string recovery so string names survive");
       }
+      // {addresses that must stay unlabeled, labeled control addresses}: a landing inherits no
+      // constant of the code that set up its handler, yet code after it is still analyzed.
+      long[][] landing=switch(p.getName()) {
+        case "linear_globals_eh.wasm" -> new long[][]{{0x320,0x340,0x3a0,0x3c0},{0x360,0x3e0}};
+        case "linear_globals_legacy_eh.wasm" -> new long[][]{{0x500,0x520},{0x560,0x540}};
+        case "linear_globals_resume.wasm" -> new long[][]{{0x600,0x620},{0x640}};
+        default -> null;
+      };
+      if(landing!=null) {
+        new WasmLinearMemoryAnalyzer().added(p,p.getMemory(),monitor,new MessageLog());
+        for(long a:landing[0]) checkNoGlobalLabel(p,0,a,"Handler landing inherited a constant: "+Long.toHexString(a));
+        for(long a:landing[1]) checkGlobal(p,0,a,"bss_"+Long.toHexString(a),4);
+      }
       if(p.getName().equals("func_code_mismatch.wasm")) check(state.getFunctions().size()==1,"Function/code section mismatch enumerates only functions with bodies");
       if(p.getName().equals("label_names_repeat.wasm")) {
         new WasmNameApplyAnalyzer().added(p,p.getMemory(),monitor,new MessageLog());
