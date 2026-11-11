@@ -1,0 +1,11 @@
+// Pin the Gradle project name so the extension layout is identical regardless of the name of
+// the checkout directory.
+//
+// Ghidra's ClassSearcher (ghidra.util.classfinder.ClassJar.isModuleDependencyJar) only scans a
+// jar under <module>/lib when the jar's base name starts with the module directory name. The
+// extension archive is built with "<project.name>/lib/<project.name>.jar", and
+// extension.properties' install name (ExtensionUtils) is the same project name, so a fixed
+// project name keeps the installed directory, the archive's top-level directory and the jar
+// name identical no matter where this repository is cloned. See verifyExtensionLayout in
+// build.gradle, which fails the build if that invariant is ever broken.
+rootProject.name = 'ghidra-wasm-plugin'

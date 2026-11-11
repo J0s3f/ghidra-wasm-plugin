@@ -129,6 +129,13 @@ The release assets are *cleaned* zips: the development harness
 (`test-scripts/`), CI configuration (`.github/`) and internal documentation
 (`REPORT-*.md`) are excluded via `build.gradle`.
 
+### Troubleshooting: `No load spec found for import file`
+
+Ghidra only scans a module's jar when the jar name starts with the module directory name
+(`Extensions/ghidra-wasm-plugin/lib/ghidra-wasm-plugin.jar`). If the extension directory was
+renamed, the plugin is silently ignored. Keep the directory name as built; `verifyExtensionLayout`
+in `build.gradle` checks this at build time.
+
 ## Test harness
 
 The plugin ships a comprehensive test harness under `test-scripts/`:

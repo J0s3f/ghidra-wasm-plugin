@@ -48,4 +48,88 @@ tasks.named('buildExtension') {
 	exclude 'eclipse-formatter.xml'
 	exclude '.gitignore'
 	exclude 'hs_err_pid*.log'
+	exclude 'settings.gradle'
+}
+
+//---------------------- verify the archive can actually be loaded ---------------
+// Ghidra does not surface a broken extension layout as an error: it simply never registers the
+// plugin classes, and an import then fails with "No load spec found for import file" (or the
+// extension does not appear at all). The rule lives in
+// ghidra.util.classfinder.ClassJar.isModuleDependencyJar: for a jar below <module>/lib, the jar
+// file name must start with the module directory name, case-insensitively, or the jar is not
+// scanned. ExtensionUtils.install additionally uses the extension.properties `name` value as the
+// installation directory. This task checks the produced archive against both rules and prints
+// the verified install location, so a broken archive fails the build instead of failing silently
+// on a user's machine.
+//
+// Run: gradle verifyExtensionLayout  (buildExtension runs it automatically)
+tasks.register('verifyExtensionLayout') {
+	group = 'Ghidra Private'
+	description = 'Verify the extension archive layout against Ghidra\'s classpath scanning rules.'
+	dependsOn tasks.named('buildExtension')
+	doLast {
+		File zip = tasks.named('buildExtension').get().archiveFile.get().asFile
+		if (!zip.isFile()) {
+			throw new GradleException("verifyExtensionLayout: archive not found: ${zip}")
+		}
+		def roots = new TreeSet<String>()
+		def jars = []
+		String props = null
+		new java.util.zip.ZipFile(zip).withCloseable { zf ->
+			zf.entries().each { entry ->
+				String n = entry.name.replace('\\', '/')
+				if (n.isEmpty()) return
+				int slash = n.indexOf('/')
+				if (slash < 0) {
+					throw new GradleException("verifyExtensionLayout: archive entry outside a " +
+						"top-level directory: '${n}' (Ghidra expects one extension directory)")
+				}
+				String root = n.substring(0, slash)
+				roots.add(root)
+				if (n == "${root}/extension.properties") {
+					props = zf.getInputStream(entry).getText('UTF-8')
+				}
+				if (n.startsWith("${root}/lib/") && n.toLowerCase().endsWith('.jar')) {
+					jars.add(n.substring(n.lastIndexOf('/') + 1))
+				}
+			}
+		}
+		if (roots.size() != 1) {
+			throw new GradleException("verifyExtensionLayout: expected exactly one top-level " +
+				"directory, found ${roots}")
+		}
+		String root = roots.first()
+		if (jars.isEmpty()) {
+			throw new GradleException("verifyExtensionLayout: no jar under ${root}/lib")
+		}
+		String lowerRoot = root.toLowerCase()
+		jars.each { String jar ->
+			String base = jar.substring(0, jar.length() - 4)
+			if (!base.toLowerCase().startsWith(lowerRoot)) {
+				throw new GradleException("verifyExtensionLayout: ${root}/lib/${jar} would be " +
+					"ignored by Ghidra's ClassSearcher: the jar base name '${base}' must start " +
+					"with the module directory name '${root}' (ClassJar.isModuleDependencyJar)")
+			}
+		}
+		if (props == null) {
+			throw new GradleException("verifyExtensionLayout: ${root}/extension.properties missing")
+		}
+		Properties p = new Properties()
+		p.load(new java.io.StringReader(props))
+		String extName = p.getProperty('name', '').trim()
+		if (extName != root) {
+			throw new GradleException("verifyExtensionLayout: extension.properties name " +
+				"'${extName}' differs from the archive directory '${root}'; ExtensionUtils.install " +
+				"would install into a differently named directory (use name=@extname@)")
+		}
+		logger.lifecycle("verifyExtensionLayout: OK ${zip.name}")
+		logger.lifecycle("  module directory : ${root}")
+		logger.lifecycle("  module jar       : ${jars.join(', ')}")
+		logger.lifecycle("  install with     : unzip ${zip.name} -d <Ghidra>/Ghidra/Extensions")
+		logger.lifecycle("  or GUI           : File -> Install Extensions -> + -> ${zip.name}")
+	}
+}
+
+tasks.named('buildExtension') {
+	finalizedBy tasks.named('verifyExtensionLayout')
 }

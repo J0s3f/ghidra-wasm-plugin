@@ -1,4 +1,4 @@
-# Ghidra-WASM 2.10.0
+# Ghidra-WASM 2.10.1
 
 WebAssembly loader/plugin for Ghidra (disassembly + decompilation), maintained as a fork of
 [nneonneo/ghidra-wasm-plugin](https://github.com/nneonneo/ghidra-wasm-plugin).
@@ -12,6 +12,15 @@ Ghidra 12.2, `ghidra_12.1.4_PUBLIC_` for 12.1.4 or `ghidra_12.1.3_PUBLIC_` for 1
 The release assets are *cleaned* zips: the development harness (`test-scripts/`), CI
 configuration (`.github/`) and internal documentation (`REPORT-*.md`) are excluded via
 `build.gradle`.
+
+## New in 2.10.1 (packaging fix, no analyzer changes)
+
+* The extension could install but stay invisible (`No load spec found for import file`), because
+  Ghidra only scans `<module>/lib/*.jar` when the jar name starts with the module directory name.
+* `settings.gradle` pins the project name to `ghidra-wasm-plugin`, so the archive layout no longer
+  depends on the checkout directory; `extension.properties` uses `name=@extname@` to match.
+* New `verifyExtensionLayout` build task fails the build if the archive layout would be ignored.
+  If upgrading from an install under another directory name, delete the old one first.
 
 ## New in 2.10.0 (since 2.9.0)
 
